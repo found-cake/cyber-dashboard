@@ -10,15 +10,19 @@
       cveHint: "NVD API 보강 · 언급이 많을수록 활발히 악용 중", noData: "아직 수집된 데이터가 없습니다",
       noDataHint: "왼쪽 캘린더에서 최근 10일 이내 날짜를 선택해 첫\u00a0수집을 시작하세요.",
       noArticles: "이 날짜에 수집된 기사가 없습니다", collectNow: "수집을 시작하시겠습니까?",
-      sourcesActive: "개의 활성 소스에서 메타데이터를 가져옵니다.", cancel: "취소", start: "수집 시작",
-      collecting: "수집 중…", collected: "수집을 완료했습니다.", sourceSettings: "수집 소스",
-      nvdTitle: "NVD API 키", nvdHint: "CVE 상세 정보(CVSS·영향 제품)를 NVD에서 보강합니다. 키 없이도 동작하지만 요청 한도가 낮습니다.",
+      sourcesActive: "개의 활성 소스에서 메타데이터를 가져옵니다.", cancel: "취소", close: "닫기", start: "수집 시작",
+      collecting: "수집 중…", collectingHint: "닫아도 백그라운드에서 계속 수집합니다.", collectionCancelled: "수집을 취소했습니다.", collected: "수집을 완료했습니다.", sourceSettings: "수집 소스",
+      nvdTitle: "NVD API 키", nvdHint: "수집을 시작하려면 NVD API 키를 먼저 등록해야 합니다.",
       llmTitle: "LLM 설정", llmHint: "OpenAI Chat Completions 호환 엔드포인트를 연결합니다.",
       baseURL: "Base URL", model: "모델 이름", apiKey: "API 키", timeout: "타임아웃(초)",
       preset: "프리셋", presetAdd: "현재 설정 추가", presetAddHint: "입력한 Base URL과 모델을 프리셋으로 저장", presetRemove: "프리셋 삭제",
       presetAdded: "프리셋을 추가했습니다.", presetRemoved: "프리셋을 삭제했습니다.",
       save: "설정 저장", test: "연결 테스트", requestPreview: "요청 미리보기", schema: "기사 분류 스키마",
-      reportTitle: "보고서 생성", reportHint: "수집된 기사에서 기간 요약을 만듭니다.", weekly: "주간", monthly: "월간",
+      unsavedSettings: "저장하지 않은 변경사항이 있습니다.", revert: "되돌리기",
+      sourceFilter: "뉴스 출처", allSources: "모든 출처", recollect: "재수집", recollectConfirm: "이 날짜의 뉴스를 다시 수집하시겠습니까?",
+      timezone: "시간대", timezoneHint: "보고서 저장 시간에 적용됩니다.",
+      reportTitle: "보고서 생성", reportHint: "수집된 기사를 기준으로 보고서를 만듭니다.", weekly: "주간", monthly: "월간",
+      pickYear: "연도", pickMonth: "월", pickWeek: "주 선택 (일 – 토)", articlesUnit: "건", scrollHint: "주간 범위를 선택하세요",
       periodStart: "시작일", periodEnd: "종료일", generate: "생성", topThreat: "주요 위협",
       keyActors: "핵심 위협 행위자", summary: "요약", targetSectors: "주요 타겟 섹터", medium: "Medium",
       firstSeen: "최초 등장", mentions: "언급", product: "제품 / 벤더", articleCount: "기사",
@@ -34,15 +38,19 @@
       cveHint: "Enriched via NVD API · more mentions = more active exploitation", noData: "No collected data yet",
       noDataHint: "Pick a date within the last 10 days in the calendar to start your first collection.",
       noArticles: "No articles collected for this date", collectNow: "Start collection for this date?",
-      sourcesActive: " active sources will provide metadata.", cancel: "Cancel", start: "Start",
-      collecting: "Collecting…", collected: "Collection finished.", sourceSettings: "Collection sources",
-      nvdTitle: "NVD API key", nvdHint: "Enriches CVE details from NVD. It works without a key at a lower request ceiling.",
+      sourcesActive: " active sources will provide metadata.", cancel: "Cancel", close: "Close", start: "Start",
+      collecting: "Collecting…", collectingHint: "You can close this dialog while collection continues in the background.", collectionCancelled: "Collection cancelled.", collected: "Collection finished.", sourceSettings: "Collection sources",
+      nvdTitle: "NVD API key", nvdHint: "Register an NVD API key before starting collection.",
       llmTitle: "LLM settings", llmHint: "Connect any OpenAI Chat Completions compatible endpoint.",
       baseURL: "Base URL", model: "Model name", apiKey: "API key", timeout: "Timeout (s)",
       preset: "Presets", presetAdd: "Add current", presetAddHint: "Save the current Base URL and model as a preset", presetRemove: "Remove preset",
       presetAdded: "Preset added.", presetRemoved: "Preset removed.",
       save: "Save settings", test: "Test connection", requestPreview: "Request preview", schema: "Article classification schema",
-      reportTitle: "Generate report", reportHint: "Build a period summary from collected articles.", weekly: "Weekly", monthly: "Monthly",
+      unsavedSettings: "You have unsaved changes.", revert: "Reset",
+      sourceFilter: "News source", allSources: "All sources", recollect: "Recollect", recollectConfirm: "Recollect news for this date?",
+      timezone: "Timezone", timezoneHint: "Applied when reports are saved.",
+      reportTitle: "Generate report", reportHint: "Built from the articles collected in the range.", weekly: "Weekly", monthly: "Monthly",
+      pickYear: "Year", pickMonth: "Month", pickWeek: "Pick a week (Sun – Sat)", articlesUnit: "items", scrollHint: "Select a weekly range",
       periodStart: "Start", periodEnd: "End", generate: "Generate", topThreat: "Top threat",
       keyActors: "Key threat actors", summary: "Summary", targetSectors: "Target sectors", medium: "Medium",
       firstSeen: "First seen", mentions: "Mentions", product: "Product / Vendor", articleCount: "Articles",
@@ -62,9 +70,14 @@
     dashboard: null,
     daily: null,
     currentReport: null,
-    reportType: "weekly"
+    reportType: "weekly",
+    reportYear: null,
+    reportMonth: null,
+    reportWeekStart: null,
+    dailySource: "all"
   };
   let modalLastFocus = null;
+  const collectionTask = window.createCollectionTask(serverCollection);
 
   const t = key => TEXT[state.lang][key] || key;
   const esc = value => $("<div>").text(value == null ? "" : String(value)).html();
@@ -102,10 +115,35 @@
     return new Date(year, month - 1, date);
   }
 
+  function configuredToday() {
+    const offset = Number(state.bootstrap.settings.timezone_offset_minutes) || 0;
+    const shifted = new Date(Date.now() + offset * 60000);
+    return new Date(shifted.getUTCFullYear(), shifted.getUTCMonth(), shifted.getUTCDate());
+  }
+
+  function timezoneOptions(selected) {
+    const options = [];
+    for (let minutes = -12 * 60; minutes <= 14 * 60; minutes += 15) {
+      const sign = minutes >= 0 ? "+" : "−";
+      const absolute = Math.abs(minutes);
+      const label = `UTC${sign}${String(Math.floor(absolute / 60)).padStart(2, "0")}:${String(absolute % 60).padStart(2, "0")}`;
+      options.push(`<option value="${minutes}"${minutes === selected ? " selected" : ""}>${label}</option>`);
+    }
+    return options.join("");
+  }
+
   function formatDisplayDate(day) {
     return new Intl.DateTimeFormat(state.lang === "ko" ? "ko-KR" : "en-US", {
       year: "numeric", month: "long", day: "numeric", weekday: "long"
     }).format(parseDay(day));
+  }
+
+  function formatArticleTime(value) {
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime()) || !String(value).includes("T")) return value;
+    return new Intl.DateTimeFormat(state.lang === "ko" ? "ko-KR" : "en-US", {
+      hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "UTC"
+    }).format(parsed) + " UTC";
   }
 
   function api(method, path, data) {
@@ -115,6 +153,62 @@
       contentType: data ? "application/json" : undefined,
       data: data ? JSON.stringify(data) : undefined,
       dataType: "json"
+    });
+  }
+
+  function serverCollection(day, existingJob = null) {
+    const deferred = $.Deferred();
+    let jobID = null;
+    let timer = null;
+    let cancelling = false;
+    let cancelInFlight = false;
+    const startRequest = existingJob ? $.Deferred().resolve(existingJob).promise() : api("POST", "/api/collect", { date: day });
+
+    function scheduleCheck() {
+      if (deferred.state() === "pending") timer = window.setTimeout(check, 1000);
+    }
+
+    function settle(job) {
+      if (job.status === "running") {
+        if (cancelling) cancel();
+        else scheduleCheck();
+      } else if (job.status === "completed") {
+        deferred.resolve(job.result);
+      } else if (job.status === "cancelled") {
+        deferred.reject({}, "abort");
+      } else {
+        deferred.reject({ responseJSON: { message: job.error || "Collection failed" } }, "error");
+      }
+    }
+
+    function check() {
+      api("GET", `/api/collect/${encodeURIComponent(jobID)}`).done(job => {
+        settle(job);
+      }).fail(scheduleCheck);
+    }
+
+    function cancel() {
+      if (!jobID || cancelInFlight || deferred.state() !== "pending") return;
+      cancelInFlight = true;
+      api("DELETE", `/api/collect/${encodeURIComponent(jobID)}`).done(job => {
+        cancelInFlight = false;
+        settle(job);
+      }).fail(() => {
+        cancelInFlight = false;
+        scheduleCheck();
+      });
+    }
+
+    startRequest.done(job => {
+      jobID = job.id;
+      settle(job);
+    }).fail(error => deferred.reject(error, "error"));
+    return deferred.promise({
+      abort() {
+        cancelling = true;
+        if (timer !== null) window.clearTimeout(timer);
+        cancel();
+      }
     });
   }
 
@@ -253,6 +347,7 @@
     if (date > today) return toast(t("futureDate"), true);
     if (date < oldest && !(state.bootstrap.collected_days || []).includes(day)) return toast(t("outsideRetention"), true);
     state.selectedDay = day;
+    state.dailySource = "all";
     renderCalendar();
     setLoading();
     api("GET", `/api/daily/${encodeURIComponent(day)}`).done(data => {
@@ -267,38 +362,62 @@
     updateNavigation();
     const daily = state.daily || { articles: [], summary: "" };
     setHeader(formatDisplayDate(state.selectedDay), state.lang === "ko" ? "위협 인텔리전스 피드" : "Threat intelligence feed");
-    const articles = daily.articles.map(article => `<a class="article-row" href="${esc(safeURL(article.url))}" target="_blank" rel="noopener noreferrer">
+    const sources = [...new Set(daily.articles.map(article => article.source))].sort((left, right) => left.localeCompare(right));
+    if (state.dailySource !== "all" && !sources.includes(state.dailySource)) state.dailySource = "all";
+    const visibleArticles = state.dailySource === "all" ? daily.articles : daily.articles.filter(article => article.source === state.dailySource);
+    const articles = visibleArticles.map(article => `<a class="article-row" href="${esc(safeURL(article.url))}" target="_blank" rel="noopener noreferrer">
       <div class="cluster"><span class="badge badge-info">${esc(article.source)}</span><span class="badge">${esc(article.attack_method)}</span><span class="badge ${toneClass(article.severity)}">${esc(article.severity)}</span></div>
       <h3>${esc(article.title)}</h3><p>${esc(article.summary || t("noArticles"))}</p>
-      <div class="article-meta"><span>${esc(article.threat_actor)}${article.actor_country ? ` (${esc(article.actor_country)})` : ""}</span><span class="mono">${esc(article.published_at)}</span></div>
+      <div class="article-meta"><span>${esc(article.threat_actor)}${article.actor_country ? ` (${esc(article.actor_country)})` : ""}</span><span class="mono">${esc(formatArticleTime(article.published_at))}</span></div>
     </a>`).join("");
     $("#main-content").html(`<div class="content stack">
       ${daily.summary ? `<section class="card brief-card"><div class="card-header"><div><h2>${state.lang === "ko" ? "일간 요약" : "Daily summary"}</h2><p class="card-subtitle">${esc(t("aiGenerated"))}</p></div><span class="badge badge-info">${daily.articles.length} ${esc(t("articleCount"))}</span></div><div class="brief-body">${esc(daily.summary)}</div></section>` : ""}
+      <div class="daily-toolbar"><div class="field daily-filter"><label for="source-filter">${esc(t("sourceFilter"))}</label><select id="source-filter"><option value="all">${esc(t("allSources"))}</option>${sources.map(source => `<option value="${esc(source)}"${source === state.dailySource ? " selected" : ""}>${esc(source)}</option>`).join("")}</select></div><div class="cluster collection-actions"><button class="secondary-button" id="recollect-day" type="button">${esc(t("recollect"))}</button><button class="secondary-button cancel-collection" id="cancel-active-collection" type="button" hidden>${esc(t("cancel"))}</button></div></div>
       <section class="article-list">${articles || `<div class="empty-state"><span class="empty-mark">00</span><h2>${esc(t("noArticles"))}</h2></div>`}</section>
     </div>`);
+    refreshCollectionControls();
     closeDrawer();
   }
 
-  function openCollectModal(day) {
+  function openCollectModal(day, recollect = false) {
     const active = state.bootstrap.sources.filter(source => source.enabled).length;
-    openModal(`<div class="modal modal-small" role="dialog" aria-modal="true" aria-labelledby="collect-title">
-      <div class="modal-header"><div><h2 id="collect-title">${esc(t("collectNow"))}</h2><p>${esc(formatDisplayDate(day))}</p></div><button class="icon-button modal-close" type="button" aria-label="${esc(t("cancel"))}">×</button></div>
-      <div class="modal-body"><p class="prose">${active}${esc(t("sourcesActive"))}</p></div>
-      <div class="modal-footer"><button class="secondary-button modal-close" type="button">${esc(t("cancel"))}</button><button class="primary-button" id="confirm-collect" data-day="${day}" type="button">${esc(t("start"))}</button></div>
+    openModal(`<div class="modal modal-small" role="dialog" aria-modal="true" aria-labelledby="collect-title" data-collect-day="${day}">
+      <div class="modal-header"><div><h2 id="collect-title">${esc(t(recollect ? "recollectConfirm" : "collectNow"))}</h2><p>${esc(formatDisplayDate(day))}</p></div><button class="icon-button modal-dismiss" type="button" aria-label="${esc(t("close"))}">×</button></div>
+      <div class="modal-body"><p class="prose">${active}${esc(t("sourcesActive"))}</p><p class="collection-background-hint" hidden>${esc(t("collectingHint"))}</p></div>
+      <div class="modal-footer"><button class="secondary-button modal-close" data-collection-secondary type="button">${esc(t("cancel"))}</button><button class="primary-button" id="confirm-collect" data-day="${day}" data-idle-label="${esc(t(recollect ? "recollect" : "start"))}" type="button">${esc(t(recollect ? "recollect" : "start"))}</button></div>
     </div>`);
+    refreshCollectionControls();
   }
 
-  function runCollection(day) {
-    const $button = $("#confirm-collect").prop("disabled", true).text(t("collecting"));
-    api("POST", "/api/collect", { date: day }).done(result => {
-      closeModal();
+  function runCollection(day, existingJob = null) {
+    const request = existingJob ? collectionTask.resume(day, serverCollection(day, existingJob)) : collectionTask.start(day);
+    if (!request) return;
+    request.done(result => {
+      if ($(`[data-collect-day="${day}"]`).length) closeModal();
       if (!state.bootstrap.collected_days.includes(day)) state.bootstrap.collected_days.push(day);
       toast(`${t("collected")} ${result.collected} ${t("articleCount")}`);
-      selectDay(day);
-    }).fail(error => {
-      $button.prop("disabled", false).text(t("start"));
-      showRequestError(error);
+      (result.warnings || []).forEach(warning => toast(warning, true));
+      renderCalendar();
+      if (state.view === "daily" && state.selectedDay === day) selectDay(day);
+    }).fail((error, status) => {
+      if (status === "abort") {
+        if ($(`[data-collect-day="${day}"]`).length) closeModal();
+        toast(t("collectionCancelled"));
+      } else showRequestError(error);
     });
+  }
+
+  function refreshCollectionControls() {
+    const activeDay = collectionTask.activeDay();
+    const active = activeDay !== null;
+    $("#recollect-day").prop("disabled", active).attr("aria-busy", String(active)).text(active ? t("collecting") : t("recollect"));
+    $("#cancel-active-collection").prop("hidden", !active);
+    const modalDay = $("[data-collect-day]").data("collect-day");
+    const modalActive = active && modalDay === activeDay;
+    const $confirm = $("#confirm-collect");
+    $confirm.prop("disabled", active).attr("aria-busy", String(modalActive)).text(modalActive ? t("collecting") : $confirm.data("idle-label"));
+    $(".collection-background-hint").prop("hidden", !modalActive);
+    $("[data-collection-secondary]").toggleClass("modal-close", !modalActive).toggleClass("cancel-collection", modalActive);
   }
 
   function renderSettings() {
@@ -309,25 +428,72 @@
     const settings = state.bootstrap.settings;
     const presets = state.bootstrap.llm_presets || [];
     const sources = state.bootstrap.sources.map(source => `<div class="source-row"><span class="status-dot${source.enabled ? " is-on" : ""}" aria-hidden="true"></span><span><strong>${esc(source.name)}</strong><small>${esc(source.host)} · RSS feed</small></span><button type="button" class="toggle" role="switch" aria-label="${esc(source.name)}" aria-checked="${source.enabled}" data-source-id="${source.id}"></button><span class="badge ${source.enabled ? "badge-success" : ""}">${source.enabled ? "Active" : "Off"}</span></div>`).join("");
-    const preview = `POST ${(settings.llm_base_url || "<base-url>").replace(/\/$/, "")}/chat/completions\nAuthorization: Bearer ${settings.llm_api_key ? "••••••••" : "<api-key>"}\n\n{ "model": "${settings.llm_model || "<model>"}",\n  "temperature": 0.2,\n  "response_format": { "type": "json_object" },\n  "messages": [ … ] }`;
+    const preview = `POST ${(settings.llm_base_url || "<base-url>").replace(/\/$/, "")}/chat/completions\nAuthorization: Bearer ${settings.llm_api_key ? "••••••••" : "<api-key>"}\n\n{ "model": "${settings.llm_model || "<model>"}",\n  "temperature": 0.2,\n  "messages": [ … ] }`;
     const schema = `{ "attack_method": "APT | 랜섬웨어 | 공급망 | …",\n  "threat_actor": "Lazarus Group | SideCopy | TeamPCP | 미확인",\n  "actor_country": "DPRK | Pakistan | null",\n  "target_sector": "금융 | 정부 | 통신 | …",\n  "severity": "Critical | High | Medium",\n  "cve": ["CVE-YYYY-NNNN", …]   // 정규식 추출, LLM 응답 아님\n}`;
     const presetItems = presets.map(preset => {
       const active = matchesPreset(preset, settings.llm_base_url, settings.llm_model);
-      return `<span class="preset-item"><button class="preset-chip${active ? " is-active" : ""}" type="button" data-preset-id="${preset.id}" aria-pressed="${active}" title="${esc(preset.base_url)} · ${esc(preset.model)}"><span class="preset-dot" aria-hidden="true"></span><span><strong>${esc(preset.label)}</strong><small>${esc(preset.model)}</small></span></button>${preset.builtin ? "" : `<button class="preset-remove" type="button" data-remove-preset-id="${preset.id}" aria-label="${esc(t("presetRemove"))}: ${esc(preset.label)}" title="${esc(t("presetRemove"))}">×</button>`}</span>`;
+      return `<span class="preset-item"><button class="preset-chip${active ? " is-active" : ""}" type="button" data-preset-id="${preset.id}" aria-pressed="${active}" title="${esc(preset.base_url)} · ${esc(preset.model)}"><span class="preset-dot" aria-hidden="true"></span><span><strong>${esc(preset.label)}</strong><small>${esc(preset.model)}${preset.api_key ? " · Key saved" : ""}</small></span></button>${preset.builtin ? "" : `<button class="preset-remove" type="button" data-remove-preset-id="${preset.id}" aria-label="${esc(t("presetRemove"))}: ${esc(preset.label)}" title="${esc(t("presetRemove"))}">×</button>`}</span>`;
     }).join("");
     const addDisabled = !canAddPreset(settings.llm_base_url, settings.llm_model);
     $("#main-content").html(`<div class="content settings-stack">
       <section class="card"><div class="card-header"><h2>${esc(t("sourceSettings"))}</h2></div><div class="source-list">${sources}</div></section>
       <section class="card"><div class="card-header"><div><h2>${esc(t("nvdTitle"))}</h2><p class="card-subtitle">${esc(t("nvdHint"))}</p></div><a href="https://nvd.nist.gov/developers/request-an-api-key" target="_blank" rel="noopener noreferrer">NVD ↗</a></div><div class="field"><label for="nvd-api-key">${esc(t("apiKey"))}</label><input id="nvd-api-key" type="password" autocomplete="off" value="${esc(settings.nvd_api_key || "")}"><small>50 requests / 30s · 5 / 30s without key</small></div></section>
+      <section class="card"><div class="card-header"><div><h2>${esc(t("timezone"))}</h2><p class="card-subtitle">${esc(t("timezoneHint"))}</p></div></div><div class="field"><label for="timezone-offset">UTC offset</label><select id="timezone-offset">${timezoneOptions(Number(settings.timezone_offset_minutes) || 0)}</select></div></section>
       <section class="card"><div class="card-header"><div><h2>${esc(t("llmTitle"))}</h2><p class="card-subtitle">${esc(t("llmHint"))}</p></div><span class="badge badge-info">OpenAI compatible</span></div>
         <div class="field-grid"><div class="preset-field full-span"><div class="preset-head"><span>${esc(t("preset"))}</span><button class="preset-add" id="add-llm-preset" type="button" title="${esc(t("presetAddHint"))}"${addDisabled ? " disabled" : ""}><span aria-hidden="true">＋</span>${esc(t("presetAdd"))}</button></div><div class="preset-list" id="llm-preset-list">${presetItems}</div></div>
           <div class="field"><label for="llm-base-url">${esc(t("baseURL"))}</label><input id="llm-base-url" type="url" value="${esc(settings.llm_base_url || "")}"></div><div class="field"><label for="llm-model">${esc(t("model"))}</label><input id="llm-model" value="${esc(settings.llm_model || "")}"></div><div class="field"><label for="llm-api-key">${esc(t("apiKey"))}</label><input id="llm-api-key" type="password" autocomplete="off" value="${esc(settings.llm_api_key || "")}"></div><div class="field"><label for="llm-timeout">${esc(t("timeout"))}</label><input id="llm-timeout" type="number" min="1" max="600" value="${Number(settings.llm_timeout) || 60}"></div>
-          <div class="full-span cluster"><button class="primary-button" id="save-settings" type="button">${esc(t("save"))}</button><button class="secondary-button" id="test-llm" type="button">${esc(t("test"))}</button></div>
+          <div class="full-span cluster"><button class="secondary-button" id="test-llm" type="button">${esc(t("test"))}</button></div>
           <div class="field full-span"><label>${esc(t("requestPreview"))}</label><pre class="request-preview" id="request-preview">${esc(preview)}</pre></div></div>
       </section>
       <section class="card"><div class="card-header"><h2>${esc(t("schema"))}</h2></div><pre class="schema-preview">${esc(schema)}</pre></section>
-    </div>`);
+    </div><div class="settings-save-bar" id="settings-save-bar" role="status" aria-live="polite" hidden><strong>${esc(t("unsavedSettings"))}</strong><div class="cluster"><button class="secondary-button" id="revert-settings" type="button">${esc(t("revert"))}</button><button class="primary-button" id="save-settings" type="button">${esc(t("save"))}</button></div></div>`);
+    refreshSettingsFormState();
     closeDrawer();
+  }
+
+  function settingsFormValue() {
+    return {
+      language: state.lang, theme: state.theme, accent: state.bootstrap.settings.accent || "#4f6ef7",
+      llm_base_url: $("#llm-base-url").val().trim(), llm_model: $("#llm-model").val().trim(),
+      llm_api_key: $("#llm-api-key").val(), llm_timeout: Number($("#llm-timeout").val()), nvd_api_key: $("#nvd-api-key").val(),
+      timezone_offset_minutes: Number($("#timezone-offset").val())
+    };
+  }
+
+  function applySettingsDraft(settings) {
+    $("#llm-base-url").val(settings.llm_base_url);
+    $("#llm-model").val(settings.llm_model);
+    $("#llm-api-key").val(settings.llm_api_key);
+    $("#llm-timeout").val(settings.llm_timeout);
+    $("#nvd-api-key").val(settings.nvd_api_key);
+    $("#timezone-offset").val(settings.timezone_offset_minutes);
+    refreshSettingsFormState();
+  }
+
+  function sameSettings(left, right) {
+    return left.language === right.language && left.theme === right.theme && left.accent === right.accent &&
+      left.llm_base_url === right.llm_base_url && left.llm_model === right.llm_model && left.llm_api_key === (right.llm_api_key || "") &&
+      left.llm_timeout === Number(right.llm_timeout) && left.nvd_api_key === (right.nvd_api_key || "") &&
+      left.timezone_offset_minutes === Number(right.timezone_offset_minutes);
+  }
+
+  function refreshSettingsFormState() {
+    if (!$("#llm-base-url").length) return;
+    refreshPresetControls();
+    const settings = settingsFormValue();
+    const preview = `POST ${(settings.llm_base_url || "<base-url>").replace(/\/$/, "")}/chat/completions\nAuthorization: Bearer ${settings.llm_api_key ? "••••••••" : "<api-key>"}\n\n{ "model": "${settings.llm_model || "<model>"}",\n  "temperature": 0.2,\n  "messages": [ … ] }`;
+    $("#request-preview").text(preview);
+    $("#settings-save-bar").prop("hidden", sameSettings(settings, state.bootstrap.settings));
+  }
+
+  function revertSettings() {
+    const settings = state.bootstrap.settings;
+    state.lang = settings.language;
+    state.theme = settings.theme;
+    localStorage.setItem("cyber-lang", state.lang);
+    localStorage.setItem("cyber-theme", state.theme);
+    applyChrome();
+    renderSettings();
   }
 
   function refreshPresetControls() {
@@ -346,66 +512,120 @@
     if (!preset) return;
     $("#llm-base-url").val(preset.base_url);
     $("#llm-model").val(preset.model);
-    refreshPresetControls();
+    $("#llm-api-key").val(preset.api_key || "");
+    refreshSettingsFormState();
   }
 
   function addCurrentPreset() {
-    const request = { base_url: $("#llm-base-url").val().trim(), model: $("#llm-model").val().trim() };
+    const draft = settingsFormValue();
+    const request = { base_url: draft.llm_base_url, model: draft.llm_model, api_key: draft.llm_api_key };
     if (!canAddPreset(request.base_url, request.model)) return;
     $("#add-llm-preset").prop("disabled", true);
     api("POST", "/api/llm/presets", request).done(preset => {
       state.bootstrap.llm_presets.push(preset);
       toast(t("presetAdded"));
       renderSettings();
+      applySettingsDraft(draft);
     }).fail(error => { refreshPresetControls(); showRequestError(error); });
   }
 
   function removePreset(id) {
+    const draft = settingsFormValue();
     api("DELETE", `/api/llm/presets/${id}`).done(() => {
       state.bootstrap.llm_presets = state.bootstrap.llm_presets.filter(preset => preset.id !== id);
       toast(t("presetRemoved"));
       renderSettings();
+      applySettingsDraft(draft);
     }).fail(showRequestError);
   }
 
   function saveSettings() {
-    const settings = {
-      language: state.lang, theme: state.theme, accent: state.bootstrap.settings.accent || "#4f6ef7",
-      llm_base_url: $("#llm-base-url").val().trim(), llm_model: $("#llm-model").val().trim(),
-      llm_api_key: $("#llm-api-key").val(), llm_timeout: Number($("#llm-timeout").val()), nvd_api_key: $("#nvd-api-key").val()
-    };
-    api("PUT", "/api/settings", settings).done(saved => { state.bootstrap.settings = saved; toast(t("saved")); renderSettings(); }).fail(showRequestError);
+    const settings = settingsFormValue();
+    const preset = (state.bootstrap.llm_presets || []).find(item => matchesPreset(item, settings.llm_base_url, settings.llm_model));
+    $("#save-settings,#revert-settings").prop("disabled", true);
+    api("PUT", "/api/settings", settings).then(saved => {
+      state.bootstrap.settings = saved;
+      if (!preset) return saved;
+      return api("PUT", `/api/llm/presets/${preset.id}`, { api_key: settings.llm_api_key }).then(() => {
+        preset.api_key = settings.llm_api_key;
+        return saved;
+      });
+    }).done(() => { toast(t("saved")); renderSettings(); }).fail(error => {
+      $("#save-settings,#revert-settings").prop("disabled", false);
+      showRequestError(error);
+    });
   }
 
   function testConnection() {
     const $button = $("#test-llm").prop("disabled", true).text(state.lang === "ko" ? "확인 중…" : "Testing…");
-    saveSettingsForTest().done(() => api("POST", "/api/llm/test").done(() => toast(t("connectionOK"))).fail(() => toast(t("connectionFail"), true)).always(() => $button.prop("disabled", false).text(t("test"))));
-  }
-
-  function saveSettingsForTest() {
-    const settings = {
-      language: state.lang, theme: state.theme, accent: state.bootstrap.settings.accent || "#4f6ef7",
-      llm_base_url: $("#llm-base-url").val().trim(), llm_model: $("#llm-model").val().trim(),
-      llm_api_key: $("#llm-api-key").val(), llm_timeout: Number($("#llm-timeout").val()), nvd_api_key: $("#nvd-api-key").val()
-    };
-    return api("PUT", "/api/settings", settings).done(saved => { state.bootstrap.settings = saved; });
+    api("POST", "/api/llm/test", settingsFormValue()).done(() => toast(t("connectionOK"))).fail(() => toast(t("connectionFail"), true)).always(() => $button.prop("disabled", false).text(t("test")));
   }
 
   function openReportModal() {
     state.reportType = "weekly";
     closeDrawer();
-    const end = new Date();
-    const start = new Date(); start.setDate(end.getDate() - 6);
-    openModal(`<div class="modal" role="dialog" aria-modal="true" aria-labelledby="report-modal-title">
-      <div class="modal-header"><div><h2 id="report-modal-title">${esc(t("reportTitle"))}</h2><p>${esc(t("reportHint"))}</p></div><button class="icon-button modal-close" type="button" aria-label="${esc(t("cancel"))}">×</button></div>
-      <div class="modal-body"><div class="segmented" role="group" aria-label="${esc(t("reportTitle"))}"><button type="button" data-report-type="weekly" class="is-selected" aria-pressed="true">${esc(t("weekly"))}</button><button type="button" data-report-type="monthly" aria-pressed="false">${esc(t("monthly"))}</button></div><div class="report-form"><div class="field"><label for="report-start">${esc(t("periodStart"))}</label><input id="report-start" type="date" value="${formatDay(start)}"></div><div class="field"><label for="report-end">${esc(t("periodEnd"))}</label><input id="report-end" type="date" value="${formatDay(end)}"></div></div></div>
-      <div class="modal-footer"><button class="secondary-button modal-close" type="button">${esc(t("cancel"))}</button><button class="primary-button" id="generate-report" type="button">${esc(t("generate"))}</button></div>
+    const today = configuredToday();
+    state.reportYear = today.getFullYear();
+    state.reportMonth = today.getMonth();
+    state.reportWeekStart = null;
+    openModal(`<div class="modal report-composer" role="dialog" aria-modal="true" aria-labelledby="report-modal-title">
+      <div class="modal-header"><div><h2 id="report-modal-title">${esc(t("reportTitle"))}</h2><p>${esc(t("reportHint"))}</p></div></div>
+      <div class="modal-body"><div class="segmented report-type-tabs" role="group" aria-label="${esc(t("reportTitle"))}"><button type="button" data-report-type="weekly" class="is-selected" aria-pressed="true">${esc(t("weekly"))}</button><button type="button" data-report-type="monthly" aria-pressed="false">${esc(t("monthly"))}</button></div><div id="report-period-picker"></div></div>
+      <div class="modal-footer"><button class="secondary-button modal-close" type="button">${esc(t("cancel"))}</button><button class="primary-button" id="generate-report" type="button" disabled>${esc(t("generate"))}</button></div>
     </div>`);
+    renderReportPeriodPicker();
+  }
+
+  function reportWeeks(year, month) {
+    const first = new Date(year, month, 1);
+    const last = new Date(year, month + 1, 0);
+    const cursor = new Date(first);
+    cursor.setDate(cursor.getDate() - cursor.getDay());
+    const weeks = [];
+    while (cursor <= last) {
+      const start = new Date(cursor);
+      const end = new Date(start); end.setDate(start.getDate() + 6);
+      weeks.push({ start, end });
+      cursor.setDate(cursor.getDate() + 7);
+    }
+    return weeks;
+  }
+
+  function renderReportPeriodPicker() {
+    const today = configuredToday();
+    const years = [today.getFullYear() - 1, today.getFullYear()];
+    const yearOptions = years.map(year => `<option value="${year}"${year === state.reportYear ? " selected" : ""}>${year}${state.lang === "ko" ? "년" : ""}</option>`).join("");
+    const monthOptions = Array.from({ length: 12 }, (_, month) => {
+      const future = state.reportYear === today.getFullYear() && month > today.getMonth();
+      const label = state.lang === "ko" ? `${month + 1}월` : new Intl.DateTimeFormat("en-US", { month: "long" }).format(new Date(2026, month, 1));
+      return `<option value="${month}"${month === state.reportMonth ? " selected" : ""}${future ? " disabled" : ""}>${label}</option>`;
+    }).join("");
+    const rows = reportWeeks(state.reportYear, state.reportMonth).map((week, index) => {
+      const disabled = week.start > today;
+      const key = formatDay(week.start);
+      const endKey = formatDay(week.end);
+      const count = (state.bootstrap.collected_days || []).filter(day => day >= key && day <= endKey).length;
+      const selected = state.reportWeekStart === key;
+      return `<button class="report-week${selected ? " is-selected" : ""}" type="button" data-report-week="${key}"${disabled ? " disabled" : ""}><strong>W${index + 1}</strong><span>${esc(key)} – ${esc(endKey)}</span><small>${count} ${esc(t("articlesUnit"))}</small></button>`;
+    }).join("");
+    $("#report-period-picker").html(`<div class="report-selects"><div class="field"><label for="report-year">${esc(t("pickYear"))}</label><select id="report-year">${yearOptions}</select></div><div class="field"><label for="report-month">${esc(t("pickMonth"))}</label><select id="report-month">${monthOptions}</select></div></div>${state.reportType === "weekly" ? `<div class="report-week-head"><span>${esc(t("pickWeek"))}</span><small>${esc(t("scrollHint"))}</small></div><div class="report-week-list">${rows}</div>` : `<div class="report-month-summary"><strong>${state.reportYear}.${String(state.reportMonth + 1).padStart(2, "0")}</strong><span>${esc(t("reportHint"))}</span></div>`}`);
+    $("#generate-report").prop("disabled", state.reportType === "weekly" && !state.reportWeekStart);
   }
 
   function generateReport() {
     const $button = $("#generate-report").prop("disabled", true);
-    api("POST", "/api/reports", { type: state.reportType, period_start: $("#report-start").val(), period_end: $("#report-end").val() })
+    let start;
+    let end;
+    if (state.reportType === "weekly") {
+      start = parseDay(state.reportWeekStart);
+      end = new Date(start); end.setDate(start.getDate() + 6);
+    } else {
+      start = new Date(state.reportYear, state.reportMonth, 1);
+      end = new Date(state.reportYear, state.reportMonth + 1, 0);
+    }
+    const today = configuredToday();
+    if (end > today) end = today;
+    api("POST", "/api/reports", { type: state.reportType, period_start: formatDay(start), period_end: formatDay(end) })
       .done(report => { state.bootstrap.reports.unshift(report); closeModal(); renderReport(report); renderReportList(); })
       .fail(error => { $button.prop("disabled", false); if (error.status === 404) toast(t("emptyReport"), true); else showRequestError(error); });
   }
@@ -416,12 +636,15 @@
     updateNavigation();
     renderReportList();
     setHeader(report.type === "weekly" ? t("weekly") : t("monthly"), `${report.period_start} – ${report.period_end}`);
-    $("#main-content").html(`<div class="content stack">
-      ${statsHTML([{ label: t("total"), value: report.total, tone: "tone-info" },{ label: t("critical"), value: report.critical, tone: "tone-danger" },{ label: t("high"), value: report.high, tone: "tone-warning" },{ label: t("medium"), value: report.medium }])}
-      <div class="report-hero"><section class="report-highlight"><small>${esc(t("topThreat"))}</small><h2>${esc(report.top_threat)}</h2></section><section class="card"><h2>${esc(t("keyActors"))}</h2><div class="cluster space-block-start">${report.actors.map(actor => `<span class="badge badge-info">${esc(actor)}</span>`).join("") || `<span class="badge">${state.lang === "ko" ? "미확인" : "Unknown"}</span>`}</div></section></div>
-      <section class="card"><div class="card-header"><h2>${esc(t("summary"))}</h2><span class="badge badge-info">${esc(t("aiGenerated"))}</span></div><div class="prose">${esc(report.summary)}</div></section>
-      <section class="card"><h2>${esc(t("targetSectors"))}</h2><div class="cluster space-block-start">${report.sectors.map(sector => `<span class="badge badge-success">${esc(sector)}</span>`).join("")}</div></section>
-    </div>`);
+    const actors = report.actors.map(actor => esc(actor)).join(" · ") || (state.lang === "ko" ? "미확인" : "Unknown");
+    $("#main-content").html(`<div class="content"><article class="report-sheet">
+      <header class="report-sheet-header"><div><h2>${esc(report.type === "weekly" ? t("weekly") : t("monthly"))}</h2><p>${esc(report.period_start)} – ${esc(report.period_end)}</p></div></header>
+      <div class="report-metrics"><div><strong class="tone-info">${report.total}</strong><span>${esc(t("total"))}</span></div><div><strong class="tone-danger">${report.critical}</strong><span>${esc(t("critical"))}</span></div><div><strong class="tone-warning">${report.high}</strong><span>${esc(t("high"))}</span></div><div><strong>${report.medium}</strong><span>${esc(t("medium"))}</span></div></div>
+      <section class="report-section"><h3>${esc(t("topThreat"))}</h3><p>${esc(report.top_threat)}</p></section>
+      <section class="report-section"><h3>${esc(t("keyActors"))}</h3><p>${actors}</p></section>
+      <section class="report-section"><h3>${esc(t("summary"))}</h3><p class="prose">${esc(report.summary)}</p></section>
+      <section class="report-section"><h3>${esc(t("targetSectors"))}</h3><div class="report-sectors">${report.sectors.map(sector => `<span>${esc(sector)}</span>`).join("")}</div></section>
+    </article></div>`);
     closeDrawer();
   }
 
@@ -501,26 +724,33 @@
     $(document).on("click", "tr[data-href]", function () { window.open($(this).data("href"), "_blank", "noopener"); });
     $(document).on("keydown", "tr[data-href]", function (event) { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); $(this).trigger("click"); } });
     $(document).on("click", ".modal-close", closeModal);
+    $(document).on("click", ".modal-dismiss", closeModal);
     $(document).on("click", ".modal-backdrop", function (event) { if (event.target === this) closeModal(); });
     $(document).on("click", "#confirm-collect", function () { runCollection($(this).data("day")); });
+    $(document).on("click", ".cancel-collection", () => collectionTask.cancel());
+    $(document).on("click", "#recollect-day", () => openCollectModal(state.selectedDay, true));
+    $(document).on("change", "#source-filter", function () { state.dailySource = $(this).val(); renderDaily(); });
     $(document).on("click", ".toggle[data-source-id]", function () {
       const source = state.bootstrap.sources.find(item => item.id === Number($(this).data("source-id")));
       if (!source) return;
       api("PATCH", `/api/sources/${source.id}`, { enabled: !source.enabled }).done(() => { source.enabled = !source.enabled; renderSettings(); }).fail(showRequestError);
     });
     $(document).on("click", "#save-settings", saveSettings);
+    $(document).on("click", "#revert-settings", revertSettings);
     $(document).on("click", "#test-llm", testConnection);
-    $(document).on("input", "#llm-base-url,#llm-model", refreshPresetControls);
+    $(document).on("input change", "#llm-base-url,#llm-model,#llm-api-key,#llm-timeout,#nvd-api-key,#timezone-offset", refreshSettingsFormState);
     $(document).on("click", "[data-preset-id]", function () { selectPreset(Number($(this).data("preset-id"))); });
     $(document).on("click", "#add-llm-preset", addCurrentPreset);
     $(document).on("click", "[data-remove-preset-id]", function () { removePreset(Number($(this).data("remove-preset-id"))); });
-    $(document).on("click", "[data-report-type]", function () { state.reportType = $(this).data("report-type"); $("[data-report-type]").removeClass("is-selected").attr("aria-pressed", "false"); $(this).addClass("is-selected").attr("aria-pressed", "true"); });
+    $(document).on("click", "[data-report-type]", function () { state.reportType = $(this).data("report-type"); state.reportWeekStart = null; $("[data-report-type]").removeClass("is-selected").attr("aria-pressed", "false"); $(this).addClass("is-selected").attr("aria-pressed", "true"); renderReportPeriodPicker(); });
+    $(document).on("change", "#report-year,#report-month", function () { state.reportYear = Number($("#report-year").val()); state.reportMonth = Number($("#report-month").val()); state.reportWeekStart = null; renderReportPeriodPicker(); });
+    $(document).on("click", "[data-report-week]", function () { state.reportWeekStart = $(this).data("report-week"); renderReportPeriodPicker(); });
     $(document).on("click", "#generate-report", generateReport);
     $("#open-report-modal").on("click", openReportModal);
     $("#calendar-prev").on("click", () => { state.month = new Date(state.month.getFullYear(), state.month.getMonth() - 1, 1); renderCalendar(); });
     $("#calendar-next").on("click", () => { state.month = new Date(state.month.getFullYear(), state.month.getMonth() + 1, 1); renderCalendar(); });
     $("[data-lang]").on("click", function () { state.lang = $(this).data("lang"); localStorage.setItem("cyber-lang", state.lang); applyChrome(); routeCurrentView(); });
-    $("#theme-toggle").on("click", () => { state.theme = state.theme === "dark" ? "light" : "dark"; localStorage.setItem("cyber-theme", state.theme); document.documentElement.dataset.theme = state.theme; $("#theme-toggle").attr("aria-pressed", String(state.theme === "light")); });
+    $("#theme-toggle").on("click", () => { state.theme = state.theme === "dark" ? "light" : "dark"; localStorage.setItem("cyber-theme", state.theme); document.documentElement.dataset.theme = state.theme; $("#theme-toggle").attr("aria-pressed", String(state.theme === "light")); refreshSettingsFormState(); });
     $("#menu-button").attr({ "aria-controls": "sidebar", "aria-expanded": "false" }).on("click", () => setDrawer(true));
     $("#drawer-close,#drawer-scrim").on("click", closeDrawer);
     $(window).on("resize", closeDrawer);
@@ -540,6 +770,7 @@
 
   function start() {
     bindEvents();
+    collectionTask.subscribe(refreshCollectionControls);
     closeDrawer();
     setLoading();
     api("GET", "/api/bootstrap").done(data => {
@@ -548,6 +779,9 @@
       state.theme = localStorage.getItem("cyber-theme") || data.settings.theme || state.theme;
       applyChrome();
       renderDashboard();
+      if (data.collection && data.collection.status === "running") {
+        runCollection(data.collection.day, data.collection);
+      }
     }).fail(showRequestError);
   }
 
