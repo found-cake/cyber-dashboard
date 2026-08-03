@@ -43,3 +43,24 @@ func TestArticleOmitsEmptyActorCountry(t *testing.T) {
 		t.Fatalf("article = %s, actor_country must be omitted", encoded)
 	}
 }
+
+func TestErrorResponseExposesKoreanAndEnglishMessages_forExternalClients(t *testing.T) {
+	// Given a user-facing API error with both supported languages.
+	value := api.ErrorResponse{
+		Code: "invalid_request", Message: "요청이 올바르지 않습니다 / The request is invalid",
+		MessageKO: "요청이 올바르지 않습니다", MessageEN: "The request is invalid",
+	}
+
+	// When an external application serializes the response.
+	encoded, err := json.Marshal(value)
+
+	// Then both localized fields remain available without parsing the combined message.
+	if err != nil {
+		t.Fatalf("marshal error response: %v", err)
+	}
+	for _, field := range []string{"message_ko", "message_en"} {
+		if !strings.Contains(string(encoded), `"`+field+`"`) {
+			t.Fatalf("error response = %s, missing %s", encoded, field)
+		}
+	}
+}

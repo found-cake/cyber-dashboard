@@ -37,7 +37,7 @@ func TestParseCollectableDayEnforcesRetentionWindow(t *testing.T) {
 
 func TestValidateSettingsRejectsInvalidWireValues(t *testing.T) {
 	// Given a valid public settings request and one invalid field per case.
-	valid := api.Settings{Language: "ko", Theme: "dark", LLMBaseURL: "https://api.openai.com/v1", LLMModel: "gpt-4o-mini", LLMTimeout: 60}
+	valid := api.Settings{Language: "ko", Theme: "dark", LLMBaseURL: "https://api.openai.com/v1", LLMModel: "gpt-4o-mini", LLMTimeout: 60, TimezoneOffsetMinutes: 540}
 	tests := []struct {
 		name   string
 		mutate func(*api.Settings)
@@ -49,6 +49,9 @@ func TestValidateSettingsRejectsInvalidWireValues(t *testing.T) {
 		{name: "model", mutate: func(value *api.Settings) { value.LLMModel = " " }},
 		{name: "timeout lower bound", mutate: func(value *api.Settings) { value.LLMTimeout = 0 }},
 		{name: "timeout upper bound", mutate: func(value *api.Settings) { value.LLMTimeout = 601 }},
+		{name: "timezone below range", mutate: func(value *api.Settings) { value.TimezoneOffsetMinutes = -12*60 - 15 }},
+		{name: "timezone above range", mutate: func(value *api.Settings) { value.TimezoneOffsetMinutes = 14*60 + 15 }},
+		{name: "timezone off grid", mutate: func(value *api.Settings) { value.TimezoneOffsetMinutes = 542 }},
 	}
 
 	for _, test := range tests {
