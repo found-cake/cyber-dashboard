@@ -14,16 +14,17 @@ import (
 var ErrNotFound = errors.New("report data not found")
 
 type Repository struct {
-	db *sql.DB
+	db  *sql.DB
+	now func() time.Time
 }
 
 func NewRepository(db *sql.DB) *Repository {
-	return &Repository{db: db}
+	return &Repository{db: db, now: time.Now}
 }
 
 func (r *Repository) List(ctx context.Context) ([]api.Report, error) {
 	rows, err := r.db.QueryContext(ctx, `SELECT id, type, period_start, period_end, total,
-    critical, high, medium, top_threat, actors, sectors, summary FROM reports ORDER BY generated_at DESC`)
+	critical, high, medium, top_threat, actors, sectors, summary, generated_at FROM reports ORDER BY generated_at DESC`)
 	if err != nil {
 		return nil, fmt.Errorf("query reports: %w", err)
 	}
@@ -34,7 +35,7 @@ func (r *Repository) List(ctx context.Context) ([]api.Report, error) {
 		var actors, sectors string
 		if err := rows.Scan(&value.ID, &value.Type, &value.PeriodStart, &value.PeriodEnd,
 			&value.Total, &value.Critical, &value.High, &value.Medium, &value.TopThreat,
-			&actors, &sectors, &value.Summary); err != nil {
+			&actors, &sectors, &value.Summary, &value.GeneratedAt); err != nil {
 			return nil, fmt.Errorf("scan report: %w", err)
 		}
 		value.Actors = splitCSV(actors)
@@ -80,12 +81,14 @@ func (r *Repository) Build(ctx context.Context, request api.CreateReportRequest)
 	return value, facts, nil
 }
 
-func (r *Repository) Save(ctx context.Context, value api.Report) (api.Report, error) {
+func (r *Repository) Save(ctx context.Context, value api.Report, timezoneOffsetMinutes int) (api.Report, error) {
+	location := time.FixedZone("configured", timezoneOffsetMinutes*60)
+	value.GeneratedAt = r.now().In(location).Format(time.RFC3339)
 	result, err := r.db.ExecContext(ctx, `INSERT INTO reports (type, period_start, period_end, total,
     critical, high, medium, top_threat, actors, sectors, summary, generated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, value.Type, value.PeriodStart, value.PeriodEnd,
 		value.Total, value.Critical, value.High, value.Medium, value.TopThreat, strings.Join(value.Actors, ","),
-		strings.Join(value.Sectors, ","), value.Summary, time.Now().UTC().Format(time.RFC3339))
+		strings.Join(value.Sectors, ","), value.Summary, value.GeneratedAt)
 	if err != nil {
 		return api.Report{}, fmt.Errorf("insert report: %w", err)
 	}

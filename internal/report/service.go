@@ -17,11 +17,16 @@ type Service struct {
 	generator  Generator
 }
 
+type CreateOptions struct {
+	Language              string
+	TimezoneOffsetMinutes int
+}
+
 func NewService(repository *Repository, generator Generator) *Service {
 	return &Service{repository: repository, generator: generator}
 }
 
-func (s *Service) Create(ctx context.Context, request api.CreateReportRequest, language string) (api.Report, error) {
+func (s *Service) Create(ctx context.Context, request api.CreateReportRequest, options CreateOptions) (api.Report, error) {
 	value, facts, err := s.repository.Build(ctx, request)
 	if err != nil {
 		return api.Report{}, err
@@ -32,12 +37,12 @@ func (s *Service) Create(ctx context.Context, request api.CreateReportRequest, l
 		"top_threat="+value.TopThreat,
 	)
 	value.Summary, err = s.generator.Generate(ctx, summary.Request{
-		Language: language,
+		Language: options.Language,
 		Kind:     request.Type + " report",
 		Facts:    facts,
 	})
 	if err != nil {
 		return api.Report{}, fmt.Errorf("generate report summary: %w", err)
 	}
-	return s.repository.Save(ctx, value)
+	return s.repository.Save(ctx, value, options.TimezoneOffsetMinutes)
 }

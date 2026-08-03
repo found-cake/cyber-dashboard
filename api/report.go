@@ -14,6 +14,7 @@ type Report struct {
 	Actors      []string `json:"actors"`
 	Sectors     []string `json:"sectors"`
 	Summary     string   `json:"summary"`
+	GeneratedAt string   `json:"generated_at"`
 }
 
 // CreateReportRequest is the request body for POST /api/reports.
