@@ -1,0 +1,100 @@
+package feed
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/found-cake/cyber-dashboard/api"
+)
+
+var ErrNotFound = errors.New("feed item not found")
+
+type Repository struct {
+	db *sql.DB
+}
+
+func NewRepository(db *sql.DB) *Repository {
+	return &Repository{db: db}
+}
+
+func (r *Repository) Sources(ctx context.Context) ([]api.Source, error) {
+	rows, err := r.db.QueryContext(ctx, `SELECT id, name, host, slug, enabled FROM sources ORDER BY id`)
+	if err != nil {
+		return nil, fmt.Errorf("query sources: %w", err)
+	}
+	defer rows.Close()
+	sources := []api.Source{}
+	for rows.Next() {
+		var source api.Source
+		if err := rows.Scan(&source.ID, &source.Name, &source.Host, &source.Slug, &source.Enabled); err != nil {
+			return nil, fmt.Errorf("scan source: %w", err)
+		}
+		sources = append(sources, source)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate sources: %w", err)
+	}
+	return sources, nil
+}
+
+func (r *Repository) SetSourceEnabled(ctx context.Context, id int64, enabled bool) error {
+	result, err := r.db.ExecContext(ctx, `UPDATE sources SET enabled = ? WHERE id = ?`, enabled, id)
+	if err != nil {
+		return fmt.Errorf("update source %d: %w", id, err)
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("source rows affected: %w", err)
+	}
+	if changed == 0 {
+		return fmt.Errorf("source %d: %w", id, ErrNotFound)
+	}
+	return nil
+}
+
+func (r *Repository) SaveArticle(ctx context.Context, source api.Source, article FeedArticle, day string) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin article transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	description := cleanText(article.Description)
+	method := "미분류"
+	if len(article.Categories) > 0 && strings.TrimSpace(article.Categories[0]) != "" {
+		method = strings.TrimSpace(article.Categories[0])
+	}
+	result, err := tx.ExecContext(ctx, `INSERT INTO articles
+    (source_id, feed_uid, title, url, published_at, collected_at, summary, attack_method)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(feed_uid) DO UPDATE SET title = excluded.title, summary = excluded.summary`,
+		source.ID, article.ID, cleanText(article.Title), article.URL, day,
+		time.Now().UTC().Format(time.RFC3339), description, method)
+	if err != nil {
+		return fmt.Errorf("upsert article %s: %w", article.ID, err)
+	}
+	articleID, err := result.LastInsertId()
+	if err != nil {
+		return fmt.Errorf("article id: %w", err)
+	}
+	if articleID == 0 {
+		if err := tx.QueryRowContext(ctx, `SELECT id FROM articles WHERE feed_uid = ?`, article.ID).Scan(&articleID); err != nil {
+			return fmt.Errorf("select article id: %w", err)
+		}
+	}
+	for _, cve := range extractCVEs(article.Title + " " + description) {
+		if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO cves (cve_id, first_seen) VALUES (?, ?)`, cve, day); err != nil {
+			return fmt.Errorf("insert cve %s: %w", cve, err)
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO article_cves (article_id, cve_id) VALUES (?, ?)`, articleID, cve); err != nil {
+			return fmt.Errorf("link cve %s: %w", cve, err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit article: %w", err)
+	}
+	return nil
+}

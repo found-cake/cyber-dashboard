@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="ko" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="뉴스 기반 사이버 공격 동향을 수집하고 분석하는 로컬 대시보드">
+  <meta name="theme-color" content="#0d1117">
+  <title>Cyber Dashboard</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script defer src="/jquery-4.0.0.min.js"></script>
+  <script defer src="/app.js"></script>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar" aria-label="주요 탐색">
+      <div class="brand-row">
+        <span class="brand-mark" aria-hidden="true">C</span>
+        <strong>Cyber Dashboard</strong>
+        <button class="icon-button drawer-close" id="drawer-close" type="button" aria-label="메뉴 닫기">×</button>
+      </div>
+      <section class="calendar" aria-label="수집 날짜 선택">
+        <div class="calendar-head">
+          <button class="icon-button" id="calendar-prev" type="button" aria-label="이전 달">‹</button>
+          <strong id="calendar-label"></strong>
+          <button class="icon-button" id="calendar-next" type="button" aria-label="다음 달">›</button>
+        </div>
+        <div class="calendar-weekdays" id="calendar-weekdays"></div>
+        <div class="calendar-grid" id="calendar-grid"></div>
+      </section>
+      <nav class="primary-nav" aria-label="화면 탐색">
+        <button class="nav-item dashboard-nav is-active" data-view="dashboard" type="button" aria-current="page">
+          <span class="dashboard-glyph" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+          <span data-i18n="dashboard">대시보드</span><span class="nav-chevron" aria-hidden="true">›</span>
+        </button>
+      </nav>
+      <section class="report-nav" aria-labelledby="report-nav-title">
+        <div class="section-kicker-row">
+          <span class="section-kicker" id="report-nav-title" data-i18n="reports">보고서</span>
+          <button class="small-button" id="open-report-modal" type="button"><span aria-hidden="true">＋</span> <span data-i18n="newReport">새로 만들기</span></button>
+        </div>
+        <div class="report-list" id="report-list"></div>
+      </section>
+      <nav class="settings-nav" aria-label="설정">
+        <button class="nav-item" data-view="settings" type="button">
+          <span class="nav-symbol" aria-hidden="true">S</span><span data-i18n="settings">설정</span>
+        </button>
+      </nav>
+    </aside>
+    <button class="drawer-scrim" id="drawer-scrim" type="button" aria-label="메뉴 닫기"></button>
+    <div class="main-column">
+      <header class="topbar">
+        <div class="topbar-title-row">
+          <button class="icon-button menu-button" id="menu-button" type="button" aria-label="메뉴 열기"><span class="menu-glyph" aria-hidden="true"></span></button>
+          <div>
+            <h1 id="page-title">대시보드</h1>
+            <p id="page-subtitle">최근 30일 집계</p>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <div class="segmented" role="group" aria-label="언어">
+            <button type="button" data-lang="ko" class="is-selected" aria-pressed="true">KO</button>
+            <button type="button" data-lang="en" aria-pressed="false">EN</button>
+          </div>
+          <button class="icon-button theme-toggle" id="theme-toggle" type="button" aria-label="테마 전환" aria-pressed="false">
+            <span class="theme-glyph" aria-hidden="true"></span>
+          </button>
+        </div>
+      </header>
+      <main class="main-scroll" id="main-content" tabindex="-1"></main>
+    </div>
+  </div>
+  <div class="toast-region" id="toast-region" role="status" aria-live="polite"></div>
+  <div class="modal-root" id="modal-root"></div>
+</body>
+</html>

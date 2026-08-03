@@ -1,0 +1,43 @@
+package report
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/found-cake/cyber-dashboard/api"
+	"github.com/found-cake/cyber-dashboard/internal/summary"
+)
+
+type Generator interface {
+	Generate(ctx context.Context, request summary.Request) (string, error)
+}
+
+type Service struct {
+	repository *Repository
+	generator  Generator
+}
+
+func NewService(repository *Repository, generator Generator) *Service {
+	return &Service{repository: repository, generator: generator}
+}
+
+func (s *Service) Create(ctx context.Context, request api.CreateReportRequest, language string) (api.Report, error) {
+	value, facts, err := s.repository.Build(ctx, request)
+	if err != nil {
+		return api.Report{}, err
+	}
+	facts = append(facts,
+		fmt.Sprintf("period=%s..%s", request.Start, request.End),
+		fmt.Sprintf("total=%d critical=%d high=%d medium=%d", value.Total, value.Critical, value.High, value.Medium),
+		"top_threat="+value.TopThreat,
+	)
+	value.Summary, err = s.generator.Generate(ctx, summary.Request{
+		Language: language,
+		Kind:     request.Type + " report",
+		Facts:    facts,
+	})
+	if err != nil {
+		return api.Report{}, fmt.Errorf("generate report summary: %w", err)
+	}
+	return s.repository.Save(ctx, value)
+}
