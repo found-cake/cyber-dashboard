@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS articles (
   title TEXT NOT NULL,
   url TEXT NOT NULL,
   published_at TEXT,
+  published_time TEXT NOT NULL DEFAULT '',
   collected_at TEXT NOT NULL,
   body TEXT NOT NULL DEFAULT '',
   summary TEXT NOT NULL DEFAULT '',
@@ -25,7 +26,9 @@ CREATE TABLE IF NOT EXISTS articles (
   threat_actor TEXT NOT NULL DEFAULT '미확인',
   actor_country TEXT NOT NULL DEFAULT '',
   sector TEXT NOT NULL DEFAULT '일반',
-  severity TEXT NOT NULL DEFAULT 'MEDIUM'
+	  victim_count INTEGER NOT NULL DEFAULT 0,
+	  zero_day INTEGER NOT NULL DEFAULT 0,
+  severity TEXT NOT NULL DEFAULT 'UNKNOWN'
 );
 CREATE TABLE IF NOT EXISTS daily_summaries (
   day TEXT PRIMARY KEY,
@@ -36,6 +39,8 @@ CREATE TABLE IF NOT EXISTS cves (
   cve_id TEXT PRIMARY KEY,
   first_seen TEXT NOT NULL,
   cvss_score REAL NOT NULL DEFAULT 0,
+  cvss_source TEXT NOT NULL DEFAULT '',
+  cvss_version TEXT NOT NULL DEFAULT '',
   affected_product TEXT NOT NULL DEFAULT 'NVD enrichment pending'
 );
 CREATE TABLE IF NOT EXISTS article_cves (
@@ -67,13 +72,15 @@ CREATE TABLE IF NOT EXISTS settings (
   llm_model TEXT NOT NULL DEFAULT 'gpt-4o-mini',
   llm_api_key TEXT NOT NULL DEFAULT '',
   llm_timeout INTEGER NOT NULL DEFAULT 60,
-  nvd_api_key TEXT NOT NULL DEFAULT ''
+  nvd_api_key TEXT NOT NULL DEFAULT '',
+  timezone_offset_minutes INTEGER
 );
 CREATE TABLE IF NOT EXISTS llm_presets (
   id INTEGER PRIMARY KEY,
   label TEXT NOT NULL,
   base_url TEXT NOT NULL,
   model TEXT NOT NULL,
+  api_key TEXT NOT NULL DEFAULT '',
   builtin INTEGER NOT NULL DEFAULT 0
 );
 CREATE UNIQUE INDEX IF NOT EXISTS llm_presets_endpoint_model_idx
