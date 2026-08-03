@@ -17,11 +17,14 @@ type Article struct {
 	Title        string   `json:"title"`
 	URL          string   `json:"url"`
 	PublishedAt  string   `json:"published_at"`
+	Body         string   `json:"-"`
 	Summary      string   `json:"summary"`
 	AttackMethod string   `json:"attack_method"`
 	ThreatActor  string   `json:"threat_actor"`
 	ActorCountry string   `json:"actor_country,omitempty"`
 	Sector       string   `json:"sector"`
+	VictimCount  int      `json:"victim_count"`
+	ZeroDay      bool     `json:"zero_day"`
 	Severity     string   `json:"severity"`
 	CVEs         []string `json:"cves"`
 }
@@ -33,7 +36,7 @@ type Daily struct {
 	Articles []Article `json:"articles"`
 }
 
-// CollectionResult is returned by POST /api/collect.
+// CollectionResult is included in a completed collection job response.
 type CollectionResult struct {
 	Day       string   `json:"day"`
 	Collected int      `json:"collected"`
@@ -44,6 +47,24 @@ type CollectionResult struct {
 // CollectRequest is the request body for POST /api/collect.
 type CollectRequest struct {
 	Day string `json:"date"`
+}
+
+type CollectionStatus string
+
+const (
+	CollectionRunning   CollectionStatus = "running"
+	CollectionCompleted CollectionStatus = "completed"
+	CollectionFailed    CollectionStatus = "failed"
+	CollectionCancelled CollectionStatus = "cancelled"
+)
+
+// CollectionJob is returned by POST and GET /api/collect endpoints.
+type CollectionJob struct {
+	ID     string            `json:"id"`
+	Day    string            `json:"day"`
+	Status CollectionStatus  `json:"status"`
+	Result *CollectionResult `json:"result,omitempty"`
+	Error  string            `json:"error,omitempty"`
 }
 
 // ToggleSourceRequest is the request body for PATCH /api/sources/:id.

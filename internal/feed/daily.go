@@ -12,9 +12,10 @@ import (
 
 func (r *Repository) Daily(ctx context.Context, day string) (api.Daily, error) {
 	rows, err := r.db.QueryContext(ctx, `SELECT a.id, s.name, a.feed_uid, a.title, a.url,
-    a.published_at, a.summary, a.attack_method, a.threat_actor, a.actor_country, a.sector, a.severity
+	COALESCE(NULLIF(a.published_time, ''), a.published_at), a.body, a.summary, a.attack_method,
+	a.threat_actor, a.actor_country, a.sector, a.victim_count, a.zero_day, a.severity
     FROM articles a JOIN sources s ON s.id = a.source_id
-    WHERE a.published_at = ? ORDER BY a.id DESC`, day)
+	WHERE a.published_at = ? ORDER BY a.published_time DESC, a.id DESC`, day)
 	if err != nil {
 		return api.Daily{}, fmt.Errorf("query daily articles: %w", err)
 	}
@@ -22,8 +23,8 @@ func (r *Repository) Daily(ctx context.Context, day string) (api.Daily, error) {
 	for rows.Next() {
 		var article api.Article
 		if err := rows.Scan(&article.ID, &article.Source, &article.FeedUID, &article.Title, &article.URL,
-			&article.PublishedAt, &article.Summary, &article.AttackMethod, &article.ThreatActor,
-			&article.ActorCountry, &article.Sector, &article.Severity); err != nil {
+			&article.PublishedAt, &article.Body, &article.Summary, &article.AttackMethod, &article.ThreatActor,
+			&article.ActorCountry, &article.Sector, &article.VictimCount, &article.ZeroDay, &article.Severity); err != nil {
 			return api.Daily{}, errors.Join(fmt.Errorf("scan daily article: %w", err), rows.Close())
 		}
 		daily.Articles = append(daily.Articles, article)

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/found-cake/cyber-dashboard/api"
+	"github.com/found-cake/cyber-dashboard/internal/severity"
 )
 
 var ErrNotFound = errors.New("feed item not found")
@@ -63,16 +64,25 @@ func (r *Repository) SaveArticle(ctx context.Context, source api.Source, article
 	}
 	defer func() { _ = tx.Rollback() }()
 	description := cleanText(article.Description)
+	body := strings.TrimSpace(article.Body)
 	method := "미분류"
 	if len(article.Categories) > 0 && strings.TrimSpace(article.Categories[0]) != "" {
 		method = strings.TrimSpace(article.Categories[0])
 	}
+	initialSeverity := severity.Unknown
+	if source.Slug == "stepsecurity" {
+		initialSeverity = severity.High
+	}
 	result, err := tx.ExecContext(ctx, `INSERT INTO articles
-    (source_id, feed_uid, title, url, published_at, collected_at, summary, attack_method)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(feed_uid) DO UPDATE SET title = excluded.title, summary = excluded.summary`,
-		source.ID, article.ID, cleanText(article.Title), article.URL, day,
-		time.Now().UTC().Format(time.RFC3339), description, method)
+	(source_id, feed_uid, title, url, published_at, published_time, collected_at, body, summary, attack_method, severity)
+	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	ON CONFLICT(feed_uid) DO UPDATE SET title = excluded.title, url = excluded.url,
+	published_at = excluded.published_at, published_time = excluded.published_time,
+	body = excluded.body, summary = excluded.summary, attack_method = excluded.attack_method,
+	severity = CASE WHEN excluded.severity = 'HIGH' AND articles.severity IN ('UNKNOWN', 'LOW', 'MEDIUM')
+		THEN excluded.severity ELSE articles.severity END`,
+		source.ID, article.ID, cleanText(article.Title), article.URL, day, publishedTimestamp(article, day),
+		time.Now().UTC().Format(time.RFC3339), body, description, method, string(initialSeverity))
 	if err != nil {
 		return fmt.Errorf("upsert article %s: %w", article.ID, err)
 	}
@@ -85,7 +95,7 @@ func (r *Repository) SaveArticle(ctx context.Context, source api.Source, article
 			return fmt.Errorf("select article id: %w", err)
 		}
 	}
-	for _, cve := range extractCVEs(article.Title + " " + description) {
+	for _, cve := range extractCVEs(article.Title + " " + description + " " + body) {
 		if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO cves (cve_id, first_seen) VALUES (?, ?)`, cve, day); err != nil {
 			return fmt.Errorf("insert cve %s: %w", cve, err)
 		}

@@ -41,3 +41,36 @@ func TestDailyReturnsMultipleArticles_whenPoolHasOneConnection(t *testing.T) {
 		t.Fatalf("article count = %d, want 2", len(daily.Articles))
 	}
 }
+
+func TestDailyOrdersArticlesByPublishedTime_whenFeedsArriveOutOfOrder(t *testing.T) {
+	// Given a later article saved before an earlier article.
+	db, err := database.Open(context.Background(), filepath.Join(t.TempDir(), "dashboard.db"))
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	repository := NewRepository(db)
+	source := api.Source{ID: 1}
+	for _, article := range []FeedArticle{
+		{ID: "sha256:later", URL: "https://example.com/later", Title: "Later", PublishedAt: "2026-08-02T18:00:00Z"},
+		{ID: "sha256:earlier", URL: "https://example.com/earlier", Title: "Earlier", PublishedAt: "2026-08-02T01:00:00Z"},
+	} {
+		if err := repository.SaveArticle(context.Background(), source, article, "2026-08-02"); err != nil {
+			t.Fatalf("save article %q: %v", article.ID, err)
+		}
+	}
+
+	// When the day is loaded.
+	daily, err := repository.Daily(context.Background(), "2026-08-02")
+	if err != nil {
+		t.Fatalf("load daily: %v", err)
+	}
+
+	// Then the newest published article is first and its timestamp is preserved.
+	if len(daily.Articles) != 2 || daily.Articles[0].FeedUID != "sha256:later" {
+		t.Fatalf("article order = %+v, want later first", daily.Articles)
+	}
+	if daily.Articles[0].PublishedAt != "2026-08-02T18:00:00Z" {
+		t.Fatalf("published_at = %q, want full feed timestamp", daily.Articles[0].PublishedAt)
+	}
+}

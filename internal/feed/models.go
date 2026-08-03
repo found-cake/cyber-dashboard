@@ -18,6 +18,7 @@ type FeedArticle struct {
 	PublishedAt    string                     `json:"published_at"`
 	PublishedRaw   string                     `json:"published_raw"`
 	Description    string                     `json:"description"`
+	Body           string                     `json:"-"`
 	Categories     []string                   `json:"categories"`
 	SourceMetadata map[string]json.RawMessage `json:"source_metadata"`
 }

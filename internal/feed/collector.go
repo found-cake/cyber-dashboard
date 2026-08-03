@@ -3,7 +3,10 @@ package feed
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/mail"
 	"net/url"
@@ -18,6 +21,10 @@ const baseURL = "https://raw.githubusercontent.com/found-cake/cyber-news-feed/ma
 
 type Fetcher interface {
 	Fetch(ctx context.Context, source api.Source) (Document, error)
+}
+
+type ArticleBodyProvider interface {
+	Load(ctx context.Context, source api.Source, article FeedArticle) (string, error)
 }
 
 type HTTPFetcher struct {
@@ -45,7 +52,11 @@ func (f *HTTPFetcher) Fetch(ctx context.Context, source api.Source) (Document, e
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
-		return Document{}, fmt.Errorf("fetch %s: status %d", source.Slug, response.StatusCode)
+		body, readErr := io.ReadAll(response.Body)
+		if readErr != nil {
+			return Document{}, fmt.Errorf("fetch %s: status %d; read response body: %w", source.Slug, response.StatusCode, readErr)
+		}
+		return Document{}, fmt.Errorf("fetch %s: status %d: %s", source.Slug, response.StatusCode, strings.TrimSpace(string(body)))
 	}
 	var document Document
 	if err := json.NewDecoder(response.Body).Decode(&document); err != nil {
@@ -57,10 +68,11 @@ func (f *HTTPFetcher) Fetch(ctx context.Context, source api.Source) (Document, e
 type Collector struct {
 	repository *Repository
 	fetcher    Fetcher
+	bodyLoader ArticleBodyProvider
 }
 
-func NewCollector(repository *Repository, fetcher Fetcher) *Collector {
-	return &Collector{repository: repository, fetcher: fetcher}
+func NewCollector(repository *Repository, fetcher Fetcher, bodyLoader ArticleBodyProvider) *Collector {
+	return &Collector{repository: repository, fetcher: fetcher, bodyLoader: bodyLoader}
 }
 
 func (c *Collector) Collect(ctx context.Context, day string) (api.CollectionResult, error) {
@@ -81,14 +93,15 @@ func (c *Collector) Collect(ctx context.Context, day string) (api.CollectionResu
 			defer wait.Done()
 			document, fetchErr := c.fetcher.Fetch(ctx, source)
 			if fetchErr != nil {
+				slog.WarnContext(ctx, "feed fetch failed", slog.String("source", source.Name), slog.String("response_body", fetchErr.Error()))
 				mutex.Lock()
-				result.Warnings = append(result.Warnings, source.Name+": "+fetchErr.Error())
+				result.Warnings = append(result.Warnings, source.Name+": 피드 수집 실패 / feed collection failed")
 				mutex.Unlock()
 				return
 			}
 			if !document.Status.OK && len(document.Articles) == 0 {
 				mutex.Lock()
-				result.Warnings = append(result.Warnings, source.Name+": stale feed")
+				result.Warnings = append(result.Warnings, source.Name+": 피드가 최신 상태가 아닙니다 / feed is stale")
 				mutex.Unlock()
 				return
 			}
@@ -97,9 +110,24 @@ func (c *Collector) Collect(ctx context.Context, day string) (api.CollectionResu
 				if !valid || articleDay != day {
 					continue
 				}
-				if saveErr := c.repository.SaveArticle(ctx, source, article, day); saveErr != nil {
+				body, loadErr := c.bodyLoader.Load(ctx, source, article)
+				if errors.Is(loadErr, ErrArticleFiltered) {
+					continue
+				}
+				if loadErr != nil {
+					slog.WarnContext(ctx, "article body fetch failed", slog.String("source", source.Name),
+						slog.String("article_url", article.URL), slog.String("response_body", loadErr.Error()))
 					mutex.Lock()
-					result.Warnings = append(result.Warnings, source.Name+": "+saveErr.Error())
+					result.Warnings = append(result.Warnings, source.Name+": 기사 본문 수집 실패 / article body collection failed")
+					mutex.Unlock()
+				} else {
+					article.Body = body
+				}
+				if saveErr := c.repository.SaveArticle(ctx, source, article, day); saveErr != nil {
+					slog.ErrorContext(ctx, "article save failed", slog.String("source", source.Name),
+						slog.String("article_url", article.URL), slog.String("response_body", saveErr.Error()))
+					mutex.Lock()
+					result.Warnings = append(result.Warnings, source.Name+": 기사 저장 실패 / article save failed")
 					mutex.Unlock()
 					continue
 				}
@@ -114,15 +142,31 @@ func (c *Collector) Collect(ctx context.Context, day string) (api.CollectionResu
 }
 
 func publishedDay(article FeedArticle) (string, bool) {
+	parsed, valid := publishedTime(article)
+	if !valid {
+		return "", false
+	}
+	return parsed.Format(time.DateOnly), true
+}
+
+func publishedTimestamp(article FeedArticle, fallbackDay string) string {
+	parsed, valid := publishedTime(article)
+	if !valid {
+		return fallbackDay + "T00:00:00Z"
+	}
+	return parsed.Format(time.RFC3339)
+}
+
+func publishedTime(article FeedArticle) (time.Time, bool) {
 	if article.PublishedAt != "" {
 		if parsed, err := time.Parse(time.RFC3339, article.PublishedAt); err == nil {
-			return parsed.UTC().Format(time.DateOnly), true
+			return parsed.UTC(), true
 		}
 	}
 	if strings.TrimSpace(article.PublishedRaw) != "" {
 		if parsed, err := mail.ParseDate(article.PublishedRaw); err == nil {
-			return parsed.UTC().Format(time.DateOnly), true
+			return parsed.UTC(), true
 		}
 	}
-	return "", false
+	return time.Time{}, false
 }
