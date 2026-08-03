@@ -3,23 +3,14 @@ package web_test
 import (
 	"context"
 	"encoding/json"
-	"io/fs"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
-	"testing/fstest"
 
 	"github.com/found-cake/cyber-dashboard/api"
-	"github.com/found-cake/cyber-dashboard/internal/dashboard"
-	"github.com/found-cake/cyber-dashboard/internal/database"
 	"github.com/found-cake/cyber-dashboard/internal/feed"
-	"github.com/found-cake/cyber-dashboard/internal/report"
-	"github.com/found-cake/cyber-dashboard/internal/settings"
-	"github.com/found-cake/cyber-dashboard/internal/summary"
-	"github.com/found-cake/cyber-dashboard/internal/web"
 )
 
 func TestDashboardStartsEmpty_whenDatabaseIsNew(t *testing.T) {
@@ -56,12 +47,9 @@ func TestCollectDayDeduplicatesFeedArticles_whenRepeated(t *testing.T) {
 
 	// When the same collection request runs twice.
 	for range 2 {
-		request := httptest.NewRequest(http.MethodPost, "/api/collect", strings.NewReader(body))
-		request.Header.Set("Content-Type", "application/json")
-		recorder := httptest.NewRecorder()
-		server.ServeHTTP(recorder, request)
-		if recorder.Code != http.StatusOK {
-			t.Fatalf("collect status = %d, body = %s", recorder.Code, recorder.Body.String())
+		completed := collectAndWait(t, server, body)
+		if completed.Status != api.CollectionCompleted {
+			t.Fatalf("job = %+v, want completed", completed)
 		}
 	}
 
@@ -88,14 +76,11 @@ func TestCollectGeneratesDailySummary_whenLLMIsConfigured(t *testing.T) {
 	configureLLM(t, appSettings, upstream.URL)
 
 	// When collection completes.
-	request := httptest.NewRequest(http.MethodPost, "/api/collect", strings.NewReader(`{"date":"2026-08-03"}`))
-	request.Header.Set("Content-Type", "application/json")
-	recorder := httptest.NewRecorder()
-	server.ServeHTTP(recorder, request)
+	completed := collectAndWait(t, server, `{"date":"2026-08-03"}`)
 
 	// Then the SDK result is persisted as the daily summary.
-	if recorder.Code != http.StatusOK {
-		t.Fatalf("collect status = %d, body = %s", recorder.Code, recorder.Body.String())
+	if completed.Status != api.CollectionCompleted {
+		t.Fatalf("job = %+v, want completed", completed)
 	}
 	daily, err := feeds.Daily(context.Background(), "2026-08-03")
 	if err != nil {
@@ -111,6 +96,14 @@ func TestCreateReportGeneratesSummary_whenLLMIsConfigured(t *testing.T) {
 	upstream := compatibleLLM(t, "주간 보안 요약")
 	server, feeds, appSettings := newTestServer(t, &stubFetcher{})
 	configureLLM(t, appSettings, upstream.URL)
+	configured, err := appSettings.Get(context.Background())
+	if err != nil {
+		t.Fatalf("load settings: %v", err)
+	}
+	configured.TimezoneOffsetMinutes = 9 * 60
+	if err := appSettings.Save(context.Background(), configured); err != nil {
+		t.Fatalf("save timezone: %v", err)
+	}
 	if err := feeds.SaveArticle(context.Background(), api.Source{ID: 1}, feed.FeedArticle{
 		ID: "sha256:report", URL: "https://example.com/report", Title: "Weekly threat",
 		Description: "Report detail",
@@ -135,6 +128,9 @@ func TestCreateReportGeneratesSummary_whenLLMIsConfigured(t *testing.T) {
 	}
 	if got.Summary != "주간 보안 요약" {
 		t.Fatalf("summary = %q, want 주간 보안 요약", got.Summary)
+	}
+	if !strings.HasSuffix(got.GeneratedAt, "+09:00") {
+		t.Fatalf("generated_at = %q, want configured +09:00 offset", got.GeneratedAt)
 	}
 }
 
@@ -181,76 +177,38 @@ func TestLLMPresetAPIManagesOnlyUserPresets(t *testing.T) {
 	}
 }
 
-func newTestServer(t *testing.T, fetcher feed.Fetcher) (*web.Server, *feed.Repository, *settings.Repository) {
-	t.Helper()
-	databasePath := filepath.Join(t.TempDir(), "dashboard.db")
-	db, err := database.Open(context.Background(), databasePath)
-	if err != nil {
-		t.Fatalf("open database: %v", err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	settingsRepository, err := settings.NewRepository(db, databasePath+".key")
-	if err != nil {
-		t.Fatalf("open settings: %v", err)
-	}
-	feedRepository := feed.NewRepository(db)
-	reportRepository := report.NewRepository(db)
-	summaryService := summary.NewService(settingsRepository)
-	assets := fs.FS(fstest.MapFS{"index.html": {Data: []byte("ok")}})
-	server := web.NewServer(web.Dependencies{
-		Assets: assets, Feeds: feedRepository,
-		Collector: feed.NewCollector(feedRepository, fetcher),
-		Dashboard: dashboard.NewRepository(db), Settings: settingsRepository,
-		Reports: reportRepository, ReportService: report.NewService(reportRepository, summaryService),
-		Summaries: summaryService,
-	})
-	return server, feedRepository, settingsRepository
-}
-
-func compatibleLLM(t *testing.T, value string) *httptest.Server {
-	t.Helper()
-	upstream := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		if request.URL.Path != "/v1/chat/completions" {
-			t.Errorf("path = %q, want /v1/chat/completions", request.URL.Path)
-		}
-		writer.Header().Set("Content-Type", "application/json")
-		content, err := json.Marshal(map[string]string{"summary": value})
-		if err != nil {
-			t.Errorf("encode completion content: %v", err)
-		}
-		response := map[string]any{
-			"id": "chatcmpl-test", "object": "chat.completion", "created": 1, "model": "test-model",
-			"choices": []map[string]any{{
-				"index": 0, "message": map[string]string{"role": "assistant", "content": string(content)},
-				"finish_reason": "stop",
-			}},
-		}
-		if err := json.NewEncoder(writer).Encode(response); err != nil {
-			t.Errorf("encode completion response: %v", err)
-		}
-	}))
-	t.Cleanup(upstream.Close)
-	return upstream
-}
-
-func configureLLM(t *testing.T, repository *settings.Repository, baseURL string) {
-	t.Helper()
-	value, err := repository.Get(context.Background())
+func TestLLMConnectionTestUsesDraftSettings_withoutPersistingThem(t *testing.T) {
+	// Given a compatible draft endpoint that differs from persisted settings.
+	upstream := compatibleLLM(t, "unused")
+	server, _, appSettings := newTestServer(t, &stubFetcher{})
+	draft, err := appSettings.Get(context.Background())
 	if err != nil {
 		t.Fatalf("load settings: %v", err)
 	}
-	value.LLMBaseURL = baseURL + "/v1"
-	value.LLMModel = "test-model"
-	value.LLMAPIKey = "test-key"
-	if err := repository.Save(context.Background(), value); err != nil {
-		t.Fatalf("save settings: %v", err)
+	persistedModel := draft.LLMModel
+	draft.LLMBaseURL = upstream.URL + "/v1"
+	draft.LLMModel = "draft-model"
+	draft.LLMAPIKey = "draft-key"
+	body, err := json.Marshal(draft)
+	if err != nil {
+		t.Fatalf("encode draft settings: %v", err)
 	}
-}
 
-type stubFetcher struct {
-	document feed.Document
-}
+	// When the connection is tested with the draft request body.
+	request := httptest.NewRequest(http.MethodPost, "/api/llm/test", strings.NewReader(string(body)))
+	request.Header.Set("Content-Type", "application/json")
+	recorder := httptest.NewRecorder()
+	server.ServeHTTP(recorder, request)
 
-func (f *stubFetcher) Fetch(context.Context, api.Source) (feed.Document, error) {
-	return f.document, nil
+	// Then the draft succeeds but persisted settings stay unchanged.
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("test status = %d, body = %s", recorder.Code, recorder.Body.String())
+	}
+	loaded, err := appSettings.Get(context.Background())
+	if err != nil {
+		t.Fatalf("reload settings: %v", err)
+	}
+	if loaded.LLMModel != persistedModel {
+		t.Fatalf("persisted model = %q, want %q", loaded.LLMModel, persistedModel)
+	}
 }

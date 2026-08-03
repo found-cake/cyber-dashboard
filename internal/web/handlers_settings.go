@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/found-cake/cyber-dashboard/api"
+	"github.com/found-cake/cyber-dashboard/internal/report"
 	"github.com/labstack/echo/v5"
 )
 
@@ -49,7 +50,9 @@ func (s *Server) createReport(c *echo.Context) error {
 	if err != nil {
 		return writeAPIError(c, err)
 	}
-	value, err := s.reportService.Create(c.Request().Context(), request, appSettings.Language)
+	value, err := s.reportService.Create(c.Request().Context(), request, report.CreateOptions{
+		Language: appSettings.Language, TimezoneOffsetMinutes: appSettings.TimezoneOffsetMinutes,
+	})
 	if err != nil {
 		return writeAPIError(c, err)
 	}
@@ -57,9 +60,26 @@ func (s *Server) createReport(c *echo.Context) error {
 }
 
 func (s *Server) testLLM(c *echo.Context) error {
-	if err := s.summaries.TestConnection(c.Request().Context()); err != nil {
+	var err error
+	if c.Request().ContentLength == 0 {
+		err = s.summaries.TestConnection(c.Request().Context())
+	} else {
+		var value api.Settings
+		if decodeErr := json.NewDecoder(c.Request().Body).Decode(&value); decodeErr != nil {
+			return writeBadRequest(c, "invalid JSON body")
+		}
+		if validateErr := validateSettings(value); validateErr != nil {
+			return writeBadRequest(c, validateErr.Error())
+		}
+		err = s.summaries.TestConnectionWithSettings(c.Request().Context(), value)
+	}
+	if err != nil {
+		logServerError(c, http.StatusBadGateway, err)
 		return c.JSON(http.StatusBadGateway, api.LLMTestResponse{
-			Status: "failed", Message: "연결에 실패했습니다. Base URL과 모델을 확인하세요.",
+			Status:    "failed",
+			Message:   bilingualMessage("연결에 실패했습니다. Base URL과 모델을 확인하세요.", "Connection failed. Check the Base URL and model."),
+			MessageKO: "연결에 실패했습니다. Base URL과 모델을 확인하세요.",
+			MessageEN: "Connection failed. Check the Base URL and model.",
 		})
 	}
 	return c.JSON(http.StatusOK, api.LLMTestResponse{Status: "connected"})
@@ -94,6 +114,21 @@ func (s *Server) deleteLLMPreset(c *echo.Context) error {
 		return writeBadRequest(c, "invalid LLM preset id")
 	}
 	if err := s.settings.DeletePreset(c.Request().Context(), id); err != nil {
+		return writeAPIError(c, err)
+	}
+	return c.NoContent(http.StatusNoContent)
+}
+
+func (s *Server) updateLLMPreset(c *echo.Context) error {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || id < 1 {
+		return writeBadRequest(c, "invalid LLM preset id")
+	}
+	var request api.UpdateLLMPresetRequest
+	if err := json.NewDecoder(c.Request().Body).Decode(&request); err != nil {
+		return writeBadRequest(c, "invalid JSON body")
+	}
+	if err := s.settings.UpdatePresetAPIKey(c.Request().Context(), id, request.APIKey); err != nil {
 		return writeAPIError(c, err)
 	}
 	return c.NoContent(http.StatusNoContent)

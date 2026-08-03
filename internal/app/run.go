@@ -17,6 +17,7 @@ import (
 	"github.com/found-cake/cyber-dashboard/internal/report"
 	"github.com/found-cake/cyber-dashboard/internal/settings"
 	"github.com/found-cake/cyber-dashboard/internal/summary"
+	"github.com/found-cake/cyber-dashboard/internal/vulnerability"
 	"github.com/found-cake/cyber-dashboard/internal/web"
 )
 
@@ -46,15 +47,20 @@ func Run(ctx context.Context, assets fs.FS) (runErr error) {
 	feedRepository := feed.NewRepository(db)
 	reportRepository := report.NewRepository(db)
 	summaryService := summary.NewService(settingsRepository)
+	vulnerabilityService := vulnerability.NewService(feedRepository, settingsRepository, vulnerability.NewClient(nil, ""))
+	browserBodyLoader := feed.NewChromiumBodyLoader(ctx)
+	defer browserBodyLoader.Close()
 	handler := web.NewServer(web.Dependencies{
-		Assets:        assets,
-		Feeds:         feedRepository,
-		Collector:     feed.NewCollector(feedRepository, feed.NewHTTPFetcher()),
-		Dashboard:     dashboard.NewRepository(db),
-		Settings:      settingsRepository,
-		Reports:       reportRepository,
-		ReportService: report.NewService(reportRepository, summaryService),
-		Summaries:     summaryService,
+		Assets:          assets,
+		Feeds:           feedRepository,
+		Collector:       feed.NewCollector(feedRepository, feed.NewHTTPFetcher(), feed.NewArticleBodyLoader(nil, browserBodyLoader)),
+		Dashboard:       dashboard.NewRepository(db),
+		Settings:        settingsRepository,
+		Reports:         reportRepository,
+		ReportService:   report.NewService(reportRepository, summaryService),
+		Summaries:       summaryService,
+		Articles:        feed.NewArticleEnrichmentService(feedRepository, summaryService),
+		Vulnerabilities: vulnerabilityService,
 	})
 	return serve(ctx, handler)
 }
