@@ -46,3 +46,55 @@ func TestDashboardAggregatesRecentThreatData(t *testing.T) {
 		t.Fatalf("dashboard collections = %+v", value)
 	}
 }
+
+func TestDashboardRanksCVEsByCVSSPlusWeightedMentions(t *testing.T) {
+	// Given one higher-CVSS CVE and one lower-CVSS CVE with more article mentions.
+	db, err := database.Open(context.Background(), filepath.Join(t.TempDir(), "dashboard.db"))
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	today := time.Now().Format(time.DateOnly)
+	if _, err := db.Exec(`INSERT INTO cves (cve_id, first_seen, cvss_score, affected_product) VALUES
+    ('CVE-2026-9000', ?, 9.0, 'High CVSS'),
+    ('CVE-2026-8000', ?, 8.0, 'More mentions')`, today, today); err != nil {
+		t.Fatalf("insert CVEs: %v", err)
+	}
+	for index := range 5 {
+		result, insertErr := db.Exec(`INSERT INTO articles (source_id, feed_uid, title, url, published_at, collected_at)
+      VALUES (1, ?, 'Threat', 'https://example.com', ?, ?)`, "mention-"+string(rune('a'+index)), today, today)
+		if insertErr != nil {
+			t.Fatalf("insert article: %v", insertErr)
+		}
+		articleID, insertErr := result.LastInsertId()
+		if insertErr != nil {
+			t.Fatalf("article id: %v", insertErr)
+		}
+		if _, insertErr := db.Exec(`INSERT INTO article_cves (article_id, cve_id) VALUES (?, 'CVE-2026-8000')`, articleID); insertErr != nil {
+			t.Fatalf("link lower-CVSS CVE: %v", insertErr)
+		}
+	}
+	result, err := db.Exec(`INSERT INTO articles (source_id, feed_uid, title, url, published_at, collected_at)
+    VALUES (1, 'high-cvss', 'Threat', 'https://example.com', ?, ?)`, today, today)
+	if err != nil {
+		t.Fatalf("insert high-CVSS article: %v", err)
+	}
+	articleID, err := result.LastInsertId()
+	if err != nil {
+		t.Fatalf("high-CVSS article id: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO article_cves (article_id, cve_id) VALUES (?, 'CVE-2026-9000')`, articleID); err != nil {
+		t.Fatalf("link high-CVSS CVE: %v", err)
+	}
+
+	// When the dashboard CVE insights are loaded.
+	value, err := NewRepository(db).Dashboard(context.Background())
+
+	// Then the 9.1 weighted score precedes the 8.5 weighted score.
+	if err != nil {
+		t.Fatalf("build dashboard: %v", err)
+	}
+	if len(value.CVEs) < 2 || value.CVEs[0].ID != "CVE-2026-9000" || value.CVEs[1].ID != "CVE-2026-8000" {
+		t.Fatalf("CVE order = %+v", value.CVEs)
+	}
+}
