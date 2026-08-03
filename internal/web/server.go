@@ -72,6 +72,7 @@ func NewServer(dependencies Dependencies) *Server {
 	e.DELETE("/api/collect/:id", server.cancelCollection)
 	e.PATCH("/api/sources/:id", server.toggleSource)
 	e.PUT("/api/settings", server.saveSettings)
+	e.PATCH("/api/settings/language", server.updateLanguage)
 	e.GET("/api/reports", server.listReports)
 	e.POST("/api/reports", server.createReport)
 	e.POST("/api/llm/test", server.testLLM)

@@ -42,8 +42,8 @@ func parseCollectableDay(raw string, now time.Time) (string, error) {
 }
 
 func validateSettings(value api.Settings) error {
-	if value.Language != "ko" && value.Language != "en" {
-		return fmt.Errorf("language must be ko or en")
+	if err := validateLanguage(value.Language); err != nil {
+		return err
 	}
 	if value.Theme != "dark" && value.Theme != "light" {
 		return fmt.Errorf("theme must be dark or light")
@@ -60,6 +60,13 @@ func validateSettings(value api.Settings) error {
 	}
 	if value.TimezoneOffsetMinutes < -12*60 || value.TimezoneOffsetMinutes > 14*60 || value.TimezoneOffsetMinutes%15 != 0 {
 		return fmt.Errorf("timezone offset must be between UTC-12 and UTC+14 in 15-minute increments")
+	}
+	return nil
+}
+
+func validateLanguage(language string) error {
+	if language != "ko" && language != "en" {
+		return fmt.Errorf("language must be ko or en")
 	}
 	return nil
 }

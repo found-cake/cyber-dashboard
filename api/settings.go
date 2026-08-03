@@ -13,6 +13,11 @@ type Settings struct {
 	TimezoneOffsetMinutes int    `json:"timezone_offset_minutes"`
 }
 
+// UpdateLanguageRequest is the request body for PATCH /api/settings/language.
+type UpdateLanguageRequest struct {
+	Language string `json:"language"`
+}
+
 // LLMPreset is returned by GET /api/bootstrap, GET /api/llm/presets, and POST /api/llm/presets.
 type LLMPreset struct {
 	ID      int64  `json:"id"`

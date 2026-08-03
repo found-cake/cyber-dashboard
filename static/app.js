@@ -249,6 +249,25 @@
     renderReportList();
   }
 
+  function selectLanguage(language) {
+    if (!state.bootstrap || language === state.lang) return;
+    const previous = state.lang;
+    state.lang = language;
+    localStorage.setItem("cyber-lang", language);
+    applyChrome();
+    routeCurrentView();
+    $("[data-lang]").prop("disabled", true);
+    api("PATCH", "/api/settings/language", { language }).done(() => {
+      state.bootstrap.settings.language = language;
+    }).fail(error => {
+      state.lang = previous;
+      localStorage.setItem("cyber-lang", previous);
+      applyChrome();
+      routeCurrentView();
+      showRequestError(error);
+    }).always(() => $("[data-lang]").prop("disabled", false));
+  }
+
   function renderCalendar() {
     const year = state.month.getFullYear();
     const month = state.month.getMonth();
@@ -749,7 +768,7 @@
     $("#open-report-modal").on("click", openReportModal);
     $("#calendar-prev").on("click", () => { state.month = new Date(state.month.getFullYear(), state.month.getMonth() - 1, 1); renderCalendar(); });
     $("#calendar-next").on("click", () => { state.month = new Date(state.month.getFullYear(), state.month.getMonth() + 1, 1); renderCalendar(); });
-    $("[data-lang]").on("click", function () { state.lang = $(this).data("lang"); localStorage.setItem("cyber-lang", state.lang); applyChrome(); routeCurrentView(); });
+    $("[data-lang]").on("click", function () { selectLanguage($(this).data("lang")); });
     $("#theme-toggle").on("click", () => { state.theme = state.theme === "dark" ? "light" : "dark"; localStorage.setItem("cyber-theme", state.theme); document.documentElement.dataset.theme = state.theme; $("#theme-toggle").attr("aria-pressed", String(state.theme === "light")); refreshSettingsFormState(); });
     $("#menu-button").attr({ "aria-controls": "sidebar", "aria-expanded": "false" }).on("click", () => setDrawer(true));
     $("#drawer-close,#drawer-scrim").on("click", closeDrawer);

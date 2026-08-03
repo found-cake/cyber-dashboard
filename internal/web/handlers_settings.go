@@ -24,6 +24,25 @@ func (s *Server) saveSettings(c *echo.Context) error {
 	return c.JSON(http.StatusOK, value)
 }
 
+func (s *Server) updateLanguage(c *echo.Context) error {
+	var request api.UpdateLanguageRequest
+	if err := json.NewDecoder(c.Request().Body).Decode(&request); err != nil {
+		return writeBadRequest(c, "invalid JSON body")
+	}
+	if err := validateLanguage(request.Language); err != nil {
+		return writeBadRequest(c, err.Error())
+	}
+	value, err := s.settings.Get(c.Request().Context())
+	if err != nil {
+		return writeAPIError(c, err)
+	}
+	value.Language = request.Language
+	if err := s.settings.Save(c.Request().Context(), value); err != nil {
+		return writeAPIError(c, err)
+	}
+	return c.NoContent(http.StatusNoContent)
+}
+
 func (s *Server) listReports(c *echo.Context) error {
 	values, err := s.reports.List(c.Request().Context())
 	if err != nil {
