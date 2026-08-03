@@ -22,7 +22,7 @@ func TestRepositoryEncryptsSecrets_whenSettingsAreSaved(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open repository: %v", err)
 	}
-	value := api.Settings{Language: "ko", Theme: "dark", Accent: "#4f6ef7", LLMBaseURL: "https://api.openai.com/v1", LLMModel: "gpt-4o-mini", LLMAPIKey: "llm-secret", LLMTimeout: 60, NVDAPIKey: "nvd-secret"}
+	value := api.Settings{Language: "ko", Theme: "dark", Accent: "#4f6ef7", LLMBaseURL: "https://api.openai.com/v1", LLMModel: "gpt-4o-mini", LLMAPIKey: "llm-secret", LLMTimeout: 60, NVDAPIKey: "nvd-secret", TimezoneOffsetMinutes: 540}
 
 	// When the settings are saved and read through the feature boundary.
 	if err := repository.Save(context.Background(), value); err != nil {
@@ -36,6 +36,9 @@ func TestRepositoryEncryptsSecrets_whenSettingsAreSaved(t *testing.T) {
 	// Then callers receive originals while SQLite contains no plaintext secrets.
 	if loaded.LLMAPIKey != value.LLMAPIKey || loaded.NVDAPIKey != value.NVDAPIKey {
 		t.Fatalf("loaded secrets = %q / %q", loaded.LLMAPIKey, loaded.NVDAPIKey)
+	}
+	if loaded.TimezoneOffsetMinutes != value.TimezoneOffsetMinutes {
+		t.Fatalf("timezone offset = %d, want %d", loaded.TimezoneOffsetMinutes, value.TimezoneOffsetMinutes)
 	}
 	var rawLLM, rawNVD string
 	if err := db.QueryRow(`SELECT llm_api_key, nvd_api_key FROM settings WHERE id = 1`).Scan(&rawLLM, &rawNVD); err != nil {

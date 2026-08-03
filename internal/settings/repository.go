@@ -25,9 +25,9 @@ func (r *Repository) Get(ctx context.Context) (api.Settings, error) {
 	var result api.Settings
 	var llmSecret, nvdSecret string
 	err := r.db.QueryRowContext(ctx, `SELECT lang, theme, accent, llm_base_url, llm_model,
-    llm_api_key, llm_timeout, nvd_api_key FROM settings WHERE id = 1`).Scan(
+    llm_api_key, llm_timeout, nvd_api_key, timezone_offset_minutes FROM settings WHERE id = 1`).Scan(
 		&result.Language, &result.Theme, &result.Accent, &result.LLMBaseURL,
-		&result.LLMModel, &llmSecret, &result.LLMTimeout, &nvdSecret)
+		&result.LLMModel, &llmSecret, &result.LLMTimeout, &nvdSecret, &result.TimezoneOffsetMinutes)
 	if err != nil {
 		return api.Settings{}, fmt.Errorf("query settings: %w", err)
 	}
@@ -52,9 +52,9 @@ func (r *Repository) Save(ctx context.Context, value api.Settings) error {
 		return fmt.Errorf("seal NVD API key: %w", err)
 	}
 	_, err = r.db.ExecContext(ctx, `UPDATE settings SET lang = ?, theme = ?, accent = ?,
-    llm_base_url = ?, llm_model = ?, llm_api_key = ?, llm_timeout = ?, nvd_api_key = ? WHERE id = 1`,
+    llm_base_url = ?, llm_model = ?, llm_api_key = ?, llm_timeout = ?, nvd_api_key = ?, timezone_offset_minutes = ? WHERE id = 1`,
 		value.Language, value.Theme, value.Accent, value.LLMBaseURL, value.LLMModel,
-		llmSecret, value.LLMTimeout, nvdSecret)
+		llmSecret, value.LLMTimeout, nvdSecret, value.TimezoneOffsetMinutes)
 	if err != nil {
 		return fmt.Errorf("save settings: %w", err)
 	}
