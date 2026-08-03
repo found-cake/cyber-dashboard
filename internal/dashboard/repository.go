@@ -72,7 +72,7 @@ func (r *Repository) cveInsights(ctx context.Context) ([]api.CVEInsight, error) 
 	rows, err := r.db.QueryContext(ctx, `SELECT c.cve_id, c.cvss_score, c.affected_product, c.first_seen, COUNT(ac.article_id)
     FROM cves c LEFT JOIN article_cves ac ON ac.cve_id = c.cve_id
     GROUP BY c.cve_id
-    ORDER BY (c.cvss_score + 0.1 * COUNT(ac.article_id)) DESC, c.first_seen DESC, c.cve_id ASC LIMIT 8`)
+    ORDER BY (c.cvss_score + 0.2 * COUNT(ac.article_id)) DESC, c.first_seen DESC, c.cve_id ASC`)
 	if err != nil {
 		return nil, fmt.Errorf("query cve insights: %w", err)
 	}

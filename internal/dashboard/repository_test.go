@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
@@ -60,7 +61,7 @@ func TestDashboardRanksCVEsByCVSSPlusWeightedMentions(t *testing.T) {
     ('CVE-2026-8000', ?, 8.0, 'More mentions')`, today, today); err != nil {
 		t.Fatalf("insert CVEs: %v", err)
 	}
-	for index := range 5 {
+	for index := range 7 {
 		result, insertErr := db.Exec(`INSERT INTO articles (source_id, feed_uid, title, url, published_at, collected_at)
       VALUES (1, ?, 'Threat', 'https://example.com', ?, ?)`, "mention-"+string(rune('a'+index)), today, today)
 		if insertErr != nil {
@@ -90,11 +91,38 @@ func TestDashboardRanksCVEsByCVSSPlusWeightedMentions(t *testing.T) {
 	// When the dashboard CVE insights are loaded.
 	value, err := NewRepository(db).Dashboard(context.Background())
 
-	// Then the 9.1 weighted score precedes the 8.5 weighted score.
+	// Then the lower CVSS entry's 9.4 score precedes the higher entry's 9.2 score.
 	if err != nil {
 		t.Fatalf("build dashboard: %v", err)
 	}
-	if len(value.CVEs) < 2 || value.CVEs[0].ID != "CVE-2026-9000" || value.CVEs[1].ID != "CVE-2026-8000" {
+	if len(value.CVEs) < 2 || value.CVEs[0].ID != "CVE-2026-8000" || value.CVEs[1].ID != "CVE-2026-9000" {
 		t.Fatalf("CVE order = %+v", value.CVEs)
+	}
+}
+
+func TestDashboardReturnsAllCVEsForExplorer(t *testing.T) {
+	// Given more CVEs than the compact dashboard table displays.
+	db, err := database.Open(context.Background(), filepath.Join(t.TempDir(), "dashboard.db"))
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	today := time.Now().Format(time.DateOnly)
+	for index := range 10 {
+		if _, err := db.Exec(`INSERT INTO cves (cve_id, first_seen, cvss_score, affected_product)
+      VALUES (?, ?, ?, 'Example')`, fmt.Sprintf("CVE-2026-%04d", index), today, float64(index)); err != nil {
+			t.Fatalf("insert CVE %d: %v", index, err)
+		}
+	}
+
+	// When the dashboard data is loaded for the compact table and explorer.
+	value, err := NewRepository(db).Dashboard(context.Background())
+
+	// Then every ranked CVE is available to the explorer.
+	if err != nil {
+		t.Fatalf("build dashboard: %v", err)
+	}
+	if len(value.CVEs) != 10 {
+		t.Fatalf("CVE count = %d, want 10", len(value.CVEs))
 	}
 }
