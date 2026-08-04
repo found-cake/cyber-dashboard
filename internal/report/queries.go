@@ -17,11 +17,17 @@ type topQuery struct {
 }
 
 func (r *Repository) topValues(ctx context.Context, query topQuery) ([]string, error) {
-	if query.column != "threat_actor" && query.column != "sector" {
+	var statement string
+	switch query.column {
+	case "threat_actor":
+		statement = `SELECT threat_actor FROM articles WHERE published_at BETWEEN ? AND ?
+    AND threat_actor != '' GROUP BY threat_actor ORDER BY COUNT(*) DESC LIMIT ?`
+	case "sector":
+		statement = `SELECT sector FROM articles WHERE published_at BETWEEN ? AND ?
+    AND sector != '' GROUP BY sector ORDER BY COUNT(*) DESC LIMIT ?`
+	default:
 		return nil, fmt.Errorf("top values column %q: invalid", query.column)
 	}
-	statement := fmt.Sprintf(`SELECT %s FROM articles WHERE published_at BETWEEN ? AND ?
-    AND %s != '' GROUP BY %s ORDER BY COUNT(*) DESC LIMIT ?`, query.column, query.column, query.column)
 	rows, err := r.db.QueryContext(ctx, statement, query.period.start, query.period.end, query.limit)
 	if err != nil {
 		return nil, fmt.Errorf("query top %s: %w", query.column, err)
