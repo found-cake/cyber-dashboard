@@ -30,7 +30,11 @@
       firstSeen: "최초 등장", mentions: "언급", product: "제품 / 벤더", articleCount: "기사",
       saved: "설정을 저장했습니다.", connectionOK: "연결되었습니다.", connectionFail: "연결에 실패했습니다.",
       outsideRetention: "피드 보존 기간(10일)을 벗어난 날짜입니다.", futureDate: "미래 날짜는 선택할 수 없습니다.",
-      emptyReport: "선택한 기간에 수집된 기사가 없습니다."
+      emptyReport: "선택한 기간에 수집된 기사가 없습니다.",
+      noReports: "생성된 보고서가 없습니다", feedSubtitle: "위협 인텔리전스 피드", dailySummary: "일간 요약",
+      settingsSub: "소스 · NVD 키 · LLM 엔드포인트", testing: "확인 중…", unknownActor: "미확인",
+      cveRefreshDone: (updated, removed) => `CVE ${updated}개를 갱신하고 ${removed}개를 제거했습니다.`,
+      cveRefreshWarned: "일부 항목을 확인하세요."
     },
     en: {
       dashboard: "Dashboard", reports: "Reports", settings: "Settings", newReport: "New",
@@ -60,7 +64,11 @@
       firstSeen: "First seen", mentions: "Mentions", product: "Product / Vendor", articleCount: "Articles",
       saved: "Settings saved.", connectionOK: "Connected.", connectionFail: "Connection failed.",
       outsideRetention: "This date is outside the 10-day feed retention window.", futureDate: "Future dates cannot be selected.",
-      emptyReport: "No articles were collected in this period."
+      emptyReport: "No articles were collected in this period.",
+      noReports: "No reports yet", feedSubtitle: "Threat intelligence feed", dailySummary: "Daily summary",
+      settingsSub: "Sources · NVD key · LLM endpoint", testing: "Testing…", unknownActor: "Unknown",
+      cveRefreshDone: (updated, removed) => `Updated ${updated} CVEs and removed ${removed}.`,
+      cveRefreshWarned: "Review the warnings for some entries."
     }
   };
 
@@ -392,7 +400,7 @@
   function renderReportList() {
     const reports = state.bootstrap.reports || [];
     if (!reports.length) {
-      $("#report-list").html(`<p class="card-subtitle">${state.lang === "ko" ? "생성된 보고서가 없습니다" : "No reports yet"}</p>`);
+      $("#report-list").html(`<p class="card-subtitle">${esc(t("noReports"))}</p>`);
       return;
     }
     $("#report-list").html(reports.map(report => `<button type="button" class="report-link${state.currentReport && state.currentReport.id === report.id ? " is-active" : ""}" data-report-id="${report.id}">
@@ -526,7 +534,7 @@
     state.view = "daily";
     updateNavigation();
     const daily = state.daily || { articles: [], summary: "" };
-    setHeader(formatDisplayDate(state.selectedDay), state.lang === "ko" ? "위협 인텔리전스 피드" : "Threat intelligence feed");
+    setHeader(formatDisplayDate(state.selectedDay), t("feedSubtitle"));
     const sources = [...new Set(daily.articles.map(article => article.source))].sort((left, right) => left.localeCompare(right));
     if (state.dailySource !== "all" && !sources.includes(state.dailySource)) state.dailySource = "all";
     const visibleArticles = state.dailySource === "all" ? daily.articles : daily.articles.filter(article => article.source === state.dailySource);
@@ -536,7 +544,7 @@
       <div class="article-meta"><span>${esc(article.threat_actor)}${article.actor_country ? ` (${esc(article.actor_country)})` : ""}</span><span class="mono">${esc(formatArticleTime(article.published_at))}</span></div>
     </a>`).join("");
     $("#main-content").html(`<div class="content stack">
-      ${daily.summary ? `<section class="card brief-card"><div class="card-header"><div><h2>${state.lang === "ko" ? "일간 요약" : "Daily summary"}</h2><p class="card-subtitle">${esc(t("aiGenerated"))}</p></div><span class="badge badge-info">${daily.articles.length} ${esc(t("articleCount"))}</span></div><div class="brief-body">${esc(daily.summary)}</div></section>` : ""}
+      ${daily.summary ? `<section class="card brief-card"><div class="card-header"><div><h2>${esc(t("dailySummary"))}</h2><p class="card-subtitle">${esc(t("aiGenerated"))}</p></div><span class="badge badge-info">${daily.articles.length} ${esc(t("articleCount"))}</span></div><div class="brief-body">${esc(daily.summary)}</div></section>` : ""}
       <div class="daily-toolbar"><div class="field daily-filter"><label for="source-filter">${esc(t("sourceFilter"))}</label><select id="source-filter"><option value="all">${esc(t("allSources"))}</option>${sources.map(source => `<option value="${esc(source)}"${source === state.dailySource ? " selected" : ""}>${esc(source)}</option>`).join("")}</select></div><div class="cluster collection-actions"><button class="secondary-button" id="recollect-day" type="button">${esc(t("recollect"))}</button><button class="secondary-button cancel-collection" id="cancel-active-collection" type="button" hidden>${esc(t("cancel"))}</button></div></div>
       <section class="article-list">${articles || `<div class="empty-state"><span class="empty-mark">00</span><h2>${esc(t("noArticles"))}</h2></div>`}</section>
     </div>`);
@@ -589,7 +597,7 @@
     state.view = "settings";
     state.currentReport = null;
     updateNavigation();
-    setHeader(t("settings"), state.lang === "ko" ? "소스 · NVD 키 · LLM 엔드포인트" : "Sources · NVD key · LLM endpoint");
+    setHeader(t("settings"), t("settingsSub"));
     const settings = state.bootstrap.settings;
     const presets = state.bootstrap.llm_presets || [];
     const sources = state.bootstrap.sources.map(source => `<div class="source-row"><span class="status-dot${source.enabled ? " is-on" : ""}" aria-hidden="true"></span><span><strong>${esc(source.name)}</strong><small>${esc(source.host)} · RSS feed</small></span><button type="button" class="toggle" role="switch" aria-label="${esc(source.name)}" aria-checked="${source.enabled}" data-source-id="${source.id}"></button><span class="badge ${source.enabled ? "badge-success" : ""}">${source.enabled ? "Active" : "Off"}</span></div>`).join("");
@@ -728,7 +736,7 @@
   }
 
   function testConnection() {
-    const $button = $("#test-llm").prop("disabled", true).text(state.lang === "ko" ? "확인 중…" : "Testing…");
+    const $button = $("#test-llm").prop("disabled", true).text(t("testing"));
     api("POST", "/api/llm/test", settingsFormValue()).done(() => toast(t("connectionOK"))).fail(() => toast(t("connectionFail"), true)).always(() => $button.prop("disabled", false).text(t("test")));
   }
 
@@ -807,7 +815,7 @@
     updateNavigation();
     renderReportList();
     setHeader(report.type === "weekly" ? t("weekly") : t("monthly"), `${report.period_start} – ${report.period_end}`);
-    const actors = report.actors.map(actor => esc(actor)).join(" · ") || (state.lang === "ko" ? "미확인" : "Unknown");
+    const actors = report.actors.map(actor => esc(actor)).join(" · ") || esc(t("unknownActor"));
     $("#main-content").html(`<div class="content"><article class="report-sheet">
       <header class="report-sheet-header"><div><h2>${esc(report.type === "weekly" ? t("weekly") : t("monthly"))}</h2><p>${esc(report.period_start)} – ${esc(report.period_end)}</p></div></header>
       <div class="report-metrics"><div><strong class="tone-info">${report.total}</strong><span>${esc(t("total"))}</span></div><div><strong class="tone-danger">${report.critical}</strong><span>${esc(t("critical"))}</span></div><div><strong class="tone-warning">${report.high}</strong><span>${esc(t("high"))}</span></div><div><strong>${report.medium}</strong><span>${esc(t("medium"))}</span></div></div>
