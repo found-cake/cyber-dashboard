@@ -8,6 +8,7 @@ type Bootstrap struct {
 	LLMPresets    []LLMPresetResponse `json:"llm_presets"`
 	CollectedDays []string            `json:"collected_days"`
 	Collection    *CollectionJob      `json:"collection,omitempty"`
+	CVERefresh    *CVERefreshJob      `json:"cve_refresh,omitempty"`
 }
 
 // HealthResponse is returned by GET /healthz.

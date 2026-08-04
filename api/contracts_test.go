@@ -80,3 +80,27 @@ func TestErrorResponseExposesKoreanAndEnglishMessages_forExternalClients(t *test
 		}
 	}
 }
+
+func TestCVERefreshJobMarshalsTerminalResultAndBootstrapOmitsIdleJob(t *testing.T) {
+	job := api.CVERefreshJob{
+		ID: "cve-refresh-7", Status: api.CVERefreshCompleted,
+		Result: &api.CVERefreshResult{Updated: 2, Removed: 1, Warnings: []string{}},
+	}
+	encodedJob, err := json.Marshal(job)
+	if err != nil {
+		t.Fatalf("marshal CVE refresh job: %v", err)
+	}
+	for _, fragment := range []string{`"id":"cve-refresh-7"`, `"status":"completed"`, `"result":{"updated":2,"removed":1,"warnings":[]}`} {
+		if !strings.Contains(string(encodedJob), fragment) {
+			t.Fatalf("CVE refresh job = %s, missing %s", encodedJob, fragment)
+		}
+	}
+
+	encodedBootstrap, err := json.Marshal(api.Bootstrap{})
+	if err != nil {
+		t.Fatalf("marshal bootstrap: %v", err)
+	}
+	if strings.Contains(string(encodedBootstrap), "cve_refresh") {
+		t.Fatalf("idle bootstrap = %s, want cve_refresh omitted", encodedBootstrap)
+	}
+}
