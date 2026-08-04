@@ -514,11 +514,12 @@
       .then(result => api("GET", "/api/dashboard").then(data => ({ data, result })))
       .done(({ data, result }) => {
         state.dashboard = data;
-        renderCVEExplorer();
-        const message = state.lang === "ko"
-          ? `CVE ${result.updated}개를 갱신하고 ${result.removed}개를 제거했습니다.`
-          : `Updated ${result.updated} CVEs and removed ${result.removed}.`;
-        toast(result.warnings?.length ? `${message} ${state.lang === "ko" ? "일부 항목을 확인하세요." : "Review the warnings for some entries."}` : message, Boolean(result.warnings?.length));
+        // A job resumed after a reload can settle on any view; only refresh what is on screen
+        // instead of dragging the user into the explorer.
+        if (state.view === "cves") renderCVEExplorer();
+        else if (state.view === "dashboard") renderDashboard();
+        const message = t("cveRefreshDone")(result.updated, result.removed);
+        toast(result.warnings?.length ? `${message} ${t("cveRefreshWarned")}` : message, Boolean(result.warnings?.length));
       })
       .fail(showRequestError);
   }
