@@ -12,6 +12,7 @@ import (
 	"github.com/found-cake/cyber-dashboard/internal/report"
 	"github.com/found-cake/cyber-dashboard/internal/settings"
 	"github.com/found-cake/cyber-dashboard/internal/summary"
+	"github.com/found-cake/cyber-dashboard/internal/vulnerability"
 	"github.com/labstack/echo/v5"
 )
 
@@ -49,6 +50,7 @@ type Server struct {
 	articles        ArticleEnricher
 	vulnerabilities VulnerabilityEnricher
 	collections     *collection.Service
+	cveRefreshes    *vulnerability.RefreshJobs
 }
 
 func NewServer(dependencies Dependencies) *Server {
@@ -62,12 +64,16 @@ func NewServer(dependencies Dependencies) *Server {
 		vulnerabilities: dependencies.Vulnerabilities,
 	}
 	server.collections = collection.NewService(server.runCollection)
+	if dependencies.Vulnerabilities != nil {
+		server.cveRefreshes = vulnerability.NewRefreshJobs(dependencies.Vulnerabilities.RefreshAll)
+	}
 	e.GET("/healthz", func(c *echo.Context) error {
 		return c.JSON(http.StatusOK, api.HealthResponse{Status: "ok"})
 	})
 	e.GET("/api/bootstrap", server.bootstrap)
 	e.GET("/api/dashboard", server.dashboardData)
 	e.POST("/api/cves/refresh", server.refreshCVEs)
+	e.GET("/api/cves/refresh/:id", server.cveRefreshStatus)
 	e.GET("/api/daily/:day", server.daily)
 	e.POST("/api/collect", server.collect)
 	e.GET("/api/collect/:id", server.collectionStatus)
