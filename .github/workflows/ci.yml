@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          check-latest: true
+          cache-dependency-path: go.sum
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          package-manager-cache: false
+      - name: Test Go with race detector and coverage
+        run: go test -race -shuffle=on -count=1 -coverpkg=./... -coverprofile=coverage.out ./...
+      - name: Enforce coverage threshold
+        run: |
+          coverage="$(go tool cover -func=coverage.out | awk '/^total:/ {gsub(/%/, "", $3); print $3}')"
+          awk -v coverage="$coverage" 'BEGIN {
+            printf "Total coverage: %.1f%%\n", coverage
+            if (coverage + 0 < 60) exit 1
+          }'
+      - name: Vet Go packages
+        run: go vet ./...
+      - name: Test frontend helpers
+        run: node --test test_static/*.test.js
