@@ -86,7 +86,12 @@
   const cveRefreshTask = window.createCVERefreshTask(serverCVERefresh);
 
   const t = key => TEXT[state.lang][key] || key;
-  const esc = value => $("<div>").text(value == null ? "" : String(value)).html();
+  // Escapes for both text and quoted-attribute contexts: interpolated values reach
+  // attributes (title, aria-label, value), and LLM-derived labels or a saved base URL
+  // may contain quotes that would otherwise close the attribute.
+  const esc = value => String(value == null ? "" : value)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
   const toneClass = severity => severity === "CRITICAL" ? "badge-danger" : severity === "HIGH" ? "badge-warning" : severity === "MEDIUM" ? "badge-info" : "";
   const chartColor = index => `var(--chart-${(index % 5) + 1})`;
 
