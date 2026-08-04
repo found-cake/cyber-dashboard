@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"slices"
+	"sync/atomic"
 
 	"github.com/chromedp/cdproto/cdp"
 	"github.com/chromedp/cdproto/fetch"
@@ -12,6 +14,20 @@ import (
 	"github.com/chromedp/chromedp"
 )
 
+// discardedResourceTypes never contribute to the extracted article text, so they are
+// failed at the request stage instead of downloaded. Stylesheets and scripts are kept:
+// CSS decides what innerText sees, and many articles render their body with JS.
+//
+// This blocks at the network layer rather than through Blink settings on purpose. Turning
+// images off in the renderer is a measurable deviation from a real browser and would work
+// against the user-agent and webdriver masking the loader already does; a failed request
+// looks like an ad blocker or a flaky network instead.
+var discardedResourceTypes = []network.ResourceType{
+	network.ResourceTypeImage,
+	network.ResourceTypeMedia,
+	network.ResourceTypeFont,
+}
+
 type chromiumDocumentGuard struct {
 	policy      articleURLPolicy
 	context     context.Context
@@ -19,6 +35,13 @@ type chromiumDocumentGuard struct {
 	mainFrameID cdp.FrameID
 	violations  chan error
 	enabled     bool
+	// discarded counts requests dropped by discardedResourceTypes, so tests can assert the
+	// bytes were never fetched rather than inferring it from timing.
+	discarded atomic.Int64
+}
+
+func isDiscardedResourceType(resourceType network.ResourceType) bool {
+	return slices.Contains(discardedResourceTypes, resourceType)
 }
 
 func newChromiumDocumentGuard(sourceHost string) (*chromiumDocumentGuard, error) {
@@ -46,6 +69,13 @@ func (g *chromiumDocumentGuard) enable(ctx context.Context) error {
 		ResourceType: network.ResourceTypeDocument,
 		RequestStage: fetch.RequestStageRequest,
 	}}
+	for _, resourceType := range discardedResourceTypes {
+		patterns = append(patterns, &fetch.RequestPattern{
+			URLPattern:   "*",
+			ResourceType: resourceType,
+			RequestStage: fetch.RequestStageRequest,
+		})
+	}
 	if err := fetch.Enable().WithPatterns(patterns).Do(ctx); err != nil {
 		return fmt.Errorf("enable Chromium document guard: %w", err)
 	}
@@ -63,6 +93,14 @@ func (g *chromiumDocumentGuard) handleEvent(event any) {
 
 func (g *chromiumDocumentGuard) resolveRequest(paused *fetch.EventRequestPaused) {
 	ctx := cdp.WithExecutor(g.context, g.executor)
+	if isDiscardedResourceType(paused.ResourceType) {
+		// Not a policy violation: the article simply does not need these bytes, so the
+		// request is dropped without failing the load.
+		if err := fetch.FailRequest(paused.RequestID, network.ErrorReasonBlockedByClient).Do(ctx); err == nil {
+			g.discarded.Add(1)
+		}
+		return
+	}
 	if paused.FrameID == g.mainFrameID {
 		parsed, err := url.Parse(paused.Request.URL)
 		if err != nil {

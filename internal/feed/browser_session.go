@@ -9,12 +9,16 @@ import (
 )
 
 type ChromiumBodyLoader struct {
-	parent  context.Context
+	parent context.Context
 	options []chromedp.ExecAllocatorOption
 	context context.Context
 	cancel  context.CancelFunc
 	mutex   sync.Mutex
 	closed  bool
+	// documentScriptInjections counts the per-target script injections for the current
+	// session. The injection persists for the life of the page, so this must stay at one:
+	// re-adding per article stacks copies that all re-run on every later navigation.
+	documentScriptInjections int
 }
 
 func NewChromiumBodyLoader(parent context.Context) *ChromiumBodyLoader {
@@ -67,6 +71,7 @@ func (l *ChromiumBodyLoader) ensureSession() error {
 func (l *ChromiumBodyLoader) createSession() {
 	allocatorContext, allocatorCancel := chromedp.NewExecAllocator(l.parent, l.options...)
 	browserContext, browserCancel := chromedp.NewContext(allocatorContext)
+	l.documentScriptInjections = 0
 	l.context = browserContext
 	l.cancel = func() {
 		browserCancel()
@@ -118,6 +123,7 @@ func (l *ChromiumBodyLoader) discardSession() {
 	cancel := l.cancel
 	l.context = nil
 	l.cancel = nil
+	l.documentScriptInjections = 0
 	if cancel != nil {
 		cancel()
 	}

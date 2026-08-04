@@ -76,8 +76,13 @@ func (l *ChromiumBodyLoader) Load(ctx context.Context, articleURL, sourceHost st
 				WithUserAgentMetadata(metadata).Do(ctx); err != nil {
 				return err
 			}
-			if _, err := page.AddScriptToEvaluateOnNewDocument(`Object.defineProperty(navigator, "webdriver", {get: () => undefined});`).Do(ctx); err != nil {
-				return err
+			// Added once per session: the injection persists on the page, so adding it per
+			// article would stack copies that all re-run on every later navigation.
+			if l.documentScriptInjections == 0 {
+				if _, err := page.AddScriptToEvaluateOnNewDocument(`Object.defineProperty(navigator, "webdriver", {get: () => undefined});`).Do(ctx); err != nil {
+					return err
+				}
+				l.documentScriptInjections++
 			}
 			if err := documentGuard.enable(ctx); err != nil {
 				return err
