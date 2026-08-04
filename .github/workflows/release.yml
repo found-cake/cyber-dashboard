@@ -1,0 +1,98 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Validate semantic version tag
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Release tag must use vMAJOR.MINOR.PATCH format: $RELEASE_TAG" >&2
+            exit 1
+          fi
+
+  build:
+    needs: validate
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: linux
+            arch: amd64
+            extension: ""
+          - os: linux
+            arch: arm64
+            extension: ""
+          - os: darwin
+            arch: amd64
+            extension: ""
+          - os: darwin
+            arch: arm64
+            extension: ""
+          - os: windows
+            arch: amd64
+            extension: ".exe"
+          - os: windows
+            arch: arm64
+            extension: ".exe"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.26"
+          check-latest: true
+          cache-dependency-path: go.sum
+      - name: Build both executables
+        env:
+          CGO_ENABLED: "0"
+          GOOS: ${{ matrix.os }}
+          GOARCH: ${{ matrix.arch }}
+        run: |
+          mkdir -p dist
+          go build -trimpath -ldflags="-s -w" -o "dist/cyber-dashboard-full-${GOOS}-${GOARCH}${{ matrix.extension }}" ./cmd/cyber-dashboard-full
+          go build -trimpath -ldflags="-s -w" -o "dist/cyber-dashboard-server-only-${GOOS}-${GOARCH}${{ matrix.extension }}" ./cmd/cyber-dashboard-server-only
+      - name: Store target binaries
+        uses: actions/upload-artifact@v7
+        with:
+          name: binaries-${{ matrix.os }}-${{ matrix.arch }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    needs: [validate, build]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+      - name: Download target binaries
+        uses: actions/download-artifact@v8
+        with:
+          pattern: binaries-*
+          path: dist
+          merge-multiple: true
+      - name: Package static frontend
+        run: zip -qr dist/frontend.zip static
+      - name: Write SHA-256 checksums
+        run: |
+          cd dist
+          sha256sum cyber-dashboard-* frontend.zip | sort -k2 > SHA256SUMS
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --verify-tag --generate-notes --title "$GITHUB_REF_NAME"
