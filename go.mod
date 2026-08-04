@@ -1,6 +1,6 @@
 module github.com/found-cake/cyber-dashboard
 
-go 1.26.4
+go 1.26
 
 require (
 	github.com/chromedp/chromedp v0.16.0
