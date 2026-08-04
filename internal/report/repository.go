@@ -3,6 +3,7 @@ package report
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -38,8 +39,8 @@ func (r *Repository) List(ctx context.Context) ([]api.Report, error) {
 			&actors, &sectors, &value.Summary, &value.GeneratedAt); err != nil {
 			return nil, fmt.Errorf("scan report: %w", err)
 		}
-		value.Actors = splitCSV(actors)
-		value.Sectors = splitCSV(sectors)
+		value.Actors = decodeList(actors)
+		value.Sectors = decodeList(sectors)
 		reports = append(reports, value)
 	}
 	if err := rows.Err(); err != nil {
@@ -84,11 +85,19 @@ func (r *Repository) Build(ctx context.Context, request api.CreateReportRequest)
 func (r *Repository) Save(ctx context.Context, value api.Report, timezoneOffsetMinutes int) (api.Report, error) {
 	location := time.FixedZone("configured", timezoneOffsetMinutes*60)
 	value.GeneratedAt = r.now().In(location).Format(time.RFC3339)
+	actors, err := encodeList(value.Actors)
+	if err != nil {
+		return api.Report{}, err
+	}
+	sectors, err := encodeList(value.Sectors)
+	if err != nil {
+		return api.Report{}, err
+	}
 	result, err := r.db.ExecContext(ctx, `INSERT INTO reports (type, period_start, period_end, total,
     critical, high, medium, top_threat, actors, sectors, summary, generated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, value.Type, value.PeriodStart, value.PeriodEnd,
-		value.Total, value.Critical, value.High, value.Medium, value.TopThreat, strings.Join(value.Actors, ","),
-		strings.Join(value.Sectors, ","), value.Summary, value.GeneratedAt)
+		value.Total, value.Critical, value.High, value.Medium, value.TopThreat, actors,
+		sectors, value.Summary, value.GeneratedAt)
 	if err != nil {
 		return api.Report{}, fmt.Errorf("insert report: %w", err)
 	}
@@ -99,9 +108,40 @@ func (r *Repository) Save(ctx context.Context, value api.Report, timezoneOffsetM
 	return value, nil
 }
 
-func splitCSV(value string) []string {
-	if strings.TrimSpace(value) == "" {
+// encodeList stores a string list as a JSON array. Actor and sector names come from LLM
+// analysis of article text and routinely contain commas ("Scattered Spider, Inc.",
+// "금융, 보험"), which a comma-joined column cannot round-trip.
+func encodeList(values []string) (string, error) {
+	if values == nil {
+		values = []string{}
+	}
+	encoded, err := json.Marshal(values)
+	if err != nil {
+		return "", fmt.Errorf("encode report list: %w", err)
+	}
+	return string(encoded), nil
+}
+
+// decodeList reads the JSON array written by encodeList, falling back to the original
+// comma-separated format so reports stored before that change still load.
+func decodeList(value string) []string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
 		return []string{}
 	}
-	return strings.Split(value, ",")
+	if strings.HasPrefix(trimmed, "[") {
+		var values []string
+		if err := json.Unmarshal([]byte(trimmed), &values); err == nil {
+			if values == nil {
+				return []string{}
+			}
+			return values
+		}
+	}
+	parts := strings.Split(trimmed, ",")
+	values := make([]string, 0, len(parts))
+	for _, part := range parts {
+		values = append(values, strings.TrimSpace(part))
+	}
+	return values
 }

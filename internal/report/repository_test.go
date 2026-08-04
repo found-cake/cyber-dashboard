@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -143,5 +144,72 @@ func TestSaveAndListPreserveReport_whenTimezoneIsConfigured(t *testing.T) {
 	}
 	if listed[0].Summary != input.Summary || strings.Join(listed[0].Actors, ",") != "Group A,Group B" || strings.Join(listed[0].Sectors, ",") != "Finance,Energy" {
 		t.Fatalf("listed report = %+v", listed[0])
+	}
+}
+
+func TestSaveAndListPreserveReportEntries_whenActorsContainCommas(t *testing.T) {
+	// Given actor and sector names that contain commas, as LLM analysis produces.
+	db, err := database.Open(context.Background(), filepath.Join(t.TempDir(), "dashboard.db"))
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	repository := NewRepository(db)
+	actors := []string{"Scattered Spider, Inc.", "Lazarus Group"}
+	sectors := []string{"금융, 보험", "정부"}
+
+	// When the report is saved and listed again.
+	if _, err := repository.Save(context.Background(), api.Report{
+		Type: "weekly", PeriodStart: "2026-08-01", PeriodEnd: "2026-08-07",
+		Actors: actors, Sectors: sectors, Summary: "Weekly summary",
+	}, 0); err != nil {
+		t.Fatalf("save report: %v", err)
+	}
+	listed, err := repository.List(context.Background())
+	if err != nil {
+		t.Fatalf("list reports: %v", err)
+	}
+
+	// Then each name stays one entry instead of splitting on its own comma.
+	if len(listed) != 1 {
+		t.Fatalf("listed %d reports, want 1", len(listed))
+	}
+	if !slices.Equal(listed[0].Actors, actors) {
+		t.Fatalf("listed actors = %q, want %q", listed[0].Actors, actors)
+	}
+	if !slices.Equal(listed[0].Sectors, sectors) {
+		t.Fatalf("listed sectors = %q, want %q", listed[0].Sectors, sectors)
+	}
+}
+
+func TestListDecodesLegacyReportEntries_whenStoredAsCommaSeparatedText(t *testing.T) {
+	// Given a report row written before entries were stored as JSON.
+	db, err := database.Open(context.Background(), filepath.Join(t.TempDir(), "dashboard.db"))
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	if _, err := db.Exec(`INSERT INTO reports (type, period_start, period_end, total, critical, high,
+		medium, top_threat, actors, sectors, summary, generated_at)
+		VALUES ('weekly', '2026-08-01', '2026-08-07', 3, 1, 1, 1, 'Legacy threat',
+		'Group A,Group B', 'Finance,Energy', 'Legacy summary', '2026-08-08T00:00:00Z')`); err != nil {
+		t.Fatalf("insert legacy report: %v", err)
+	}
+
+	// When the report is listed.
+	listed, err := NewRepository(db).List(context.Background())
+	if err != nil {
+		t.Fatalf("list reports: %v", err)
+	}
+
+	// Then the legacy comma-separated entries still load.
+	if len(listed) != 1 {
+		t.Fatalf("listed %d reports, want 1", len(listed))
+	}
+	if !slices.Equal(listed[0].Actors, []string{"Group A", "Group B"}) {
+		t.Fatalf("legacy actors = %q", listed[0].Actors)
+	}
+	if !slices.Equal(listed[0].Sectors, []string{"Finance", "Energy"}) {
+		t.Fatalf("legacy sectors = %q", listed[0].Sectors)
 	}
 }
