@@ -19,6 +19,7 @@ func TestDashboardAggregatesRecentThreatData(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = db.Close() })
 	today := time.Now().Format(time.DateOnly)
+	windowStart := time.Now().AddDate(0, 0, -29).Format(time.DateOnly)
 	for _, row := range []struct{ uid, title, severity, method, actor string }{
 		{uid: "critical", title: "Critical threat", severity: "CRITICAL", method: "APT", actor: "Group A"},
 		{uid: "high", title: "High threat", severity: "HIGH", method: "Ransomware", actor: "Group B"},
@@ -35,7 +36,7 @@ func TestDashboardAggregatesRecentThreatData(t *testing.T) {
 	}
 
 	// When the dashboard repository builds its response.
-	value, err := NewRepository(db).Dashboard(context.Background())
+	value, err := NewRepository(db).Dashboard(context.Background(), windowStart)
 	if err != nil {
 		t.Fatalf("build dashboard: %v", err)
 	}
@@ -58,7 +59,7 @@ func TestBreakdownRejectsColumnOutsideAllowlist(t *testing.T) {
 	t.Cleanup(func() { _ = db.Close() })
 
 	// When the column reaches the dynamic breakdown boundary.
-	_, err = NewRepository(db).breakdown(context.Background(), "attack_method); DROP TABLE articles; --", 8)
+	_, err = NewRepository(db).breakdown(context.Background(), "attack_method); DROP TABLE articles; --", 8, "2026-07-06")
 
 	// Then it is rejected before a SQL statement is selected.
 	if err == nil || !strings.Contains(err.Error(), "invalid") {
@@ -74,6 +75,7 @@ func TestDashboardRanksCVEsByCVSSPlusWeightedMentions(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = db.Close() })
 	today := time.Now().Format(time.DateOnly)
+	windowStart := time.Now().AddDate(0, 0, -29).Format(time.DateOnly)
 	if _, err := db.Exec(`INSERT INTO cves (cve_id, first_seen, cvss_score, affected_product) VALUES
     ('CVE-2026-9000', ?, 9.0, 'High CVSS'),
     ('CVE-2026-8000', ?, 8.0, 'More mentions')`, today, today); err != nil {
@@ -107,7 +109,7 @@ func TestDashboardRanksCVEsByCVSSPlusWeightedMentions(t *testing.T) {
 	}
 
 	// When the dashboard CVE insights are loaded.
-	value, err := NewRepository(db).Dashboard(context.Background())
+	value, err := NewRepository(db).Dashboard(context.Background(), windowStart)
 
 	// Then the lower CVSS entry's 9.4 score precedes the higher entry's 9.2 score.
 	if err != nil {
@@ -126,6 +128,7 @@ func TestDashboardReturnsAllCVEsForExplorer(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = db.Close() })
 	today := time.Now().Format(time.DateOnly)
+	windowStart := time.Now().AddDate(0, 0, -29).Format(time.DateOnly)
 	for index := range 10 {
 		if _, err := db.Exec(`INSERT INTO cves (cve_id, first_seen, cvss_score, affected_product)
       VALUES (?, ?, ?, 'Example')`, fmt.Sprintf("CVE-2026-%04d", index), today, float64(index)); err != nil {
@@ -134,7 +137,7 @@ func TestDashboardReturnsAllCVEsForExplorer(t *testing.T) {
 	}
 
 	// When the dashboard data is loaded for the compact table and explorer.
-	value, err := NewRepository(db).Dashboard(context.Background())
+	value, err := NewRepository(db).Dashboard(context.Background(), windowStart)
 
 	// Then every ranked CVE is available to the explorer.
 	if err != nil {

@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/found-cake/cyber-dashboard/api"
 	"github.com/found-cake/cyber-dashboard/internal/collection"
@@ -23,13 +22,13 @@ func (s *Server) collect(c *echo.Context) error {
 	if err := json.NewDecoder(c.Request().Body).Decode(&request); err != nil {
 		return writeBadRequest(c, "invalid JSON body")
 	}
-	day, err := parseCollectableDay(request.Day, time.Now())
-	if err != nil {
-		return writeBadRequest(c, err.Error())
-	}
 	appSettings, err := s.settings.Get(c.Request().Context())
 	if err != nil {
 		return writeAPIError(c, err)
+	}
+	day, err := parseCollectableDay(request.Day, s.configuredTime(appSettings.TimezoneOffsetMinutes))
+	if err != nil {
+		return writeBadRequest(c, err.Error())
 	}
 	if strings.TrimSpace(appSettings.NVDAPIKey) == "" {
 		return c.JSON(http.StatusPreconditionFailed, localizedError("nvd_key_required",

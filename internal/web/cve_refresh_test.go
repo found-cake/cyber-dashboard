@@ -25,7 +25,9 @@ func TestRefreshCVEsRunsInBackgroundAndCoalescesDuplicateRequests(t *testing.T) 
 		started: started,
 		release: release,
 	}
-	server, _, _ := newTestServerWithVulnerability(t, &stubFetcher{}, "test-nvd-key", enricher)
+	server, _, _ := newTestServerWithConfig(t, testServerConfig{
+		fetcher: &stubFetcher{}, nvdAPIKey: "test-nvd-key", vulnerabilities: enricher,
+	})
 
 	// When the manual refresh endpoint is requested while the refresh is still running.
 	firstResponse := make(chan *httptest.ResponseRecorder, 1)
@@ -121,7 +123,9 @@ func TestRefreshCVEsRunsInBackgroundAndCoalescesDuplicateRequests(t *testing.T) 
 func TestRefreshCVEsReturnsBilingualPrecondition_whenNVDKeyIsMissing(t *testing.T) {
 	// Given refresh cannot run because no NVD API key is configured.
 	enricher := &stubVulnerabilityEnricher{err: vulnerability.ErrAPIKeyRequired}
-	server, _, _ := newTestServerWithVulnerability(t, &stubFetcher{}, "", enricher)
+	server, _, _ := newTestServerWithConfig(t, testServerConfig{
+		fetcher: &stubFetcher{}, vulnerabilities: enricher,
+	})
 
 	// When the manual refresh endpoint is requested.
 	recorder := httptest.NewRecorder()

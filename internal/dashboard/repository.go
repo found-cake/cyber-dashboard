@@ -16,11 +16,14 @@ func NewRepository(db *sql.DB) *Repository {
 	return &Repository{db: db}
 }
 
-func (r *Repository) Dashboard(ctx context.Context) (api.Dashboard, error) {
+// Dashboard aggregates the rolling window starting at since (inclusive, YYYY-MM-DD). The
+// caller supplies the boundary because it depends on the configured timezone; SQLite's
+// date('now') is always UTC and would put the window on a different day.
+func (r *Repository) Dashboard(ctx context.Context, since string) (api.Dashboard, error) {
 	result := api.Dashboard{AttackMethods: []api.BreakdownRow{}, ThreatActors: []api.BreakdownRow{}, CVEs: []api.CVEInsight{}}
 	err := r.db.QueryRowContext(ctx, `SELECT COUNT(*),
     COALESCE(SUM(severity = 'CRITICAL'), 0), COALESCE(SUM(severity = 'HIGH'), 0)
-    FROM articles WHERE published_at >= date('now', '-29 days')`).Scan(&result.Total, &result.Critical, &result.High)
+    FROM articles WHERE published_at >= ?`, since).Scan(&result.Total, &result.Critical, &result.High)
 	if err != nil {
 		return api.Dashboard{}, fmt.Errorf("query dashboard stats: %w", err)
 	}
@@ -28,11 +31,11 @@ func (r *Repository) Dashboard(ctx context.Context) (api.Dashboard, error) {
 		return api.Dashboard{}, fmt.Errorf("query cve count: %w", err)
 	}
 	result.Empty = result.Total == 0
-	result.AttackMethods, err = r.breakdown(ctx, "attack_method", 8)
+	result.AttackMethods, err = r.breakdown(ctx, "attack_method", 8, since)
 	if err != nil {
 		return api.Dashboard{}, err
 	}
-	result.ThreatActors, err = r.breakdown(ctx, "threat_actor", 7)
+	result.ThreatActors, err = r.breakdown(ctx, "threat_actor", 7, since)
 	if err != nil {
 		return api.Dashboard{}, err
 	}
@@ -43,19 +46,19 @@ func (r *Repository) Dashboard(ctx context.Context) (api.Dashboard, error) {
 	return result, nil
 }
 
-func (r *Repository) breakdown(ctx context.Context, column string, limit int) ([]api.BreakdownRow, error) {
+func (r *Repository) breakdown(ctx context.Context, column string, limit int, since string) ([]api.BreakdownRow, error) {
 	var query string
 	switch column {
 	case "attack_method":
 		query = `SELECT attack_method, COUNT(*) FROM articles
-    WHERE published_at >= date('now', '-29 days') GROUP BY attack_method ORDER BY COUNT(*) DESC LIMIT ?`
+    WHERE published_at >= ? GROUP BY attack_method ORDER BY COUNT(*) DESC LIMIT ?`
 	case "threat_actor":
 		query = `SELECT threat_actor, COUNT(*) FROM articles
-    WHERE published_at >= date('now', '-29 days') GROUP BY threat_actor ORDER BY COUNT(*) DESC LIMIT ?`
+    WHERE published_at >= ? GROUP BY threat_actor ORDER BY COUNT(*) DESC LIMIT ?`
 	default:
 		return nil, fmt.Errorf("breakdown column %q: invalid", column)
 	}
-	rows, err := r.db.QueryContext(ctx, query, limit)
+	rows, err := r.db.QueryContext(ctx, query, since, limit)
 	if err != nil {
 		return nil, fmt.Errorf("query %s breakdown: %w", column, err)
 	}

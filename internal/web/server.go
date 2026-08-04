@@ -4,6 +4,7 @@ import (
 	"context"
 	"io/fs"
 	"net/http"
+	"time"
 
 	"github.com/found-cake/cyber-dashboard/api"
 	"github.com/found-cake/cyber-dashboard/internal/collection"
@@ -27,6 +28,7 @@ type Dependencies struct {
 	Summaries       *summary.Service
 	Articles        ArticleEnricher
 	Vulnerabilities VulnerabilityEnricher
+	Now             func() time.Time
 }
 
 type ArticleEnricher interface {
@@ -51,10 +53,15 @@ type Server struct {
 	vulnerabilities VulnerabilityEnricher
 	collections     *collection.Service
 	cveRefreshes    *vulnerability.RefreshJobs
+	now             func() time.Time
 }
 
 func NewServer(dependencies Dependencies) *Server {
 	e := echo.New()
+	now := dependencies.Now
+	if now == nil {
+		now = time.Now
+	}
 	server := &Server{
 		echo: e, feeds: dependencies.Feeds, collector: dependencies.Collector,
 		dashboard: dependencies.Dashboard, settings: dependencies.Settings,
@@ -62,6 +69,7 @@ func NewServer(dependencies Dependencies) *Server {
 		summaries:       dependencies.Summaries,
 		articles:        dependencies.Articles,
 		vulnerabilities: dependencies.Vulnerabilities,
+		now:             now,
 	}
 	server.collections = collection.NewService(server.runCollection)
 	if dependencies.Vulnerabilities != nil {

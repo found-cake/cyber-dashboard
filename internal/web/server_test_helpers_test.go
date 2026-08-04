@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 	"testing/fstest"
+	"time"
 
 	"github.com/found-cake/cyber-dashboard/api"
 	"github.com/found-cake/cyber-dashboard/internal/dashboard"
@@ -22,14 +23,21 @@ import (
 )
 
 func newTestServer(t *testing.T, fetcher feed.Fetcher) (*web.Server, *feed.Repository, *settings.Repository) {
-	return newTestServerWithNVD(t, fetcher, "test-nvd-key")
+	return newTestServerWithConfig(t, testServerConfig{fetcher: fetcher, nvdAPIKey: "test-nvd-key"})
 }
 
 func newTestServerWithNVD(t *testing.T, fetcher feed.Fetcher, nvdAPIKey string) (*web.Server, *feed.Repository, *settings.Repository) {
-	return newTestServerWithVulnerability(t, fetcher, nvdAPIKey, nil)
+	return newTestServerWithConfig(t, testServerConfig{fetcher: fetcher, nvdAPIKey: nvdAPIKey})
 }
 
-func newTestServerWithVulnerability(t *testing.T, fetcher feed.Fetcher, nvdAPIKey string, vulnerabilities web.VulnerabilityEnricher) (*web.Server, *feed.Repository, *settings.Repository) {
+type testServerConfig struct {
+	fetcher         feed.Fetcher
+	nvdAPIKey       string
+	vulnerabilities web.VulnerabilityEnricher
+	now             func() time.Time
+}
+
+func newTestServerWithConfig(t *testing.T, config testServerConfig) (*web.Server, *feed.Repository, *settings.Repository) {
 	t.Helper()
 	databasePath := filepath.Join(t.TempDir(), "dashboard.db")
 	db, err := database.Open(context.Background(), databasePath)
@@ -41,8 +49,8 @@ func newTestServerWithVulnerability(t *testing.T, fetcher feed.Fetcher, nvdAPIKe
 	if err != nil {
 		t.Fatalf("open settings: %v", err)
 	}
-	if strings.TrimSpace(nvdAPIKey) != "" {
-		configureNVD(t, settingsRepository, nvdAPIKey)
+	if strings.TrimSpace(config.nvdAPIKey) != "" {
+		configureNVD(t, settingsRepository, config.nvdAPIKey)
 	}
 	feedRepository := feed.NewRepository(db)
 	reportRepository := report.NewRepository(db)
@@ -50,11 +58,12 @@ func newTestServerWithVulnerability(t *testing.T, fetcher feed.Fetcher, nvdAPIKe
 	assets := fs.FS(fstest.MapFS{"index.html": {Data: []byte("ok")}})
 	server := web.NewServer(web.Dependencies{
 		Assets: assets, Feeds: feedRepository,
-		Collector: feed.NewCollector(feedRepository, fetcher, &stubBodyLoader{}),
+		Collector: feed.NewCollector(feedRepository, config.fetcher, &stubBodyLoader{}),
 		Dashboard: dashboard.NewRepository(db), Settings: settingsRepository,
 		Reports: reportRepository, ReportService: report.NewService(reportRepository, summaryService),
 		Summaries: summaryService, Articles: feed.NewArticleEnrichmentService(feedRepository, summaryService),
-		Vulnerabilities: vulnerabilities,
+		Vulnerabilities: config.vulnerabilities,
+		Now:             config.now,
 	})
 	return server, feedRepository, settingsRepository
 }
