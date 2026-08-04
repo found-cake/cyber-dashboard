@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -81,21 +82,30 @@ func serve(ctx context.Context, handler http.Handler) error {
 	if configured := os.Getenv("CYBER_DASHBOARD_ADDR"); configured != "" {
 		address = configured
 	}
+	listener, err := net.Listen("tcp", address)
+	if err != nil {
+		return fmt.Errorf("listen on %s: %w", address, err)
+	}
 	server := &http.Server{
 		Addr: address, Handler: handler, ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout: 30 * time.Second, WriteTimeout: 90 * time.Second, IdleTimeout: 120 * time.Second,
 	}
 	errCh := make(chan error, 1)
 	go func() {
-		slog.Info("cyber dashboard listening", slog.String("address", "http://"+address))
-		errCh <- server.ListenAndServe()
+		slog.Info("cyber dashboard listening", slog.String("address", "http://"+listener.Addr().String()))
+		errCh <- server.Serve(listener)
 	}()
 	select {
 	case <-ctx.Done():
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		if err := server.Shutdown(shutdownCtx); err != nil {
-			return fmt.Errorf("shutdown server: %w", err)
+		shutdownErr := server.Shutdown(shutdownCtx)
+		closeErr := listener.Close()
+		if shutdownErr != nil {
+			return fmt.Errorf("shutdown server: %w", shutdownErr)
+		}
+		if closeErr != nil && !errors.Is(closeErr, net.ErrClosed) {
+			return fmt.Errorf("close server listener: %w", closeErr)
 		}
 		return nil
 	case err := <-errCh:
