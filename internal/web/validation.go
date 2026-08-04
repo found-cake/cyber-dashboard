@@ -14,6 +14,7 @@ import (
 	"github.com/found-cake/cyber-dashboard/internal/report"
 	"github.com/found-cake/cyber-dashboard/internal/settings"
 	"github.com/found-cake/cyber-dashboard/internal/summary"
+	"github.com/found-cake/cyber-dashboard/internal/vulnerability"
 	"github.com/labstack/echo/v5"
 )
 
@@ -111,6 +112,15 @@ func writeBadRequest(c *echo.Context, message string) error {
 }
 
 func writeAPIError(c *echo.Context, err error) error {
+	if errors.Is(err, vulnerability.ErrAPIKeyRequired) {
+		return c.JSON(http.StatusPreconditionFailed, localizedError("nvd_key_required",
+			"NVD API 키를 등록하세요", "Register an NVD API key"))
+	}
+	if errors.Is(err, vulnerability.ErrInvalidAPIKey) {
+		logServerError(c, http.StatusPreconditionFailed, err)
+		return c.JSON(http.StatusPreconditionFailed, localizedError("nvd_key_invalid",
+			"NVD API 키가 유효하지 않습니다", "The NVD API key is invalid"))
+	}
 	if errors.Is(err, feed.ErrNotFound) || errors.Is(err, report.ErrNotFound) {
 		return c.JSON(http.StatusNotFound, localizedError("not_found", "요청한 항목을 찾을 수 없습니다", "The requested resource was not found"))
 	}

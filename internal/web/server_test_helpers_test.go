@@ -22,6 +22,14 @@ import (
 )
 
 func newTestServer(t *testing.T, fetcher feed.Fetcher) (*web.Server, *feed.Repository, *settings.Repository) {
+	return newTestServerWithNVD(t, fetcher, "test-nvd-key")
+}
+
+func newTestServerWithNVD(t *testing.T, fetcher feed.Fetcher, nvdAPIKey string) (*web.Server, *feed.Repository, *settings.Repository) {
+	return newTestServerWithVulnerability(t, fetcher, nvdAPIKey, nil)
+}
+
+func newTestServerWithVulnerability(t *testing.T, fetcher feed.Fetcher, nvdAPIKey string, vulnerabilities web.VulnerabilityEnricher) (*web.Server, *feed.Repository, *settings.Repository) {
 	t.Helper()
 	databasePath := filepath.Join(t.TempDir(), "dashboard.db")
 	db, err := database.Open(context.Background(), databasePath)
@@ -33,7 +41,9 @@ func newTestServer(t *testing.T, fetcher feed.Fetcher) (*web.Server, *feed.Repos
 	if err != nil {
 		t.Fatalf("open settings: %v", err)
 	}
-	configureNVD(t, settingsRepository, "test-nvd-key")
+	if strings.TrimSpace(nvdAPIKey) != "" {
+		configureNVD(t, settingsRepository, nvdAPIKey)
+	}
 	feedRepository := feed.NewRepository(db)
 	reportRepository := report.NewRepository(db)
 	summaryService := summary.NewService(settingsRepository)
@@ -44,6 +54,7 @@ func newTestServer(t *testing.T, fetcher feed.Fetcher) (*web.Server, *feed.Repos
 		Dashboard: dashboard.NewRepository(db), Settings: settingsRepository,
 		Reports: reportRepository, ReportService: report.NewService(reportRepository, summaryService),
 		Summaries: summaryService, Articles: feed.NewArticleEnrichmentService(feedRepository, summaryService),
+		Vulnerabilities: vulnerabilities,
 	})
 	return server, feedRepository, settingsRepository
 }

@@ -43,6 +43,9 @@ CREATE TABLE IF NOT EXISTS cves (
   cvss_version TEXT NOT NULL DEFAULT '',
   affected_product TEXT NOT NULL DEFAULT 'NVD enrichment pending'
 );
+CREATE TABLE IF NOT EXISTS rejected_cves (
+  cve_id TEXT PRIMARY KEY
+);
 CREATE TABLE IF NOT EXISTS article_cves (
   article_id INTEGER NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
   cve_id TEXT NOT NULL REFERENCES cves(cve_id) ON DELETE CASCADE,

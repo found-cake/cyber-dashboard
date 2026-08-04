@@ -34,6 +34,7 @@ type ArticleEnricher interface {
 
 type VulnerabilityEnricher interface {
 	EnrichDay(ctx context.Context, day string) error
+	RefreshAll(ctx context.Context) (api.CVERefreshResult, error)
 }
 
 type Server struct {
@@ -66,6 +67,7 @@ func NewServer(dependencies Dependencies) *Server {
 	})
 	e.GET("/api/bootstrap", server.bootstrap)
 	e.GET("/api/dashboard", server.dashboardData)
+	e.POST("/api/cves/refresh", server.refreshCVEs)
 	e.GET("/api/daily/:day", server.daily)
 	e.POST("/api/collect", server.collect)
 	e.GET("/api/collect/:id", server.collectionStatus)

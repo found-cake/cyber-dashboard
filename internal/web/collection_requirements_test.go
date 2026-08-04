@@ -20,8 +20,7 @@ func (f *blockingFetcher) Fetch(context.Context, api.Source) (feed.Document, err
 }
 
 func TestCollectRejectsRequest_whenNVDAPIKeyIsMissing(t *testing.T) {
-	server, _, appSettings := newTestServer(t, &stubFetcher{})
-	configureNVD(t, appSettings, "")
+	server, _, _ := newTestServerWithNVD(t, &stubFetcher{}, "")
 
 	request := httptest.NewRequest(http.MethodPost, "/api/collect", strings.NewReader(`{"date":"2026-08-03"}`))
 	request.Header.Set("Content-Type", "application/json")

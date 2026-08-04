@@ -92,10 +92,12 @@ func (r *Repository) SaveArticle(ctx context.Context, source api.Source, article
 		return fmt.Errorf("clear article %d CVE links: %w", articleID, err)
 	}
 	for _, cve := range extractCVEs(article.Title + " " + description + " " + body) {
-		if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO cves (cve_id, first_seen) VALUES (?, ?)`, cve, day); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO cves (cve_id, first_seen)
+			SELECT ?, ? WHERE NOT EXISTS (SELECT 1 FROM rejected_cves WHERE cve_id = ?)`, cve, day, cve); err != nil {
 			return fmt.Errorf("insert cve %s: %w", cve, err)
 		}
-		if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO article_cves (article_id, cve_id) VALUES (?, ?)`, articleID, cve); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO article_cves (article_id, cve_id)
+			SELECT ?, ? WHERE EXISTS (SELECT 1 FROM cves WHERE cve_id = ?)`, articleID, cve, cve); err != nil {
 			return fmt.Errorf("link cve %s: %w", cve, err)
 		}
 	}
