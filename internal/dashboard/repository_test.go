@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -45,6 +46,23 @@ func TestDashboardAggregatesRecentThreatData(t *testing.T) {
 	}
 	if len(value.AttackMethods) != 2 || len(value.ThreatActors) != 2 || len(value.CVEs) != 1 {
 		t.Fatalf("dashboard collections = %+v", value)
+	}
+}
+
+func TestBreakdownRejectsColumnOutsideAllowlist(t *testing.T) {
+	// Given a repository and a column containing SQL syntax.
+	db, err := database.Open(context.Background(), filepath.Join(t.TempDir(), "dashboard.db"))
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	// When the column reaches the dynamic breakdown boundary.
+	_, err = NewRepository(db).breakdown(context.Background(), "attack_method); DROP TABLE articles; --", 8)
+
+	// Then it is rejected before a SQL statement is selected.
+	if err == nil || !strings.Contains(err.Error(), "invalid") {
+		t.Fatalf("breakdown error = %v, want invalid column", err)
 	}
 }
 

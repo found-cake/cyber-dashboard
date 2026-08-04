@@ -44,11 +44,17 @@ func (r *Repository) Dashboard(ctx context.Context) (api.Dashboard, error) {
 }
 
 func (r *Repository) breakdown(ctx context.Context, column string, limit int) ([]api.BreakdownRow, error) {
-	if column != "attack_method" && column != "threat_actor" {
+	var query string
+	switch column {
+	case "attack_method":
+		query = `SELECT attack_method, COUNT(*) FROM articles
+    WHERE published_at >= date('now', '-29 days') GROUP BY attack_method ORDER BY COUNT(*) DESC LIMIT ?`
+	case "threat_actor":
+		query = `SELECT threat_actor, COUNT(*) FROM articles
+    WHERE published_at >= date('now', '-29 days') GROUP BY threat_actor ORDER BY COUNT(*) DESC LIMIT ?`
+	default:
 		return nil, fmt.Errorf("breakdown column %q: invalid", column)
 	}
-	query := fmt.Sprintf(`SELECT %s, COUNT(*) FROM articles
-    WHERE published_at >= date('now', '-29 days') GROUP BY %s ORDER BY COUNT(*) DESC LIMIT ?`, column, column)
 	rows, err := r.db.QueryContext(ctx, query, limit)
 	if err != nil {
 		return nil, fmt.Errorf("query %s breakdown: %w", column, err)
