@@ -1,0 +1,40 @@
+name: Browser tests
+
+on:
+  workflow_dispatch:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+
+jobs:
+  browser:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.issue.pull_request &&
+      github.event.comment.body == '/test_browser' &&
+      contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out selected branch
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Check out pull request merge commit
+        if: github.event_name == 'issue_comment'
+        uses: actions/checkout@v6
+        with:
+          ref: refs/pull/${{ github.event.issue.number }}/merge
+          persist-credentials: false
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          check-latest: true
+          cache-dependency-path: go.sum
+      - name: Verify Chrome installation
+        run: google-chrome --version
+      - name: Test Chromium scenarios
+        run: go test -race -tags=browser -shuffle=on -count=1 ./internal/feed ./internal/web
