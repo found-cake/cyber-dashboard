@@ -108,6 +108,21 @@ func (r *Repository) Save(ctx context.Context, value api.Report, timezoneOffsetM
 	return value, nil
 }
 
+func (r *Repository) Delete(ctx context.Context, id int64) error {
+	result, err := r.db.ExecContext(ctx, `DELETE FROM reports WHERE id = ?`, id)
+	if err != nil {
+		return fmt.Errorf("delete report %d: %w", id, err)
+	}
+	deleted, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("deleted report count %d: %w", id, err)
+	}
+	if deleted == 0 {
+		return fmt.Errorf("report %d: %w", id, ErrNotFound)
+	}
+	return nil
+}
+
 // encodeList stores a string list as a JSON array. Actor and sector names come from LLM
 // analysis of article text and routinely contain commas ("Scattered Spider, Inc.",
 // "금융, 보험"), which a comma-joined column cannot round-trip.

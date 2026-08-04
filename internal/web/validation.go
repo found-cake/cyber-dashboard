@@ -94,6 +94,7 @@ func writeBadRequest(c *echo.Context, message string) error {
 		"date is outside the 10-day feed retention window": "피드 보존 기간 10일을 벗어난 날짜입니다",
 		"type must be weekly or monthly":                   "보고서 유형은 weekly 또는 monthly여야 합니다",
 		"invalid report period":                            "보고서 기간이 올바르지 않습니다",
+		"invalid report id":                                "보고서 ID가 올바르지 않습니다",
 		"invalid LLM preset id":                            "LLM 프리셋 ID가 올바르지 않습니다",
 		"invalid source id":                                "뉴스 출처 ID가 올바르지 않습니다",
 		"language must be ko or en":                        "언어는 ko 또는 en이어야 합니다",

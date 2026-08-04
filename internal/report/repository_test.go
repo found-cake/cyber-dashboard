@@ -213,3 +213,52 @@ func TestListDecodesLegacyReportEntries_whenStoredAsCommaSeparatedText(t *testin
 		t.Fatalf("legacy sectors = %q", listed[0].Sectors)
 	}
 }
+
+func TestDeleteRemovesReport_whenIDExists(t *testing.T) {
+	// Given a stored report.
+	db, err := database.Open(context.Background(), filepath.Join(t.TempDir(), "dashboard.db"))
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	repository := NewRepository(db)
+	saved, err := repository.Save(context.Background(), api.Report{
+		Type: "weekly", PeriodStart: "2026-08-01", PeriodEnd: "2026-08-07",
+		Actors: []string{}, Sectors: []string{}, Summary: "Disposable report",
+	}, 0)
+	if err != nil {
+		t.Fatalf("save report: %v", err)
+	}
+
+	// When the stored report is deleted by ID.
+	err = repository.Delete(context.Background(), saved.ID)
+
+	// Then it is absent from the report list.
+	if err != nil {
+		t.Fatalf("delete report: %v", err)
+	}
+	listed, err := repository.List(context.Background())
+	if err != nil {
+		t.Fatalf("list reports: %v", err)
+	}
+	if len(listed) != 0 {
+		t.Fatalf("listed reports = %d, want 0", len(listed))
+	}
+}
+
+func TestDeleteReturnsNotFound_whenIDDoesNotExist(t *testing.T) {
+	// Given a report repository with no stored reports.
+	db, err := database.Open(context.Background(), filepath.Join(t.TempDir(), "dashboard.db"))
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	// When an unknown report ID is deleted.
+	err = NewRepository(db).Delete(context.Background(), 999999)
+
+	// Then callers can map the stable not-found error to HTTP 404.
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("delete error = %v, want ErrNotFound", err)
+	}
+}

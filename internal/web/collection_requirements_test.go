@@ -86,6 +86,7 @@ func TestUserFacingErrorsAlwaysIncludeKoreanAndEnglishMessages(t *testing.T) {
 		status int
 	}{
 		{name: "invalid JSON", method: http.MethodPost, path: "/api/collect", body: `{`, status: http.StatusBadRequest},
+		{name: "invalid report id", method: http.MethodDelete, path: "/api/reports/not-a-number", status: http.StatusBadRequest},
 		{name: "missing preset", method: http.MethodDelete, path: "/api/llm/presets/999999", status: http.StatusNotFound},
 	}
 

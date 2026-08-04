@@ -91,6 +91,7 @@ func NewServer(dependencies Dependencies) *Server {
 	e.PATCH("/api/settings/language", server.updateLanguage)
 	e.GET("/api/reports", server.listReports)
 	e.POST("/api/reports", server.createReport)
+	e.DELETE("/api/reports/:id", server.deleteReport)
 	e.POST("/api/llm/test", server.testLLM)
 	e.GET("/api/llm/presets", server.listLLMPresets)
 	e.POST("/api/llm/presets", server.createLLMPreset)

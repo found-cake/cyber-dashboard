@@ -157,6 +157,51 @@ func TestCreateReportGeneratesSummary_whenLLMIsConfigured(t *testing.T) {
 	}
 }
 
+func TestDeleteReportRemovesStoredReport_whenIDExists(t *testing.T) {
+	// Given a report created through the public API.
+	upstream := compatibleLLM(t, "Disposable report summary")
+	server, feeds, appSettings := newTestServer(t, &stubFetcher{})
+	configureLLM(t, appSettings, upstream.URL)
+	if err := feeds.SaveArticle(context.Background(), api.Source{ID: 1}, feed.FeedArticle{
+		ID: "sha256:delete-report", URL: "https://example.com/delete-report", Title: "Disposable threat",
+		Description: "Disposable report detail",
+	}, "2026-08-02"); err != nil {
+		t.Fatalf("save article: %v", err)
+	}
+	createRequest := httptest.NewRequest(http.MethodPost, "/api/reports", strings.NewReader(
+		`{"type":"weekly","period_start":"2026-08-01","period_end":"2026-08-03"}`))
+	createRequest.Header.Set("Content-Type", "application/json")
+	createRecorder := httptest.NewRecorder()
+	server.ServeHTTP(createRecorder, createRequest)
+	if createRecorder.Code != http.StatusCreated {
+		t.Fatalf("create status = %d, body = %s", createRecorder.Code, createRecorder.Body.String())
+	}
+	var created api.Report
+	if err := json.Unmarshal(createRecorder.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode created report: %v", err)
+	}
+
+	// When the report is deleted through its public route.
+	deleteRequest := httptest.NewRequest(http.MethodDelete, "/api/reports/"+strconv.FormatInt(created.ID, 10), nil)
+	deleteRecorder := httptest.NewRecorder()
+	server.ServeHTTP(deleteRecorder, deleteRequest)
+
+	// Then the API acknowledges deletion and excludes it from subsequent lists.
+	if deleteRecorder.Code != http.StatusNoContent {
+		t.Fatalf("delete status = %d, body = %s", deleteRecorder.Code, deleteRecorder.Body.String())
+	}
+	listRequest := httptest.NewRequest(http.MethodGet, "/api/reports", nil)
+	listRecorder := httptest.NewRecorder()
+	server.ServeHTTP(listRecorder, listRequest)
+	var listed []api.Report
+	if err := json.Unmarshal(listRecorder.Body.Bytes(), &listed); err != nil {
+		t.Fatalf("decode report list: %v", err)
+	}
+	if len(listed) != 0 {
+		t.Fatalf("listed reports = %d, want 0", len(listed))
+	}
+}
+
 func TestLLMPresetAPIManagesOnlyUserPresets(t *testing.T) {
 	// Given a new server with the built-in OpenAI preset.
 	server, _, _ := newTestServer(t, &stubFetcher{})

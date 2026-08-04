@@ -82,6 +82,17 @@ func (s *Server) createReport(c *echo.Context) error {
 	return c.JSON(http.StatusCreated, value)
 }
 
+func (s *Server) deleteReport(c *echo.Context) error {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || id < 1 {
+		return writeBadRequest(c, "invalid report id")
+	}
+	if err := s.reports.Delete(c.Request().Context(), id); err != nil {
+		return writeAPIError(c, err)
+	}
+	return c.NoContent(http.StatusNoContent)
+}
+
 func (s *Server) testLLM(c *echo.Context) error {
 	var err error
 	if c.Request().ContentLength == 0 {
