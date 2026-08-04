@@ -8,6 +8,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -92,6 +95,84 @@ func TestCVEExplorerNavigatesToSubpage_whenDashboardCardIsActivated(t *testing.T
 	}
 }
 
+func TestCVEExplorerRefreshesOnceAndShowsPendingCVSSAsNeutral(t *testing.T) {
+	// Given the CVE explorer contains an NVD assessment that is still pending.
+	server, started, release, refreshCalls := newCVERefreshServer(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	t.Cleanup(cancel)
+	browser, browserCancel := chromedp.NewContext(ctx)
+	t.Cleanup(browserCancel)
+	if err := chromedp.Run(browser,
+		chromedp.EmulateViewport(375, 812),
+		chromedp.Navigate(server.URL+"/#cves"),
+		chromedp.WaitVisible("#refresh-cves"),
+	); err != nil {
+		t.Fatalf("open CVE explorer: %v", err)
+	}
+	var pending struct {
+		Class string `json:"className"`
+		Title string `json:"title"`
+		Text  string `json:"text"`
+	}
+	if err := chromedp.Run(browser, chromedp.Evaluate(`(() => {
+		const badge = document.querySelector(".cve-page-table tbody tr td:nth-child(3) .badge");
+		return {className: badge.className, title: badge.title, text: badge.textContent};
+	})()`, &pending)); err != nil {
+		t.Fatalf("inspect pending CVSS: %v", err)
+	}
+	if strings.Contains(pending.Class, "badge-success") || pending.Title == "" || !strings.Contains(pending.Text, "NVD") {
+		t.Fatalf("pending badge = %+v, want neutral class and visible pending label", pending)
+	}
+
+	// When refresh is activated while the server request is still running.
+	if err := chromedp.Run(browser, chromedp.Click("#refresh-cves")); err != nil {
+		t.Fatalf("click refresh: %v", err)
+	}
+	select {
+	case <-started:
+	case <-time.After(3 * time.Second):
+		t.Fatal("refresh request did not reach server")
+	}
+	var running struct {
+		Disabled bool   `json:"disabled"`
+		Busy     string `json:"busy"`
+		Label    string `json:"label"`
+	}
+	if err := chromedp.Run(browser, chromedp.Evaluate(`(() => {
+		const button = document.querySelector("#refresh-cves");
+		return {disabled: button.disabled, busy: button.getAttribute("aria-busy"), label: button.textContent};
+	})()`, &running)); err != nil {
+		t.Fatalf("inspect running refresh: %v", err)
+	}
+	if !running.Disabled || running.Busy != "true" || !strings.Contains(running.Label, "중") {
+		t.Fatalf("running button = %+v, want disabled busy state", running)
+	}
+
+	// Then completion reloads dashboard data, unlocks the button, and reports the result.
+	release()
+	if err := chromedp.Run(browser,
+		chromedp.WaitVisible(`tr[data-href*="CVE-2026-1001"]`),
+		chromedp.WaitVisible("#toast-region .toast"),
+	); err != nil {
+		t.Fatalf("wait for refreshed dashboard: %v", err)
+	}
+	var completed struct {
+		Disabled bool   `json:"disabled"`
+		CVE      string `json:"cve"`
+		Toast    string `json:"toast"`
+	}
+	if err := chromedp.Run(browser, chromedp.Evaluate(`(() => ({
+		disabled: document.querySelector("#refresh-cves").disabled,
+		cve: document.querySelector(".cve-page-table tbody tr td:nth-child(2)").textContent,
+		toast: document.querySelector("#toast-region .toast").textContent
+	}))()`, &completed)); err != nil {
+		t.Fatalf("inspect completed refresh: %v", err)
+	}
+	if refreshCalls.Load() != 1 || completed.Disabled || completed.CVE != "CVE-2026-1001" || completed.Toast == "" {
+		t.Fatalf("calls = %d, completed = %+v", refreshCalls.Load(), completed)
+	}
+}
+
 func newCVENavigationServer(t *testing.T, cves []api.CVEInsight) *httptest.Server {
 	t.Helper()
 	staticFiles := http.FileServerFS(os.DirFS("../../static"))
@@ -100,8 +181,8 @@ func newCVENavigationServer(t *testing.T, cves []api.CVEInsight) *httptest.Serve
 		writeJSON(t, writer, api.Bootstrap{
 			Sources:       []api.Source{},
 			Reports:       []api.Report{},
-			Settings:      api.Settings{Language: "ko", Theme: "dark"},
-			LLMPresets:    []api.LLMPreset{},
+			Settings:      api.SettingsResponse{Language: "ko", Theme: "dark"},
+			LLMPresets:    []api.LLMPresetResponse{},
 			CollectedDays: []string{},
 		})
 	})
@@ -112,6 +193,44 @@ func newCVENavigationServer(t *testing.T, cves []api.CVEInsight) *httptest.Serve
 	server := httptest.NewServer(mux)
 	t.Cleanup(server.Close)
 	return server
+}
+
+func newCVERefreshServer(t *testing.T) (*httptest.Server, <-chan struct{}, func(), *atomic.Int32) {
+	t.Helper()
+	started := make(chan struct{}, 1)
+	finish := make(chan struct{})
+	var finishOnce sync.Once
+	release := func() { finishOnce.Do(func() { close(finish) }) }
+	var refreshCalls atomic.Int32
+	staticFiles := http.FileServerFS(os.DirFS("../../static"))
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/bootstrap", func(writer http.ResponseWriter, _ *http.Request) {
+		writeJSON(t, writer, api.Bootstrap{Settings: api.SettingsResponse{Language: "ko", Theme: "dark"}})
+	})
+	mux.HandleFunc("GET /api/dashboard", func(writer http.ResponseWriter, _ *http.Request) {
+		if refreshCalls.Load() == 0 {
+			writeJSON(t, writer, api.Dashboard{CVECount: 1, CVEs: []api.CVEInsight{{
+				ID: "CVE-2026-PENDING", CVSS: 0, AffectedProduct: "NVD enrichment pending", FirstSeen: "2026-08-01", Mentions: 1,
+			}}})
+			return
+		}
+		writeJSON(t, writer, api.Dashboard{CVECount: 1, CVEs: []api.CVEInsight{{
+			ID: "CVE-2026-1001", CVSS: 8.1, AffectedProduct: "acme / gateway", FirstSeen: "2026-08-01", Mentions: 2,
+		}}})
+	})
+	mux.HandleFunc("POST /api/cves/refresh", func(writer http.ResponseWriter, _ *http.Request) {
+		refreshCalls.Add(1)
+		started <- struct{}{}
+		<-finish
+		writeJSON(t, writer, api.CVERefreshResult{Updated: 1, Removed: 1, Warnings: []string{}})
+	})
+	mux.Handle("/", staticFiles)
+	server := httptest.NewServer(mux)
+	t.Cleanup(func() {
+		release()
+		server.Close()
+	})
+	return server, started, release, &refreshCalls
 }
 
 func writeJSON(t *testing.T, writer http.ResponseWriter, value any) {
