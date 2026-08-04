@@ -34,7 +34,9 @@
       noReports: "생성된 보고서가 없습니다", feedSubtitle: "위협 인텔리전스 피드", dailySummary: "일간 요약",
       settingsSub: "소스 · NVD 키 · LLM 엔드포인트", testing: "확인 중…", unknownActor: "미확인",
       cveRefreshDone: (updated, removed) => `CVE ${updated}개를 갱신하고 ${removed}개를 제거했습니다.`,
-      cveRefreshWarned: "일부 항목을 확인하세요."
+      cveRefreshWarned: "일부 항목을 확인하세요.", deleteReport: "보고서 삭제", deleteReportTitle: "보고서 삭제",
+      deleteReportConfirm: "정말로 삭제하시겠습니까?", deleteReportHint: "삭제한 보고서는 복구할 수 없습니다.",
+      deleting: "삭제 중…", reportDeleted: "보고서를 삭제했습니다."
     },
     en: {
       dashboard: "Dashboard", reports: "Reports", settings: "Settings", newReport: "New",
@@ -68,7 +70,9 @@
       noReports: "No reports yet", feedSubtitle: "Threat intelligence feed", dailySummary: "Daily summary",
       settingsSub: "Sources · NVD key · LLM endpoint", testing: "Testing…", unknownActor: "Unknown",
       cveRefreshDone: (updated, removed) => `Updated ${updated} CVEs and removed ${removed}.`,
-      cveRefreshWarned: "Review the warnings for some entries."
+      cveRefreshWarned: "Review the warnings for some entries.", deleteReport: "Delete report", deleteReportTitle: "Delete report",
+      deleteReportConfirm: "Are you sure you want to delete this report?", deleteReportHint: "Deleted reports cannot be recovered.",
+      deleting: "Deleting…", reportDeleted: "Report deleted."
     }
   };
 
@@ -841,7 +845,7 @@
     setHeader(report.type === "weekly" ? t("weekly") : t("monthly"), `${report.period_start} – ${report.period_end}`);
     const actors = report.actors.map(actor => esc(actor)).join(" · ") || esc(t("unknownActor"));
     $("#main-content").html(`<div class="content"><article class="report-sheet">
-      <header class="report-sheet-header"><div><h2>${esc(report.type === "weekly" ? t("weekly") : t("monthly"))}</h2><p>${esc(report.period_start)} – ${esc(report.period_end)}</p></div></header>
+      <header class="report-sheet-header"><div><h2>${esc(report.type === "weekly" ? t("weekly") : t("monthly"))}</h2><p>${esc(report.period_start)} – ${esc(report.period_end)}</p></div><button class="danger-button" id="delete-report" type="button">${esc(t("deleteReport"))}</button></header>
       <div class="report-metrics"><div><strong class="tone-info">${report.total}</strong><span>${esc(t("total"))}</span></div><div><strong class="tone-danger">${report.critical}</strong><span>${esc(t("critical"))}</span></div><div><strong class="tone-warning">${report.high}</strong><span>${esc(t("high"))}</span></div><div><strong>${report.medium}</strong><span>${esc(t("medium"))}</span></div></div>
       <section class="report-section"><h3>${esc(t("topThreat"))}</h3><p>${esc(report.top_threat)}</p></section>
       <section class="report-section"><h3>${esc(t("keyActors"))}</h3><p>${actors}</p></section>
@@ -850,6 +854,33 @@
     </article></div>`);
     applyViewScroll(`report:${report.id}`);
     closeDrawer();
+  }
+
+  function openDeleteReportModal(report) {
+    openModal(`<div class="modal modal-small" role="dialog" aria-modal="true" aria-labelledby="delete-report-title" aria-describedby="delete-report-description">
+      <div class="modal-header"><div><h2 id="delete-report-title">${esc(t("deleteReportTitle"))}</h2><p>${esc(report.period_start)} – ${esc(report.period_end)}</p></div></div>
+      <div class="modal-body"><p class="prose" id="delete-report-description">${esc(t("deleteReportConfirm"))}</p><p class="card-subtitle">${esc(t("deleteReportHint"))}</p></div>
+      <div class="modal-footer"><button class="secondary-button modal-close" type="button">${esc(t("cancel"))}</button><button class="danger-button" id="confirm-delete-report" data-delete-report-id="${report.id}" type="button">${esc(t("deleteReport"))}</button></div>
+    </div>`);
+  }
+
+  function deleteReport(id) {
+    const $button = $("#confirm-delete-report").prop("disabled", true).attr("aria-busy", "true").text(t("deleting"));
+    api("DELETE", `/api/reports/${encodeURIComponent(id)}`).done(() => {
+      state.bootstrap.reports = state.bootstrap.reports.filter(report => report.id !== id);
+      state.currentReport = null;
+      renderReportList();
+      // The button that opened this dialog lives in the report sheet that is about to be
+      // replaced, so restoring focus to it would strand keyboard users on a detached node.
+      modalLastFocus = null;
+      closeModal();
+      toast(t("reportDeleted"));
+      renderDashboard();
+      $("#main-content").trigger("focus");
+    }).fail(error => {
+      $button.prop("disabled", false).removeAttr("aria-busy").text(t("deleteReport"));
+      showRequestError(error);
+    });
   }
 
   function openModal(content) {
@@ -928,6 +959,8 @@
     $(document).on("click", "#refresh-cves", refreshCVEs);
     $(document).on("click", ".calendar-day[data-day]", function () { if (!this.disabled) selectDay($(this).data("day")); });
     $(document).on("click", "[data-report-id]", function () { const report = state.bootstrap.reports.find(item => item.id === Number($(this).data("report-id"))); if (report) renderReport(report); });
+    $(document).on("click", "#delete-report", () => { if (state.currentReport) openDeleteReportModal(state.currentReport); });
+    $(document).on("click", "#confirm-delete-report", function () { deleteReport(Number($(this).data("delete-report-id"))); });
     $(document).on("click", "tr[data-href]", function () { window.open($(this).data("href"), "_blank", "noopener"); });
     $(document).on("keydown", "tr[data-href]", function (event) { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); $(this).trigger("click"); } });
     $(document).on("click", ".modal-close", closeModal);
