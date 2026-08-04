@@ -68,8 +68,9 @@
     view: "dashboard",
     lang: localStorage.getItem("cyber-lang") || "ko",
     theme: localStorage.getItem("cyber-theme") || "dark",
-    month: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
-    selectedDay: formatDay(new Date()),
+    // Placeholders until /api/bootstrap supplies the configured offset; start() re-derives both.
+    month: null,
+    selectedDay: null,
     bootstrap: { sources: [], reports: [], settings: {}, llm_presets: [], collected_days: [] },
     dashboard: null,
     daily: null,
@@ -142,10 +143,29 @@
     return new Date(year, month - 1, date);
   }
 
+  // Every "today" in the UI — calendar highlight, retention window, report periods — comes
+  // from the configured UTC offset rather than the device clock, so the app agrees with
+  // itself on which day it is regardless of where the browser runs.
   function configuredToday() {
     const offset = Number(state.bootstrap.settings.timezone_offset_minutes) || 0;
     const shifted = new Date(Date.now() + offset * 60000);
     return new Date(shifted.getUTCFullYear(), shifted.getUTCMonth(), shifted.getUTCDate());
+  }
+
+  // Anchors the calendar on the configured today. Called once at bootstrap and again
+  // whenever the offset is saved, so a timezone change moves the highlight immediately.
+  function applyConfiguredToday() {
+    const today = configuredToday();
+    if (!state.selectedDay) state.selectedDay = formatDay(today);
+    if (!state.month) state.month = new Date(today.getFullYear(), today.getMonth(), 1);
+  }
+
+  // The feed keeps 10 days inclusive of today, matching the server's collect validation.
+  function retentionWindow() {
+    const today = configuredToday();
+    const oldest = new Date(today);
+    oldest.setDate(oldest.getDate() - 9);
+    return { today, oldest };
   }
 
   function timezoneOptions(selected) {
@@ -346,8 +366,7 @@
     for (let day = 1; day <= daysInMonth; day += 1) cells.push({ value: day, outside: false });
     let next = 1;
     while (cells.length % 7 !== 0) cells.push({ value: next++, outside: true });
-    const today = parseDay(formatDay(new Date()));
-    const oldest = new Date(today); oldest.setDate(oldest.getDate() - 9);
+    const { today, oldest } = retentionWindow();
     const dataDays = new Set(state.bootstrap.collected_days || []);
     const html = cells.map(cell => {
       if (cell.outside) return `<button class="calendar-day is-outside" type="button" disabled>${cell.value}</button>`;
@@ -486,8 +505,7 @@
 
   function selectDay(day) {
     const date = parseDay(day);
-    const today = parseDay(formatDay(new Date()));
-    const oldest = new Date(today); oldest.setDate(oldest.getDate() - 9);
+    const { today, oldest } = retentionWindow();
     if (date > today) return toast(t("futureDate"), true);
     if (date < oldest && !(state.bootstrap.collected_days || []).includes(day)) return toast(t("outsideRetention"), true);
     state.selectedDay = day;
@@ -696,7 +714,11 @@
         preset.api_key_configured = true;
         return saved;
       });
-    }).done(() => { toast(t("saved")); renderSettings(); }).fail(error => {
+    }).done(() => {
+      toast(t("saved"));
+      renderCalendar();
+      renderSettings();
+    }).fail(error => {
       $("#save-settings,#revert-settings").prop("disabled", false);
       showRequestError(error);
     });
@@ -935,6 +957,7 @@
       state.bootstrap = data;
       state.lang = localStorage.getItem("cyber-lang") || data.settings.language || state.lang;
       state.theme = localStorage.getItem("cyber-theme") || data.settings.theme || state.theme;
+      applyConfiguredToday();
       applyChrome();
       if (window.location.hash === "#cves") renderCVEExplorer();
       else renderDashboard();
