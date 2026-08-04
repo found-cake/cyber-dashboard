@@ -18,10 +18,14 @@ func (s *Server) saveSettings(c *echo.Context) error {
 	if err := validateSettings(value); err != nil {
 		return writeBadRequest(c, err.Error())
 	}
-	if err := s.settings.Save(c.Request().Context(), value); err != nil {
+	resolved, err := s.settings.ResolveSecrets(c.Request().Context(), value)
+	if err != nil {
 		return writeAPIError(c, err)
 	}
-	return c.JSON(http.StatusOK, value)
+	if err := s.settings.Save(c.Request().Context(), resolved); err != nil {
+		return writeAPIError(c, err)
+	}
+	return c.JSON(http.StatusOK, settingsResponse(resolved))
 }
 
 func (s *Server) updateLanguage(c *echo.Context) error {
@@ -90,7 +94,11 @@ func (s *Server) testLLM(c *echo.Context) error {
 		if validateErr := validateSettings(value); validateErr != nil {
 			return writeBadRequest(c, validateErr.Error())
 		}
-		err = s.summaries.TestConnectionWithSettings(c.Request().Context(), value)
+		resolved, resolveErr := s.settings.ResolveSecrets(c.Request().Context(), value)
+		if resolveErr != nil {
+			return writeAPIError(c, resolveErr)
+		}
+		err = s.summaries.TestConnectionWithSettings(c.Request().Context(), resolved)
 	}
 	if err != nil {
 		logServerError(c, http.StatusBadGateway, err)
@@ -109,7 +117,7 @@ func (s *Server) listLLMPresets(c *echo.Context) error {
 	if err != nil {
 		return writeAPIError(c, err)
 	}
-	return c.JSON(http.StatusOK, values)
+	return c.JSON(http.StatusOK, llmPresetResponses(values))
 }
 
 func (s *Server) createLLMPreset(c *echo.Context) error {
@@ -124,7 +132,7 @@ func (s *Server) createLLMPreset(c *echo.Context) error {
 	if err != nil {
 		return writeAPIError(c, err)
 	}
-	return c.JSON(http.StatusCreated, value)
+	return c.JSON(http.StatusCreated, llmPresetResponse(value))
 }
 
 func (s *Server) deleteLLMPreset(c *echo.Context) error {

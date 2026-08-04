@@ -2,12 +2,12 @@ package api
 
 // Bootstrap is returned by GET /api/bootstrap.
 type Bootstrap struct {
-	Sources       []Source       `json:"sources"`
-	Reports       []Report       `json:"reports"`
-	Settings      Settings       `json:"settings"`
-	LLMPresets    []LLMPreset    `json:"llm_presets"`
-	CollectedDays []string       `json:"collected_days"`
-	Collection    *CollectionJob `json:"collection,omitempty"`
+	Sources       []Source            `json:"sources"`
+	Reports       []Report            `json:"reports"`
+	Settings      SettingsResponse    `json:"settings"`
+	LLMPresets    []LLMPresetResponse `json:"llm_presets"`
+	CollectedDays []string            `json:"collected_days"`
+	Collection    *CollectionJob      `json:"collection,omitempty"`
 }
 
 // HealthResponse is returned by GET /healthz.

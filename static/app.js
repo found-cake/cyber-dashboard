@@ -16,6 +16,7 @@
       nvdTitle: "NVD API 키", nvdHint: "수집을 시작하려면 NVD API 키를 먼저 등록해야 합니다.",
       llmTitle: "LLM 설정", llmHint: "OpenAI Chat Completions 호환 엔드포인트를 연결합니다.",
       baseURL: "Base URL", model: "모델 이름", apiKey: "API 키", timeout: "타임아웃(초)",
+      keySaved: "키 저장됨", keyStoredPlaceholder: "저장된 키 유지", keyInputHint: "저장된 키는 표시하지 않습니다. 비워 두면 기존 키를 유지합니다.",
       preset: "프리셋", presetAdd: "현재 설정 추가", presetAddHint: "입력한 Base URL과 모델을 프리셋으로 저장", presetRemove: "프리셋 삭제",
       presetAdded: "프리셋을 추가했습니다.", presetRemoved: "프리셋을 삭제했습니다.",
       save: "설정 저장", test: "연결 테스트", requestPreview: "요청 미리보기", schema: "기사 분류 스키마",
@@ -45,6 +46,7 @@
       nvdTitle: "NVD API key", nvdHint: "Register an NVD API key before starting collection.",
       llmTitle: "LLM settings", llmHint: "Connect any OpenAI Chat Completions compatible endpoint.",
       baseURL: "Base URL", model: "Model name", apiKey: "API key", timeout: "Timeout (s)",
+      keySaved: "Key saved", keyStoredPlaceholder: "Keep saved key", keyInputHint: "Saved keys are never displayed. Leave this blank to keep the existing key.",
       preset: "Presets", presetAdd: "Add current", presetAddHint: "Save the current Base URL and model as a preset", presetRemove: "Remove preset",
       presetAdded: "Preset added.", presetRemoved: "Preset removed.",
       save: "Save settings", test: "Test connection", requestPreview: "Request preview", schema: "Article classification schema",
@@ -104,6 +106,14 @@
     } catch (_) {
       return false;
     }
+  }
+
+  function llmKeyIsConfigured(settings) {
+    if (String(settings.llm_api_key || "").trim()) return true;
+    const preset = (state.bootstrap.llm_presets || []).find(item => matchesPreset(item, settings.llm_base_url, settings.llm_model));
+    if (preset?.api_key_configured) return true;
+    const current = state.bootstrap.settings;
+    return Boolean(current.llm_api_key_configured && normalizedEndpoint(current.llm_base_url) === normalizedEndpoint(settings.llm_base_url) && current.llm_model === settings.llm_model);
   }
 
   function formatDay(date) {
@@ -480,20 +490,20 @@
     const settings = state.bootstrap.settings;
     const presets = state.bootstrap.llm_presets || [];
     const sources = state.bootstrap.sources.map(source => `<div class="source-row"><span class="status-dot${source.enabled ? " is-on" : ""}" aria-hidden="true"></span><span><strong>${esc(source.name)}</strong><small>${esc(source.host)} · RSS feed</small></span><button type="button" class="toggle" role="switch" aria-label="${esc(source.name)}" aria-checked="${source.enabled}" data-source-id="${source.id}"></button><span class="badge ${source.enabled ? "badge-success" : ""}">${source.enabled ? "Active" : "Off"}</span></div>`).join("");
-    const preview = `POST ${(settings.llm_base_url || "<base-url>").replace(/\/$/, "")}/chat/completions\nAuthorization: Bearer ${settings.llm_api_key ? "••••••••" : "<api-key>"}\n\n{ "model": "${settings.llm_model || "<model>"}",\n  "temperature": 0.2,\n  "messages": [ … ] }`;
+    const preview = `POST ${(settings.llm_base_url || "<base-url>").replace(/\/$/, "")}/chat/completions\nAuthorization: Bearer ${llmKeyIsConfigured(settings) ? "••••••••" : "<api-key>"}\n\n{ "model": "${settings.llm_model || "<model>"}",\n  "temperature": 0.2,\n  "messages": [ … ] }`;
     const schema = `{ "attack_method": "APT | 랜섬웨어 | 공급망 | …",\n  "threat_actor": "Lazarus Group | SideCopy | TeamPCP | 미확인",\n  "actor_country": "DPRK | Pakistan | null",\n  "target_sector": "금융 | 정부 | 통신 | …",\n  "severity": "Critical | High | Medium",\n  "cve": ["CVE-YYYY-NNNN", …]   // 정규식 추출, LLM 응답 아님\n}`;
     const presetItems = presets.map(preset => {
       const active = matchesPreset(preset, settings.llm_base_url, settings.llm_model);
-      return `<span class="preset-item"><button class="preset-chip${active ? " is-active" : ""}" type="button" data-preset-id="${preset.id}" aria-pressed="${active}" title="${esc(preset.base_url)} · ${esc(preset.model)}"><span class="preset-dot" aria-hidden="true"></span><span><strong>${esc(preset.label)}</strong><small>${esc(preset.model)}${preset.api_key ? " · Key saved" : ""}</small></span></button>${preset.builtin ? "" : `<button class="preset-remove" type="button" data-remove-preset-id="${preset.id}" aria-label="${esc(t("presetRemove"))}: ${esc(preset.label)}" title="${esc(t("presetRemove"))}">×</button>`}</span>`;
+      return `<span class="preset-item"><button class="preset-chip${active ? " is-active" : ""}" type="button" data-preset-id="${preset.id}" aria-pressed="${active}" title="${esc(preset.base_url)} · ${esc(preset.model)}"><span class="preset-dot" aria-hidden="true"></span><span><strong>${esc(preset.label)}</strong><small>${esc(preset.model)}${preset.api_key_configured ? ` · ${esc(t("keySaved"))}` : ""}</small></span></button>${preset.builtin ? "" : `<button class="preset-remove" type="button" data-remove-preset-id="${preset.id}" aria-label="${esc(t("presetRemove"))}: ${esc(preset.label)}" title="${esc(t("presetRemove"))}">×</button>`}</span>`;
     }).join("");
     const addDisabled = !canAddPreset(settings.llm_base_url, settings.llm_model);
     $("#main-content").html(`<div class="content settings-stack">
       <section class="card"><div class="card-header"><h2>${esc(t("sourceSettings"))}</h2></div><div class="source-list">${sources}</div></section>
-      <section class="card"><div class="card-header"><div><h2>${esc(t("nvdTitle"))}</h2><p class="card-subtitle">${esc(t("nvdHint"))}</p></div><a href="https://nvd.nist.gov/developers/request-an-api-key" target="_blank" rel="noopener noreferrer">NVD ↗</a></div><div class="field"><label for="nvd-api-key">${esc(t("apiKey"))}</label><input id="nvd-api-key" type="password" autocomplete="off" value="${esc(settings.nvd_api_key || "")}"><small>50 requests / 30s · 5 / 30s without key</small></div></section>
+      <section class="card"><div class="card-header"><div><h2>${esc(t("nvdTitle"))}</h2><p class="card-subtitle">${esc(t("nvdHint"))}</p></div><a href="https://nvd.nist.gov/developers/request-an-api-key" target="_blank" rel="noopener noreferrer">NVD ↗</a></div><div class="field"><label for="nvd-api-key">${esc(t("apiKey"))}</label><input id="nvd-api-key" type="password" autocomplete="off" value="" placeholder="${settings.nvd_api_key_configured ? esc(t("keyStoredPlaceholder")) : ""}"><small>${esc(t("keyInputHint"))} · <span class="rate-limit">50 requests / 30s</span></small></div></section>
       <section class="card"><div class="card-header"><div><h2>${esc(t("timezone"))}</h2><p class="card-subtitle">${esc(t("timezoneHint"))}</p></div></div><div class="field"><label for="timezone-offset">UTC offset</label><select id="timezone-offset">${timezoneOptions(Number(settings.timezone_offset_minutes) || 0)}</select></div></section>
       <section class="card"><div class="card-header"><div><h2>${esc(t("llmTitle"))}</h2><p class="card-subtitle">${esc(t("llmHint"))}</p></div><span class="badge badge-info">OpenAI compatible</span></div>
         <div class="field-grid"><div class="preset-field full-span"><div class="preset-head"><span>${esc(t("preset"))}</span><button class="preset-add" id="add-llm-preset" type="button" title="${esc(t("presetAddHint"))}"${addDisabled ? " disabled" : ""}><span aria-hidden="true">＋</span>${esc(t("presetAdd"))}</button></div><div class="preset-list" id="llm-preset-list">${presetItems}</div></div>
-          <div class="field"><label for="llm-base-url">${esc(t("baseURL"))}</label><input id="llm-base-url" type="url" value="${esc(settings.llm_base_url || "")}"></div><div class="field"><label for="llm-model">${esc(t("model"))}</label><input id="llm-model" value="${esc(settings.llm_model || "")}"></div><div class="field"><label for="llm-api-key">${esc(t("apiKey"))}</label><input id="llm-api-key" type="password" autocomplete="off" value="${esc(settings.llm_api_key || "")}"></div><div class="field"><label for="llm-timeout">${esc(t("timeout"))}</label><input id="llm-timeout" type="number" min="1" max="600" value="${Number(settings.llm_timeout) || 60}"></div>
+          <div class="field"><label for="llm-base-url">${esc(t("baseURL"))}</label><input id="llm-base-url" type="url" value="${esc(settings.llm_base_url || "")}"></div><div class="field"><label for="llm-model">${esc(t("model"))}</label><input id="llm-model" value="${esc(settings.llm_model || "")}"></div><div class="field"><label for="llm-api-key">${esc(t("apiKey"))}</label><input id="llm-api-key" type="password" autocomplete="off" value="" placeholder="${llmKeyIsConfigured(settings) ? esc(t("keyStoredPlaceholder")) : ""}"><small>${esc(t("keyInputHint"))}</small></div><div class="field"><label for="llm-timeout">${esc(t("timeout"))}</label><input id="llm-timeout" type="number" min="1" max="600" value="${Number(settings.llm_timeout) || 60}"></div>
           <div class="full-span cluster"><button class="secondary-button" id="test-llm" type="button">${esc(t("test"))}</button></div>
           <div class="field full-span"><label>${esc(t("requestPreview"))}</label><pre class="request-preview" id="request-preview">${esc(preview)}</pre></div></div>
       </section>
@@ -512,12 +522,12 @@
     };
   }
 
-  function applySettingsDraft(settings) {
+  function applyNonSecretSettingsDraft(settings) {
     $("#llm-base-url").val(settings.llm_base_url);
     $("#llm-model").val(settings.llm_model);
-    $("#llm-api-key").val(settings.llm_api_key);
+    $("#llm-api-key").val("");
     $("#llm-timeout").val(settings.llm_timeout);
-    $("#nvd-api-key").val(settings.nvd_api_key);
+    $("#nvd-api-key").val("");
     $("#timezone-offset").val(settings.timezone_offset_minutes);
     refreshSettingsFormState();
   }
@@ -533,8 +543,10 @@
     if (!$("#llm-base-url").length) return;
     refreshPresetControls();
     const settings = settingsFormValue();
-    const preview = `POST ${(settings.llm_base_url || "<base-url>").replace(/\/$/, "")}/chat/completions\nAuthorization: Bearer ${settings.llm_api_key ? "••••••••" : "<api-key>"}\n\n{ "model": "${settings.llm_model || "<model>"}",\n  "temperature": 0.2,\n  "messages": [ … ] }`;
+    const configured = llmKeyIsConfigured(settings);
+    const preview = `POST ${(settings.llm_base_url || "<base-url>").replace(/\/$/, "")}/chat/completions\nAuthorization: Bearer ${configured ? "••••••••" : "<api-key>"}\n\n{ "model": "${settings.llm_model || "<model>"}",\n  "temperature": 0.2,\n  "messages": [ … ] }`;
     $("#request-preview").text(preview);
+    $("#llm-api-key").attr("placeholder", configured ? t("keyStoredPlaceholder") : "");
     $("#settings-save-bar").prop("hidden", sameSettings(settings, state.bootstrap.settings));
   }
 
@@ -564,7 +576,7 @@
     if (!preset) return;
     $("#llm-base-url").val(preset.base_url);
     $("#llm-model").val(preset.model);
-    $("#llm-api-key").val(preset.api_key || "");
+    $("#llm-api-key").val("");
     refreshSettingsFormState();
   }
 
@@ -577,7 +589,7 @@
       state.bootstrap.llm_presets.push(preset);
       toast(t("presetAdded"));
       renderSettings();
-      applySettingsDraft(draft);
+      applyNonSecretSettingsDraft(draft);
     }).fail(error => { refreshPresetControls(); showRequestError(error); });
   }
 
@@ -587,7 +599,7 @@
       state.bootstrap.llm_presets = state.bootstrap.llm_presets.filter(preset => preset.id !== id);
       toast(t("presetRemoved"));
       renderSettings();
-      applySettingsDraft(draft);
+      applyNonSecretSettingsDraft(draft);
     }).fail(showRequestError);
   }
 
@@ -597,9 +609,9 @@
     $("#save-settings,#revert-settings").prop("disabled", true);
     api("PUT", "/api/settings", settings).then(saved => {
       state.bootstrap.settings = saved;
-      if (!preset) return saved;
+      if (!preset || !String(settings.llm_api_key || "").trim()) return saved;
       return api("PUT", `/api/llm/presets/${preset.id}`, { api_key: settings.llm_api_key }).then(() => {
-        preset.api_key = settings.llm_api_key;
+        preset.api_key_configured = true;
         return saved;
       });
     }).done(() => { toast(t("saved")); renderSettings(); }).fail(error => {

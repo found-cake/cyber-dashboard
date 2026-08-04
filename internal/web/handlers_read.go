@@ -30,8 +30,8 @@ func (s *Server) bootstrap(c *echo.Context) error {
 		return writeAPIError(c, err)
 	}
 	return c.JSON(http.StatusOK, api.Bootstrap{
-		Sources: sources, Reports: reports, Settings: appSettings,
-		LLMPresets: presets, CollectedDays: days, Collection: s.collections.Active(),
+		Sources: sources, Reports: reports, Settings: settingsResponse(appSettings),
+		LLMPresets: llmPresetResponses(presets), CollectedDays: days, Collection: s.collections.Active(),
 	})
 }
 

@@ -72,11 +72,12 @@ func (r *Repository) CreatePreset(ctx context.Context, request api.CreateLLMPres
 }
 
 func (r *Repository) UpdatePresetAPIKey(ctx context.Context, id int64, apiKey string) error {
-	encryptedKey, err := r.secrets.seal(apiKey)
+	encryptedKey, replaceKey, err := r.sealReplacement(apiKey)
 	if err != nil {
 		return fmt.Errorf("seal LLM preset API key: %w", err)
 	}
-	result, err := r.db.ExecContext(ctx, `UPDATE llm_presets SET api_key = ? WHERE id = ?`, encryptedKey, id)
+	result, err := r.db.ExecContext(ctx, `UPDATE llm_presets
+	SET api_key = CASE WHEN ? THEN ? ELSE api_key END WHERE id = ?`, replaceKey, encryptedKey, id)
 	if err != nil {
 		return fmt.Errorf("update LLM preset %d API key: %w", id, err)
 	}

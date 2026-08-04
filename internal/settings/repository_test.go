@@ -48,3 +48,41 @@ func TestRepositoryEncryptsSecrets_whenSettingsAreSaved(t *testing.T) {
 		t.Fatal("plaintext credential found in database")
 	}
 }
+
+func TestRepositoryPreservesSecrets_whenSavedValuesAreBlank(t *testing.T) {
+	// Given persisted settings containing both supported credentials.
+	databasePath := filepath.Join(t.TempDir(), "dashboard.db")
+	db, err := database.Open(context.Background(), databasePath)
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	repository, err := NewRepository(db, databasePath+".key")
+	if err != nil {
+		t.Fatalf("open repository: %v", err)
+	}
+	value := api.Settings{Language: "ko", Theme: "dark", Accent: "#4f6ef7", LLMBaseURL: "https://api.openai.com/v1", LLMModel: "gpt-4o-mini", LLMAPIKey: "llm-secret", LLMTimeout: 60, NVDAPIKey: "nvd-secret", TimezoneOffsetMinutes: 540}
+	if err := repository.Save(context.Background(), value); err != nil {
+		t.Fatalf("save initial settings: %v", err)
+	}
+
+	// When a later save leaves both secret fields blank.
+	value.LLMAPIKey = ""
+	value.NVDAPIKey = "  "
+	value.LLMTimeout = 75
+	if err := repository.Save(context.Background(), value); err != nil {
+		t.Fatalf("save settings: %v", err)
+	}
+	loaded, err := repository.Get(context.Background())
+	if err != nil {
+		t.Fatalf("load settings: %v", err)
+	}
+
+	// Then only the non-secret change is applied.
+	if loaded.LLMAPIKey != "llm-secret" || loaded.NVDAPIKey != "nvd-secret" {
+		t.Fatalf("loaded secrets = %q / %q, want originals", loaded.LLMAPIKey, loaded.NVDAPIKey)
+	}
+	if loaded.LLMTimeout != 75 {
+		t.Fatalf("timeout = %d, want 75", loaded.LLMTimeout)
+	}
+}

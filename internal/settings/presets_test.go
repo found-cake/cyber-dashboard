@@ -125,6 +125,33 @@ func TestUpdatePresetAPIKeyReplacesOnlySelectedServerCredential(t *testing.T) {
 	}
 }
 
+func TestUpdatePresetAPIKeyPreservesCredential_whenValueIsBlank(t *testing.T) {
+	// Given a preset with a saved server credential.
+	repository := newPresetTestRepository(t)
+	preset, err := repository.CreatePreset(context.Background(), api.CreateLLMPresetRequest{
+		BaseURL: "http://localhost:11434/v1", Model: "qwen3:8b", APIKey: "saved-key",
+	})
+	if err != nil {
+		t.Fatalf("create preset: %v", err)
+	}
+
+	// When the update request contains only whitespace.
+	if err := repository.UpdatePresetAPIKey(context.Background(), preset.ID, "  "); err != nil {
+		t.Fatalf("update preset key: %v", err)
+	}
+	presets, err := repository.Presets(context.Background())
+	if err != nil {
+		t.Fatalf("list presets: %v", err)
+	}
+
+	// Then the stored key is unchanged.
+	for _, candidate := range presets {
+		if candidate.ID == preset.ID && candidate.APIKey != "saved-key" {
+			t.Fatalf("preset key = %q, want saved-key", candidate.APIKey)
+		}
+	}
+}
+
 func TestCreatePresetRejectsDuplicateEndpointAndModel(t *testing.T) {
 	// Given the seeded OpenAI endpoint and model.
 	repository := newPresetTestRepository(t)
