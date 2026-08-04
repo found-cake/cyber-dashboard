@@ -91,6 +91,7 @@
     dashboardScroll: 0
   };
   let modalLastFocus = null;
+  let renderedScrollKey = null;
   const collectionTask = window.createCollectionTask(serverCollection);
   const cveRefreshTask = window.createCVERefreshTask(serverCVERefresh);
 
@@ -318,6 +319,21 @@
     document.title = `${title} · Cyber Dashboard`;
   }
 
+  // The CVE explorer is the only hash-routed view. Leaving it for any other view has to
+  // drop the stale #cves fragment, or a reload routes back to it and the dashboard nav
+  // hands off to a hashchange that no longer has anything to do.
+  function clearCVEHash() {
+    if (window.location.hash !== "#cves") return;
+    window.history.replaceState(null, "", window.location.pathname + window.location.search);
+  }
+
+  // Scroll resets when the view identity changes, not on every re-render, so a language
+  // switch or a source-filter change leaves the reader where they were.
+  function applyViewScroll(key, offset = 0) {
+    if (renderedScrollKey !== key) $("#main-content").scrollTop(offset);
+    renderedScrollKey = key;
+  }
+
   function setLoading() {
     $("#main-content").html(`<div class="content stats-grid" aria-label="Loading">
       ${Array.from({ length: 4 }, () => '<div class="skeleton skeleton-card"></div>').join("")}
@@ -428,6 +444,7 @@
     const restoreScroll = state.view === "cves" ? state.dashboardScroll : 0;
     state.view = "dashboard";
     state.currentReport = null;
+    clearCVEHash();
     updateNavigation();
     closeDrawer();
     setHeader(t("dashboard"), t("dashboardSub"));
@@ -453,7 +470,7 @@
           <div class="table-region" role="region" aria-label="${esc(t("recentCVEs"))}" tabindex="0"><table class="data-table"><thead><tr><th>CVE ID</th><th>CVSS</th><th>${esc(t("product"))}</th><th>${esc(t("firstSeen"))}</th><th>${esc(t("mentions"))}</th></tr></thead><tbody>${cveRows || `<tr><td colspan="5">${esc(t("noData"))}</td></tr>`}</tbody></table></div>
         </section>
       </div>`);
-      $("#main-content").scrollTop(restoreScroll);
+      applyViewScroll("dashboard", restoreScroll);
     }).fail(showRequestError);
   }
 
@@ -472,7 +489,8 @@
         <section class="card cve-page-summary"><div><span class="badge badge-info">${cves.length} ${esc(t("entries"))}</span><p class="card-subtitle">${esc(t("cveExplorerHint"))}</p></div><div class="cluster"><button class="secondary-button" id="refresh-cves" type="button">${esc(t("refreshCVEs"))}</button><a class="secondary-button cve-back-link" href="#">${esc(t("backToDashboard"))}</a></div></section>
         <section class="card"><div class="table-region cve-page-table" role="region" aria-label="${esc(t("allCVEs"))}" tabindex="0"><p class="cve-scroll-hint">${esc(t("cveScrollHint"))}</p><table class="data-table"><thead><tr><th>${esc(t("rank"))}</th><th>CVE ID</th><th>CVSS</th><th>${esc(t("mentions"))}</th><th>${esc(t("riskScore"))}</th><th>${esc(t("product"))}</th><th>${esc(t("firstSeen"))}</th></tr></thead><tbody>${rows || `<tr><td colspan="7">${esc(t("noData"))}</td></tr>`}</tbody></table></div></section>
       </div>`);
-      $("#main-content").scrollTop(0).trigger("focus");
+      applyViewScroll("cves");
+      $("#main-content").trigger("focus");
       refreshCVEControls();
     };
 
@@ -532,6 +550,7 @@
 
   function renderDaily() {
     state.view = "daily";
+    clearCVEHash();
     updateNavigation();
     const daily = state.daily || { articles: [], summary: "" };
     setHeader(formatDisplayDate(state.selectedDay), t("feedSubtitle"));
@@ -548,6 +567,7 @@
       <div class="daily-toolbar"><div class="field daily-filter"><label for="source-filter">${esc(t("sourceFilter"))}</label><select id="source-filter"><option value="all">${esc(t("allSources"))}</option>${sources.map(source => `<option value="${esc(source)}"${source === state.dailySource ? " selected" : ""}>${esc(source)}</option>`).join("")}</select></div><div class="cluster collection-actions"><button class="secondary-button" id="recollect-day" type="button">${esc(t("recollect"))}</button><button class="secondary-button cancel-collection" id="cancel-active-collection" type="button" hidden>${esc(t("cancel"))}</button></div></div>
       <section class="article-list">${articles || `<div class="empty-state"><span class="empty-mark">00</span><h2>${esc(t("noArticles"))}</h2></div>`}</section>
     </div>`);
+    applyViewScroll(`daily:${state.selectedDay}`);
     refreshCollectionControls();
     closeDrawer();
   }
@@ -596,6 +616,7 @@
   function renderSettings() {
     state.view = "settings";
     state.currentReport = null;
+    clearCVEHash();
     updateNavigation();
     setHeader(t("settings"), t("settingsSub"));
     const settings = state.bootstrap.settings;
@@ -620,6 +641,7 @@
       </section>
       <section class="card"><div class="card-header"><h2>${esc(t("schema"))}</h2></div><pre class="schema-preview">${esc(schema)}</pre></section>
     </div><div class="settings-save-bar" id="settings-save-bar" role="status" aria-live="polite" hidden><strong>${esc(t("unsavedSettings"))}</strong><div class="cluster"><button class="secondary-button" id="revert-settings" type="button">${esc(t("revert"))}</button><button class="primary-button" id="save-settings" type="button">${esc(t("save"))}</button></div></div>`);
+    applyViewScroll("settings");
     refreshSettingsFormState();
     closeDrawer();
   }
@@ -812,6 +834,7 @@
   function renderReport(report) {
     state.view = "report";
     state.currentReport = report;
+    clearCVEHash();
     updateNavigation();
     renderReportList();
     setHeader(report.type === "weekly" ? t("weekly") : t("monthly"), `${report.period_start} – ${report.period_end}`);
@@ -824,6 +847,7 @@
       <section class="report-section"><h3>${esc(t("summary"))}</h3><p class="prose">${esc(report.summary)}</p></section>
       <section class="report-section"><h3>${esc(t("targetSectors"))}</h3><div class="report-sectors">${report.sectors.map(sector => `<span>${esc(sector)}</span>`).join("")}</div></section>
     </article></div>`);
+    applyViewScroll(`report:${report.id}`);
     closeDrawer();
   }
 
@@ -897,10 +921,7 @@
   }
 
   function bindEvents() {
-    $(document).on("click", "[data-view='dashboard']", () => {
-      if (window.location.hash === "#cves") window.location.hash = "";
-      else renderDashboard();
-    });
+    $(document).on("click", "[data-view='dashboard']", () => renderDashboard());
     $(document).on("click", "[data-view='settings']", renderSettings);
     $(document).on("click", "#open-cve-explorer", () => { state.dashboardScroll = $("#main-content").scrollTop(); });
     $(document).on("click", "#refresh-cves", refreshCVEs);
