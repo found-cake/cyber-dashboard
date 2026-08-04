@@ -48,6 +48,10 @@ CREATE TABLE IF NOT EXISTS article_cves (
   cve_id TEXT NOT NULL REFERENCES cves(cve_id) ON DELETE CASCADE,
   PRIMARY KEY (article_id, cve_id)
 );
+CREATE INDEX IF NOT EXISTS articles_published_at_time_id_idx
+  ON articles (published_at, published_time, id);
+CREATE INDEX IF NOT EXISTS article_cves_cve_id_article_id_idx
+  ON article_cves (cve_id, article_id);
 CREATE TABLE IF NOT EXISTS reports (
   id INTEGER PRIMARY KEY,
   type TEXT NOT NULL,

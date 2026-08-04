@@ -3,7 +3,9 @@ package database
 import (
 	"context"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestOpenAppliesSchemaAndSeedsIdempotently(t *testing.T) {
@@ -36,5 +38,105 @@ func TestOpenAppliesSchemaAndSeedsIdempotently(t *testing.T) {
 	}
 	if sources != 6 || presets != 1 {
 		t.Fatalf("seed counts = sources:%d presets:%d, want 6 and 1", sources, presets)
+	}
+}
+
+func TestOpenInitializesLocalTimezoneAndPreservesSavedValue(t *testing.T) {
+	// Given a new database and the current local timezone offset.
+	path := filepath.Join(t.TempDir(), "dashboard.db")
+	_, offsetSeconds := time.Now().Zone()
+
+	// When the database is opened for the first time.
+	db, err := Open(context.Background(), path)
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+
+	// Then the timezone is initialized from the local environment.
+	var offsetMinutes int
+	if err := db.QueryRow(`SELECT timezone_offset_minutes FROM settings WHERE id = 1`).Scan(&offsetMinutes); err != nil {
+		t.Fatalf("read initialized timezone: %v", err)
+	}
+	if want := offsetSeconds / 60; offsetMinutes != want {
+		t.Fatalf("timezone offset = %d, want %d", offsetMinutes, want)
+	}
+
+	// When a user-defined timezone is saved and the database is reopened.
+	const savedOffset = 123
+	if _, err := db.Exec(`UPDATE settings SET timezone_offset_minutes = ? WHERE id = 1`, savedOffset); err != nil {
+		t.Fatalf("save timezone: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close database: %v", err)
+	}
+	db, err = Open(context.Background(), path)
+	if err != nil {
+		t.Fatalf("reopen database: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	// Then the saved timezone is preserved.
+	if err := db.QueryRow(`SELECT timezone_offset_minutes FROM settings WHERE id = 1`).Scan(&offsetMinutes); err != nil {
+		t.Fatalf("read saved timezone: %v", err)
+	}
+	if offsetMinutes != savedOffset {
+		t.Fatalf("timezone offset = %d, want saved value %d", offsetMinutes, savedOffset)
+	}
+}
+
+func TestOpenCreatesIndexesUsedByArticleDateAndCVEQueries(t *testing.T) {
+	// Given a database initialized from the final schema.
+	db, err := Open(context.Background(), filepath.Join(t.TempDir(), "dashboard.db"))
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	tests := []struct {
+		name      string
+		statement string
+		argument  string
+		index     string
+	}{
+		{
+			name: "articles by publication date",
+			statement: `EXPLAIN QUERY PLAN SELECT id FROM articles
+				WHERE published_at = ? ORDER BY published_time DESC, id DESC`,
+			argument: "2026-08-04",
+			index:    "articles_published_at_time_id_idx",
+		},
+		{
+			name:      "article links by CVE",
+			statement: `EXPLAIN QUERY PLAN SELECT article_id FROM article_cves WHERE cve_id = ?`,
+			argument:  "CVE-2026-0001",
+			index:     "article_cves_cve_id_article_id_idx",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			// When SQLite plans the production query shape.
+			rows, err := db.Query(test.statement, test.argument)
+			if err != nil {
+				t.Fatalf("explain query plan: %v", err)
+			}
+			defer rows.Close()
+			var details []string
+			for rows.Next() {
+				var id, parent, notUsed int
+				var detail string
+				if err := rows.Scan(&id, &parent, &notUsed, &detail); err != nil {
+					t.Fatalf("scan query plan: %v", err)
+				}
+				details = append(details, detail)
+			}
+			if err := rows.Err(); err != nil {
+				t.Fatalf("read query plan: %v", err)
+			}
+
+			// Then the matching composite index is selected.
+			if plan := strings.Join(details, "\n"); !strings.Contains(plan, test.index) {
+				t.Fatalf("query plan = %q, want index %q", plan, test.index)
+			}
+		})
 	}
 }
