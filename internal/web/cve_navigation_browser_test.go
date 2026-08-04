@@ -125,7 +125,11 @@ func TestCVEExplorerRefreshesOnceAndShowsPendingCVSSAsNeutral(t *testing.T) {
 	}
 
 	// When refresh is activated while the server request is still running.
-	if err := chromedp.Run(browser, chromedp.Click("#refresh-cves")); err != nil {
+	if err := chromedp.Run(browser, chromedp.Evaluate(`(() => {
+		const button = document.querySelector("#refresh-cves");
+		button.click();
+		button.click();
+	})()`, nil)); err != nil {
 		t.Fatalf("click refresh: %v", err)
 	}
 	select {
@@ -199,8 +203,14 @@ func newCVERefreshServer(t *testing.T) (*httptest.Server, <-chan struct{}, func(
 	t.Helper()
 	started := make(chan struct{}, 1)
 	finish := make(chan struct{})
+	var completed atomic.Bool
 	var finishOnce sync.Once
-	release := func() { finishOnce.Do(func() { close(finish) }) }
+	release := func() {
+		finishOnce.Do(func() {
+			completed.Store(true)
+			close(finish)
+		})
+	}
 	var refreshCalls atomic.Int32
 	staticFiles := http.FileServerFS(os.DirFS("../../static"))
 	mux := http.NewServeMux()
@@ -208,7 +218,7 @@ func newCVERefreshServer(t *testing.T) (*httptest.Server, <-chan struct{}, func(
 		writeJSON(t, writer, api.Bootstrap{Settings: api.SettingsResponse{Language: "ko", Theme: "dark"}})
 	})
 	mux.HandleFunc("GET /api/dashboard", func(writer http.ResponseWriter, _ *http.Request) {
-		if refreshCalls.Load() == 0 {
+		if !completed.Load() {
 			writeJSON(t, writer, api.Dashboard{CVECount: 1, CVEs: []api.CVEInsight{{
 				ID: "CVE-2026-PENDING", CVSS: 0, AffectedProduct: "NVD enrichment pending", FirstSeen: "2026-08-01", Mentions: 1,
 			}}})
@@ -221,8 +231,18 @@ func newCVERefreshServer(t *testing.T) (*httptest.Server, <-chan struct{}, func(
 	mux.HandleFunc("POST /api/cves/refresh", func(writer http.ResponseWriter, _ *http.Request) {
 		refreshCalls.Add(1)
 		started <- struct{}{}
-		<-finish
-		writeJSON(t, writer, api.CVERefreshResult{Updated: 1, Removed: 1, Warnings: []string{}})
+		writeJSONStatus(t, writer, http.StatusAccepted, api.CVERefreshJob{ID: "cve-refresh-1", Status: api.CVERefreshRunning})
+	})
+	mux.HandleFunc("GET /api/cves/refresh/cve-refresh-1", func(writer http.ResponseWriter, _ *http.Request) {
+		select {
+		case <-finish:
+			writeJSON(t, writer, api.CVERefreshJob{
+				ID: "cve-refresh-1", Status: api.CVERefreshCompleted,
+				Result: &api.CVERefreshResult{Updated: 1, Removed: 1, Warnings: []string{}},
+			})
+		default:
+			writeJSON(t, writer, api.CVERefreshJob{ID: "cve-refresh-1", Status: api.CVERefreshRunning})
+		}
 	})
 	mux.Handle("/", staticFiles)
 	server := httptest.NewServer(mux)
@@ -234,8 +254,13 @@ func newCVERefreshServer(t *testing.T) (*httptest.Server, <-chan struct{}, func(
 }
 
 func writeJSON(t *testing.T, writer http.ResponseWriter, value any) {
+	writeJSONStatus(t, writer, http.StatusOK, value)
+}
+
+func writeJSONStatus(t *testing.T, writer http.ResponseWriter, status int, value any) {
 	t.Helper()
 	writer.Header().Set("Content-Type", "application/json")
+	writer.WriteHeader(status)
 	if err := json.NewEncoder(writer).Encode(value); err != nil {
 		t.Errorf("encode browser fixture: %v", err)
 	}

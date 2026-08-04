@@ -83,6 +83,7 @@
   };
   let modalLastFocus = null;
   const collectionTask = window.createCollectionTask(serverCollection);
+  const cveRefreshTask = window.createCVERefreshTask(serverCVERefresh);
 
   const t = key => TEXT[state.lang][key] || key;
   const esc = value => $("<div>").text(value == null ? "" : String(value)).html();
@@ -229,6 +230,42 @@
         cancelling = true;
         if (timer !== null) window.clearTimeout(timer);
         cancel();
+      }
+    });
+  }
+
+  function serverCVERefresh(existingJob = null) {
+    const deferred = $.Deferred();
+    let jobID = null;
+    let timer = null;
+    const startRequest = existingJob ? $.Deferred().resolve(existingJob).promise() : api("POST", "/api/cves/refresh");
+
+    function scheduleCheck() {
+      if (deferred.state() === "pending") timer = window.setTimeout(check, 1000);
+    }
+
+    function settle(job) {
+      if (job.status === "running") {
+        scheduleCheck();
+      } else if (job.status === "completed") {
+        deferred.resolve(job.result);
+      } else {
+        deferred.reject({ responseJSON: { message: job.error || "CVE refresh failed" } }, "error");
+      }
+    }
+
+    function check() {
+      api("GET", "/api/cves/refresh/" + encodeURIComponent(jobID)).done(settle).fail(scheduleCheck);
+    }
+
+    startRequest.done(job => {
+      jobID = job.id;
+      settle(job);
+    }).fail((error, status) => deferred.reject(error, status));
+
+    return deferred.promise({
+      abort() {
+        if (timer !== null) window.clearTimeout(timer);
       }
     });
   }
@@ -401,6 +438,7 @@
         <section class="card"><div class="table-region cve-page-table" role="region" aria-label="${esc(t("allCVEs"))}" tabindex="0"><p class="cve-scroll-hint">${esc(t("cveScrollHint"))}</p><table class="data-table"><thead><tr><th>${esc(t("rank"))}</th><th>CVE ID</th><th>CVSS</th><th>${esc(t("mentions"))}</th><th>${esc(t("riskScore"))}</th><th>${esc(t("product"))}</th><th>${esc(t("firstSeen"))}</th></tr></thead><tbody>${rows || `<tr><td colspan="7">${esc(t("noData"))}</td></tr>`}</tbody></table></div></section>
       </div>`);
       $("#main-content").scrollTop(0).trigger("focus");
+      refreshCVEControls();
     };
 
     if (state.dashboard) renderRows(state.dashboard);
@@ -411,10 +449,15 @@
   }
 
   function refreshCVEs() {
-    const $button = $("#refresh-cves");
-    if ($button.prop("disabled")) return;
-    $button.prop("disabled", true).attr("aria-busy", "true").text(t("refreshingCVEs"));
-    api("POST", "/api/cves/refresh")
+    runCVERefresh();
+  }
+
+  function runCVERefresh(existingJob = null) {
+    const request = existingJob
+      ? cveRefreshTask.resume(serverCVERefresh(existingJob))
+      : cveRefreshTask.start();
+    if (!request) return;
+    request
       .then(result => api("GET", "/api/dashboard").then(data => ({ data, result })))
       .done(({ data, result }) => {
         state.dashboard = data;
@@ -424,8 +467,16 @@
           : `Updated ${result.updated} CVEs and removed ${result.removed}.`;
         toast(result.warnings?.length ? `${message} ${state.lang === "ko" ? "일부 항목을 확인하세요." : "Review the warnings for some entries."}` : message, Boolean(result.warnings?.length));
       })
-      .fail(showRequestError)
-      .always(() => $("#refresh-cves").prop("disabled", false).removeAttr("aria-busy").text(t("refreshCVEs")));
+      .fail(showRequestError);
+  }
+
+  function refreshCVEControls() {
+    const $button = $("#refresh-cves");
+    if (!$button.length) return;
+    const active = cveRefreshTask.isActive();
+    $button.prop("disabled", active)
+      .attr("aria-busy", active ? "true" : null)
+      .text(t(active ? "refreshingCVEs" : "refreshCVEs"));
   }
 
   function selectDay(day) {
@@ -872,6 +923,7 @@
   function start() {
     bindEvents();
     collectionTask.subscribe(refreshCollectionControls);
+    cveRefreshTask.subscribe(refreshCVEControls);
     closeDrawer();
     setLoading();
     api("GET", "/api/bootstrap").done(data => {
@@ -883,6 +935,9 @@
       else renderDashboard();
       if (data.collection && data.collection.status === "running") {
         runCollection(data.collection.day, data.collection);
+      }
+      if (data.cve_refresh && data.cve_refresh.status === "running") {
+        runCVERefresh(data.cve_refresh);
       }
     }).fail(showRequestError);
   }
