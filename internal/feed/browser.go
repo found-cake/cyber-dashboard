@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"runtime"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/chromedp/cdproto"
@@ -17,48 +16,34 @@ import (
 
 const chromiumUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36"
 
-type ChromiumBodyLoader struct {
-	context context.Context
-	cancel  context.CancelFunc
-	mutex   sync.Mutex
-}
-
-func NewChromiumBodyLoader(parent context.Context) *ChromiumBodyLoader {
-	options := append(chromedp.DefaultExecAllocatorOptions[:],
-		chromedp.Flag("headless", "new"),
-		chromedp.UserAgent(chromiumUserAgent),
-		chromedp.Flag("disable-blink-features", "AutomationControlled"),
-		chromedp.Flag("disable-background-networking", true),
-		chromedp.Flag("disable-component-update", true),
-		chromedp.Flag("disable-default-apps", true),
-	)
-	allocatorContext, allocatorCancel := chromedp.NewExecAllocator(parent, options...)
-	browserContext, browserCancel := chromedp.NewContext(allocatorContext)
-	return &ChromiumBodyLoader{
-		context: browserContext,
-		cancel: func() {
-			browserCancel()
-			allocatorCancel()
-		},
-	}
-}
-
-func (l *ChromiumBodyLoader) Close() {
+func (l *ChromiumBodyLoader) Load(ctx context.Context, articleURL, sourceHost string) (string, error) {
 	l.mutex.Lock()
 	defer l.mutex.Unlock()
-	l.cancel()
-}
-
-func (l *ChromiumBodyLoader) Load(ctx context.Context, articleURL string) (string, error) {
-	l.mutex.Lock()
-	defer l.mutex.Unlock()
-	if err := chromedp.Run(l.context); err != nil {
-		return "", fmt.Errorf("start shared Chromium session: %w", err)
+	if err := ctx.Err(); err != nil {
+		return "", err
 	}
-	tabContext, timeoutCancel := context.WithTimeout(l.context, 60*time.Second)
+	documentGuard, err := newChromiumDocumentGuard(sourceHost)
+	if err != nil {
+		return "", err
+	}
+	if err := l.ensureSession(); err != nil {
+		return "", err
+	}
+	if err := l.startSession(ctx); err != nil {
+		return "", err
+	}
+	sessionContext := l.context
+	tabContext, timeoutCancel := context.WithTimeout(sessionContext, 60*time.Second)
 	defer timeoutCancel()
 	stopCancellation := context.AfterFunc(ctx, timeoutCancel)
 	defer stopCancellation()
+	defer func() {
+		guardContext, guardCancel := context.WithTimeout(sessionContext, 2*time.Second)
+		defer guardCancel()
+		if err := documentGuard.close(guardContext); err != nil {
+			l.discardSession()
+		}
+	}()
 	var body string
 	bodyExpression := `(() => {
   const selectors = [".articleBody", ".article-content", ".article__content", ".article-body", "article", "main"];
@@ -94,8 +79,14 @@ func (l *ChromiumBodyLoader) Load(ctx context.Context, articleURL string) (strin
 			if _, err := page.AddScriptToEvaluateOnNewDocument(`Object.defineProperty(navigator, "webdriver", {get: () => undefined});`).Do(ctx); err != nil {
 				return err
 			}
+			if err := documentGuard.enable(ctx); err != nil {
+				return err
+			}
 			_, _, errorText, isDownload, err := page.Navigate(articleURL).Do(ctx)
 			if err != nil {
+				return err
+			}
+			if err := documentGuard.takeViolation(); err != nil {
 				return err
 			}
 			if errorText != "" {
@@ -114,8 +105,16 @@ func (l *ChromiumBodyLoader) Load(ctx context.Context, articleURL string) (strin
 		defer ticker.Stop()
 	waitForBody:
 		for {
+			if err := documentGuard.takeViolation(); err != nil {
+				loadErr = err
+				break
+			}
 			body = ""
 			loadErr = chromedp.Run(waitContext, chromedp.Evaluate(bodyExpression, &body))
+			if err := documentGuard.takeViolation(); err != nil {
+				loadErr = err
+				break
+			}
 			if loadErr == nil && body != "" {
 				break
 			}
@@ -131,12 +130,39 @@ func (l *ChromiumBodyLoader) Load(ctx context.Context, articleURL string) (strin
 			}
 		}
 	}
+	if loadErr == nil && body != "" {
+		var finalURL string
+		loadErr = chromedp.Run(tabContext, chromedp.Evaluate(`location.href`, &finalURL))
+		if loadErr == nil {
+			loadErr = documentGuard.validateFinalURL(finalURL)
+		}
+	}
+	if loadErr == nil && body != "" {
+		if err := chromedp.Run(tabContext, chromedp.ActionFunc(func(ctx context.Context) error {
+			if err := page.StopLoading().Do(ctx); err != nil {
+				return err
+			}
+			return page.ResetNavigationHistory().Do(ctx)
+		})); err != nil {
+			loadErr = fmt.Errorf("release article resources: %w", err)
+		}
+	}
 	if loadErr != nil {
+		if err := documentGuard.takeViolation(); err != nil {
+			loadErr = err
+		}
 		var pageState string
-		_ = chromedp.Run(tabContext, chromedp.Evaluate(`(() => {
+		diagnosticContext, diagnosticCancel := context.WithTimeout(l.context, 2*time.Second)
+		defer diagnosticCancel()
+		if err := chromedp.Run(diagnosticContext, chromedp.Evaluate(`(() => {
   const text = document.body ? document.body.innerText.slice(0, 200) : "";
   return "title=" + document.title + " url=" + location.href + " text=" + text;
-})()`, &pageState))
+})()`, &pageState)); err != nil {
+			pageState = "page state unavailable: " + err.Error()
+		}
+		if !l.sessionIsActive() {
+			l.discardSession()
+		}
 		return "", fmt.Errorf("load article in Chromium: %w (%s)", loadErr, strings.TrimSpace(pageState))
 	}
 	body = strings.TrimSpace(body)
