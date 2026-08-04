@@ -316,9 +316,12 @@
     </div>`);
   }
 
+  // Collection emits one toast per warning, so they stack instead of replacing each other;
+  // the oldest are dropped past three to keep the region bounded.
   function toast(message, error = false) {
     const $toast = $("<div>", { class: `toast${error ? " is-error" : ""}`, text: message });
-    $("#toast-region").empty().append($toast);
+    const $region = $("#toast-region").append($toast);
+    $region.children().slice(0, -3).remove();
     window.setTimeout(() => $toast.remove(), 4000);
   }
 
