@@ -41,6 +41,37 @@ func TestOpenAppliesSchemaAndSeedsIdempotently(t *testing.T) {
 	}
 }
 
+func TestOpenEnforcesForeignKeys_whenPoolReplacesTheConnection(t *testing.T) {
+	// Given an open database whose pooled connection is replaced.
+	db, err := Open(context.Background(), filepath.Join(t.TempDir(), "dashboard.db"))
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	db.SetMaxIdleConns(0)
+	for range 3 {
+		var probe int
+		if err := db.QueryRow(`SELECT 1`).Scan(&probe); err != nil {
+			t.Fatalf("cycle connection: %v", err)
+		}
+	}
+
+	// When a row that violates a foreign key is inserted on the replacement connection.
+	_, err = db.Exec(`INSERT INTO article_cves (article_id, cve_id) VALUES (999999, 'CVE-0000-0000')`)
+
+	// Then the constraint is still enforced: the pragma travels with every connection.
+	if err == nil {
+		t.Fatal("orphan article_cves row was accepted, want foreign key violation")
+	}
+	var enabled int
+	if err := db.QueryRow(`PRAGMA foreign_keys`).Scan(&enabled); err != nil {
+		t.Fatalf("read foreign_keys pragma: %v", err)
+	}
+	if enabled != 1 {
+		t.Fatalf("foreign_keys = %d, want 1", enabled)
+	}
+}
+
 func TestOpenInitializesLocalTimezoneAndPreservesSavedValue(t *testing.T) {
 	// Given a new database and the current local timezone offset.
 	path := filepath.Join(t.TempDir(), "dashboard.db")
