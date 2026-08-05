@@ -66,6 +66,12 @@ func TestClientGenerate_returnsSummary_whenEndpointSupportsMinimalChatCompletion
 	if body["model"] != "test-model" {
 		t.Fatalf("model = %v, want test-model", body["model"])
 	}
+	if _, exists := body["max_tokens"]; exists {
+		t.Fatalf("max_tokens must be omitted: %#v", body)
+	}
+	if _, exists := body["max_completion_tokens"]; exists {
+		t.Fatalf("max_completion_tokens must be omitted: %#v", body)
+	}
 }
 
 func TestClientAnalyzeArticleSendsFullBody_andReturnsImpactSignals(t *testing.T) {
