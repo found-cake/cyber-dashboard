@@ -36,7 +36,12 @@
       cveRefreshDone: (updated, removed) => `CVE ${updated}개를 갱신하고 ${removed}개를 제거했습니다.`,
       cveRefreshWarned: "일부 항목을 확인하세요.", deleteReport: "보고서 삭제", deleteReportTitle: "보고서 삭제",
       deleteReportConfirm: "정말로 삭제하시겠습니까?", deleteReportHint: "삭제한 보고서는 복구할 수 없습니다.",
-      deleting: "삭제 중…", reportDeleted: "보고서를 삭제했습니다."
+      deleting: "삭제 중…", reportDeleted: "보고서를 삭제했습니다.",
+      licenseTitle: "라이선스", licenseHint: "Cyber Dashboard와 함께 배포되는 오픈소스 라이선스를 확인합니다.",
+      viewLicenses: "라이선스 확인", licenseDialogTitle: "라이선스 및 오픈소스 고지",
+      licenseDialogHint: "본 프로그램과 서드파티 구성요소의 라이선스 원문입니다.",
+      programLicense: "본 프로그램", thirdPartyLicenses: "서드파티",
+      loadingLicenses: "라이선스를 불러오는 중…", licenseLoadFailed: "라이선스를 불러오지 못했습니다."
     },
     en: {
       dashboard: "Dashboard", reports: "Reports", settings: "Settings", newReport: "New",
@@ -72,7 +77,12 @@
       cveRefreshDone: (updated, removed) => `Updated ${updated} CVEs and removed ${removed}.`,
       cveRefreshWarned: "Review the warnings for some entries.", deleteReport: "Delete report", deleteReportTitle: "Delete report",
       deleteReportConfirm: "Are you sure you want to delete this report?", deleteReportHint: "Deleted reports cannot be recovered.",
-      deleting: "Deleting…", reportDeleted: "Report deleted."
+      deleting: "Deleting…", reportDeleted: "Report deleted.",
+      licenseTitle: "Licenses", licenseHint: "Review the licenses for Cyber Dashboard and its bundled open-source software.",
+      viewLicenses: "View licenses", licenseDialogTitle: "Licenses and open-source notices",
+      licenseDialogHint: "License terms for this program and its third-party components.",
+      programLicense: "This program", thirdPartyLicenses: "Third party",
+      loadingLicenses: "Loading license…", licenseLoadFailed: "The license could not be loaded."
     }
   };
 
@@ -97,6 +107,8 @@
   let modalLastFocus = null;
   let renderedScrollKey = null;
   let mainResizeObserver = null;
+  const licenseDocuments = { program: "/legal/LICENSE.txt", thirdParty: "/legal/THIRD_PARTY_NOTICES.txt" };
+  const licenseDocumentCache = {};
   const collectionTask = window.createCollectionTask(serverCollection);
   const cveRefreshTask = window.createCVERefreshTask(serverCVERefresh);
 
@@ -660,6 +672,7 @@
           <div class="field full-span"><label>${esc(t("requestPreview"))}</label><pre class="request-preview" id="request-preview">${esc(preview)}</pre></div></div>
       </section>
       <section class="card"><div class="card-header"><h2>${esc(t("schema"))}</h2></div><pre class="schema-preview">${esc(schema)}</pre></section>
+      <section class="card settings-legal-card"><div><h2>${esc(t("licenseTitle"))}</h2><p class="card-subtitle">${esc(t("licenseHint"))}</p></div><button class="secondary-button" id="open-license-modal" type="button">${esc(t("viewLicenses"))}</button></section>
     </div><div class="settings-save-bar" id="settings-save-bar" role="status" aria-live="polite" hidden><strong>${esc(t("unsavedSettings"))}</strong><div class="cluster"><button class="secondary-button" id="revert-settings" type="button">${esc(t("revert"))}</button><button class="primary-button" id="save-settings" type="button">${esc(t("save"))}</button></div></div>`);
     applyViewScroll("settings");
     refreshSettingsFormState();
@@ -898,6 +911,36 @@
     });
   }
 
+  function openLicenseModal() {
+    openModal(`<div class="modal license-modal" role="dialog" aria-modal="true" aria-labelledby="license-dialog-title" aria-describedby="license-dialog-description">
+      <div class="modal-header"><div><h2 id="license-dialog-title">${esc(t("licenseDialogTitle"))}</h2><p id="license-dialog-description">${esc(t("licenseDialogHint"))}</p></div><button class="icon-button modal-dismiss" type="button" aria-label="${esc(t("close"))}">×</button></div>
+      <div class="modal-body"><div class="segmented license-tabs" role="tablist" aria-label="${esc(t("licenseTitle"))}"><button id="license-tab-program" class="is-selected" type="button" role="tab" aria-selected="true" aria-controls="license-document" data-license-tab="program">${esc(t("programLicense"))}</button><button id="license-tab-third-party" type="button" role="tab" aria-selected="false" aria-controls="license-document" tabindex="-1" data-license-tab="thirdParty">${esc(t("thirdPartyLicenses"))}</button></div><pre class="license-document" id="license-document" role="tabpanel" aria-labelledby="license-tab-program" aria-live="polite" tabindex="0"></pre></div>
+      <div class="modal-footer"><button class="secondary-button modal-close" type="button">${esc(t("close"))}</button></div>
+    </div>`);
+    selectLicenseTab("program");
+  }
+
+  function selectLicenseTab(requestedTab) {
+    const tab = Object.prototype.hasOwnProperty.call(licenseDocuments, requestedTab) ? requestedTab : "program";
+    const $tabs = $("[data-license-tab]");
+    $tabs.each(function () {
+      const selected = $(this).data("license-tab") === tab;
+      $(this).toggleClass("is-selected", selected).attr("aria-selected", String(selected)).attr("tabindex", selected ? "0" : "-1");
+    });
+    const $panel = $("#license-document").attr("aria-labelledby", `license-tab-${tab === "thirdParty" ? "third-party" : "program"}`);
+    if (Object.prototype.hasOwnProperty.call(licenseDocumentCache, tab)) {
+      $panel.removeAttr("aria-busy").text(licenseDocumentCache[tab]);
+      return;
+    }
+    $panel.attr("aria-busy", "true").text(t("loadingLicenses"));
+    $.ajax({ url: licenseDocuments[tab], dataType: "text", cache: true }).done(content => {
+      licenseDocumentCache[tab] = content;
+      if ($("[data-license-tab].is-selected").data("license-tab") === tab) $panel.removeAttr("aria-busy").text(content);
+    }).fail(() => {
+      if ($("[data-license-tab].is-selected").data("license-tab") === tab) $panel.removeAttr("aria-busy").text(t("licenseLoadFailed"));
+    });
+  }
+
   function openModal(content) {
     modalLastFocus = document.activeElement;
     $("#modal-root").html(`<div class="modal-backdrop">${content}</div>`);
@@ -976,6 +1019,17 @@
     $(document).on("click", "[data-report-id]", function () { const report = state.bootstrap.reports.find(item => item.id === Number($(this).data("report-id"))); if (report) renderReport(report); });
     $(document).on("click", "#delete-report", () => { if (state.currentReport) openDeleteReportModal(state.currentReport); });
     $(document).on("click", "#confirm-delete-report", function () { deleteReport(Number($(this).data("delete-report-id"))); });
+    $(document).on("click", "#open-license-modal", openLicenseModal);
+    $(document).on("click", "[data-license-tab]", function () { selectLicenseTab($(this).data("license-tab")); });
+    $(document).on("keydown", "[data-license-tab]", function (event) {
+      if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+      event.preventDefault();
+      const tabs = $("[data-license-tab]").get();
+      const current = tabs.indexOf(this);
+      const next = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : (current + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+      selectLicenseTab($(tabs[next]).data("license-tab"));
+      tabs[next].focus();
+    });
     $(document).on("click", "tr[data-href]", function () { window.open($(this).data("href"), "_blank", "noopener"); });
     $(document).on("keydown", "tr[data-href]", function (event) { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); $(this).trigger("click"); } });
     $(document).on("click", ".modal-close", closeModal);
