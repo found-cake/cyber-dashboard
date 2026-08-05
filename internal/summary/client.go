@@ -214,17 +214,7 @@ func (c *Client) complete(ctx context.Context, instruction, input string) (strin
 }
 
 func normalizeJSONContent(content string) string {
-	trimmed := strings.TrimSpace(content)
-	if !strings.HasPrefix(trimmed, "```") {
-		return trimmed
-	}
-	lineEnd := strings.IndexByte(trimmed, '\n')
-	if lineEnd < 0 {
-		return trimmed
-	}
-	trimmed = strings.TrimSpace(trimmed[lineEnd+1:])
-	trimmed = strings.TrimSuffix(trimmed, "```")
-	return strings.TrimSpace(trimmed)
+	return stripJSONLineComments(stripJSONCodeFence(content))
 }
 
 func invalidResponse(content string) error {
