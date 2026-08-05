@@ -25,6 +25,7 @@ func TestEmbeddedEntrypointServesFrontend_whenBinaryStarts(t *testing.T) {
 	assertResponseContains(t, baseURL+"/healthz", `"status":"ok"`)
 	assertResponseContains(t, baseURL+"/", "Cyber Dashboard")
 	assertResponseContains(t, baseURL+"/app.js", "renderDashboard")
+	assertResponseContains(t, baseURL+"/legal/THIRD_PARTY_NOTICES.txt", "github.com/openai/openai-go/v3")
 }
 
 func TestDiskEntrypointServesFrontend_whenStaticDirectoryIsConfigured(t *testing.T) {
@@ -43,6 +44,7 @@ func TestDiskEntrypointServesFrontend_whenStaticDirectoryIsConfigured(t *testing
 	assertResponseContains(t, baseURL+"/healthz", `"status":"ok"`)
 	assertResponseContains(t, baseURL+"/", "Cyber Dashboard")
 	assertResponseContains(t, baseURL+"/styles.css", "--sidebar-width")
+	assertResponseContains(t, baseURL+"/legal/THIRD_PARTY_NOTICES.txt", "github.com/openai/openai-go/v3")
 }
 
 func TestDiskEntrypointFails_whenStaticDirectoryIsMissing(t *testing.T) {

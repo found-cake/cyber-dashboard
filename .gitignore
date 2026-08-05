@@ -1,0 +1,5 @@
+# macOS
+.DS_Store
+
+# Generated legal notices
+/static/legal/

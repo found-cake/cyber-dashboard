@@ -22,6 +22,8 @@ jobs:
         with:
           node-version: "24"
           package-manager-cache: false
+      - name: Generate license notices
+        run: go generate ./generator/license
       - name: Test Go with race detector and coverage
         run: go test -race -shuffle=on -count=1 -coverpkg=./... -coverprofile=coverage.out ./...
       - name: Enforce coverage threshold
