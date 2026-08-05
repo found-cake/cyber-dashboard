@@ -96,6 +96,7 @@
   };
   let modalLastFocus = null;
   let renderedScrollKey = null;
+  let mainResizeObserver = null;
   const collectionTask = window.createCollectionTask(serverCollection);
   const cveRefreshTask = window.createCVERefreshTask(serverCVERefresh);
 
@@ -440,8 +441,21 @@
     return `<div class="bar-list">${rows.map((row, index) => {
       const width = Math.max(3, Math.round(row.value / max * 100));
       const value = percent ? `${Math.round(row.value / Math.max(total, 1) * 100)}%` : row.value;
-      return `<div class="bar-row"><span class="bar-label" title="${esc(row.label)}">${esc(row.label)}</span><span class="bar-track"><span class="bar-fill" style="width:${width}%;background:${chartColor(index)}"></span></span><span class="bar-value">${value}</span></div>`;
+      // data-label feeds the hover reveal; the label element keeps the full text so assistive
+      // technology reads it whether or not the visual box clips.
+      return `<div class="bar-row" data-label="${esc(row.label)}"><span class="bar-label">${esc(row.label)}</span><span class="bar-track"><span class="bar-fill" style="width:${width}%;background:${chartColor(index)}"></span></span><span class="bar-value">${value}</span></div>`;
     }).join("")}</div>`;
+  }
+
+  // CSS cannot tell whether an ellipsised label actually overflowed, so the hover reveal is
+  // switched on per row by measurement — otherwise every row, including the ones already
+  // showing their label in full, would sprout a tooltip.
+  function markClippedBarLabels() {
+    $(".bar-row").each(function () {
+      const label = this.querySelector(".bar-label");
+      if (!label) return;
+      this.classList.toggle("is-clipped", label.scrollWidth > label.clientWidth + 1);
+    });
   }
 
   function renderDashboard() {
@@ -474,6 +488,7 @@
           <div class="table-region" role="region" aria-label="${esc(t("recentCVEs"))}" tabindex="0"><table class="data-table"><thead><tr><th>CVE ID</th><th>CVSS</th><th>${esc(t("product"))}</th><th>${esc(t("firstSeen"))}</th><th>${esc(t("mentions"))}</th></tr></thead><tbody>${cveRows || `<tr><td colspan="5">${esc(t("noData"))}</td></tr>`}</tbody></table></div>
         </section>
       </div>`);
+      markClippedBarLabels();
       applyViewScroll("dashboard", restoreScroll);
     }).fail(showRequestError);
   }
@@ -993,7 +1008,19 @@
     $("#theme-toggle").on("click", () => { state.theme = state.theme === "dark" ? "light" : "dark"; localStorage.setItem("cyber-theme", state.theme); document.documentElement.dataset.theme = state.theme; $("#theme-toggle").attr("aria-pressed", String(state.theme === "light")); refreshSettingsFormState(); });
     $("#menu-button").attr({ "aria-controls": "sidebar", "aria-expanded": "false" }).on("click", () => setDrawer(true));
     $("#drawer-close,#drawer-scrim").on("click", closeDrawer);
-    $(window).on("resize", closeDrawer);
+    // Re-measured synchronously: reading scrollWidth flushes pending style and layout, so the
+    // values already reflect the breakpoint that just changed.
+    $(window).on("resize", () => {
+      closeDrawer();
+      markClippedBarLabels();
+    });
+    // The observer additionally catches width changes that are not window resizes, such as the
+    // scrollbar appearing. Held in a variable because an observer with no reference of its own
+    // can be collected while its target is still alive.
+    if (typeof ResizeObserver === "function") {
+      mainResizeObserver = new ResizeObserver(markClippedBarLabels);
+      mainResizeObserver.observe(document.getElementById("main-content"));
+    }
     $(window).on("hashchange", () => {
       if (window.location.hash === "#cves") renderCVEExplorer();
       else if (state.view === "cves") renderDashboard();
