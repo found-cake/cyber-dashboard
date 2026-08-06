@@ -27,6 +27,16 @@ type Request struct {
 	Language string   `json:"language"`
 	Kind     string   `json:"kind"`
 	Facts    []string `json:"facts"`
+	// section marks one slice of a batched summary that a merge pass rewrites afterwards.
+	// It stays unexported so it never reaches the model as part of the fact payload.
+	section bool
+}
+
+// mergeRequest carries the section summaries that the merge pass rewrites into one digest.
+type mergeRequest struct {
+	Language string   `json:"language"`
+	Kind     string   `json:"kind"`
+	Sections []string `json:"sections"`
 }
 
 type ArticleRequest struct {
@@ -86,10 +96,31 @@ func (c *Client) Generate(ctx context.Context, request Request) (string, error) 
 	if err != nil {
 		return "", fmt.Errorf("encode summary facts: %w", err)
 	}
-	content, err := c.complete(ctx, generateSystemPrompt(request.Language), string(facts))
+	instruction := generateSystemPrompt(request.Language)
+	if request.section {
+		instruction = generateSectionSystemPrompt(request.Language)
+	}
+	content, err := c.complete(ctx, instruction, string(facts))
 	if err != nil {
 		return "", err
 	}
+	return decodeSummary(content)
+}
+
+// merge rewrites independently written section summaries into one readable digest.
+func (c *Client) merge(ctx context.Context, request mergeRequest) (string, error) {
+	sections, err := json.Marshal(request)
+	if err != nil {
+		return "", fmt.Errorf("encode summary sections: %w", err)
+	}
+	content, err := c.complete(ctx, mergeSystemPrompt(request.Language), string(sections))
+	if err != nil {
+		return "", err
+	}
+	return decodeSummary(content)
+}
+
+func decodeSummary(content string) (string, error) {
 	var result struct {
 		Summary        string `json:"summary"`
 		ConciseSummary string `json:"concise_summary"`

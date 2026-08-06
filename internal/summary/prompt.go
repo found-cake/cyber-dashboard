@@ -7,8 +7,43 @@ const (
 	testConnectionUserPrompt   = `Reply with {"ok":true}.`
 )
 
+// summaryContract is shared by every summary stage so each one returns the same JSON shape.
+const summaryContract = `Return one JSON object with a concise summary field. Base every claim only on the supplied facts. Use exactly this JSON shape and value type: {"summary":"Concise factual summary"}. Do not add comments or fields.`
+
+// plainTextRules describe the renderer: the summary value is HTML-escaped and displayed
+// with white-space: pre-line, so line breaks written as \n survive but Markdown never renders.
+const plainTextRules = `The summary is displayed as plain text. Structure it with line breaks only. Never use Markdown, HTML, asterisks for emphasis, or heading marks such as #.`
+
+// generateSystemPrompt asks for a summary that stands on its own, either because the
+// facts fit in one request or because the caller keeps each batch as its own paragraph.
 func generateSystemPrompt(language string) string {
-	return `Return one JSON object with a concise summary field. Base every claim only on the supplied facts. Use exactly this JSON shape and value type: {"summary":"Concise factual summary"}. Write the summary in the requested output language ` + outputLanguageTag(language) + `.`
+	return summaryContract + ` Write one paragraph of flowing prose. Do not open with a phrase that announces the summary itself, and do not label or number the items with markers such as "1)", "2)", or "3)". ` +
+		plainTextRules + ` Write the summary in the requested output language ` + outputLanguageTag(language) + `.`
+}
+
+// generateSectionSystemPrompt covers one slice of a set that mergeSystemPrompt rewrites
+// afterwards, so it asks for dense material instead of a presentable paragraph.
+func generateSectionSystemPrompt(language string) string {
+	return summaryContract + ` These facts are one slice of a larger set, and another pass merges your output with the other slices. Write one line per distinct item, each line starting with "- " and holding one sentence that names what happened and who it affected. Separate the lines with "\n". Write no opening sentence, no closing sentence, no overall assessment, and no numbering such as "1)" or "2)"; another pass adds all of those. ` +
+		plainTextRules + ` Write the summary in the requested output language ` + outputLanguageTag(language) + `.`
+}
+
+// mergeSystemPrompt rewrites the section outputs into the single readable digest that the
+// dashboard shows. Sections are written independently, so each one repeats the same lead-in
+// wording and restarts its own item numbering; this pass exists to remove that repetition.
+func mergeSystemPrompt(language string) string {
+	return summaryContract + ` The sections are parts of one already-written summary of the same period. Rewrite them into one digest a reader can scan.
+
+Use every distinct item from the sections and invent nothing. Merge items that report the same event into one line.
+
+Lay the summary out exactly like this, using "\n" for every line break:
+- One overview line first: at most two sentences on what the period looked like overall. Never begin it with a phrase that only announces the summary.
+- Then two to five topic groups, ordered with the most serious first. Start each group with its own line: "■ " followed by a two-to-four-word topic name.
+- Under each group, one line per item, starting with "- ", each a single sentence.
+- One blank line before every "■ " line, and none anywhere else. The shape is: overview\n\n■ topic\n- item\n- item\n\n■ topic\n- item.
+
+Write each lead-in phrase at most once in the whole summary: no group may repeat the opening wording of another, and no group name may say only that the text is a summary or news. Number nothing; the "- " prefix is the only item marker. ` +
+		plainTextRules + ` Write the summary in the requested output language ` + outputLanguageTag(language) + `.`
 }
 
 // AnalyzeArticleSystemPrompt returns the instruction sent for article analysis. It is

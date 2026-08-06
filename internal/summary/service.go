@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/url"
 	"strings"
 	"time"
@@ -15,6 +16,12 @@ var ErrNotConfigured = errors.New("LLM endpoint is not configured")
 var ErrUnavailable = errors.New("LLM endpoint is unavailable")
 
 const maximumSummaryFacts = 5
+
+// maximumStandaloneParagraphs is how many independently written paragraphs stay readable
+// when simply joined. Beyond that the repeated lead-ins and the item numbering each
+// paragraph restarts on its own make the summary tiring to read, so a merge pass rewrites
+// the batches into one grouped digest instead.
+const maximumStandaloneParagraphs = 2
 
 type SettingsProvider interface {
 	Get(ctx context.Context) (api.Settings, error)
@@ -40,24 +47,46 @@ func (s *Service) Generate(ctx context.Context, request Request) (string, error)
 		}
 		return value, nil
 	}
-	paragraphs := make([]string, 0, (len(request.Facts)+maximumSummaryFacts-1)/maximumSummaryFacts)
+	batchCount := (len(request.Facts) + maximumSummaryFacts - 1) / maximumSummaryFacts
+	mergeBatches := batchCount > maximumStandaloneParagraphs
+	parts := make([]string, 0, batchCount)
 	for start := 0; start < len(request.Facts); start += maximumSummaryFacts {
 		end := min(start+maximumSummaryFacts, len(request.Facts))
 		batch := request
 		batch.Facts = request.Facts[start:end]
+		batch.section = mergeBatches
 		value, generateErr := generateWithRetry(ctx, client, batch)
 		if generateErr != nil {
 			return "", fmt.Errorf("%w: summarize batch %d: %w", ErrUnavailable, start/maximumSummaryFacts+1, generateErr)
 		}
-		paragraphs = append(paragraphs, value)
+		parts = append(parts, value)
 	}
-	return strings.Join(paragraphs, "\n\n"), nil
+	joined := strings.Join(parts, "\n\n")
+	if !mergeBatches {
+		return joined, nil
+	}
+	value, err := mergeWithRetry(ctx, client, mergeRequest{Language: request.Language, Kind: request.Kind, Sections: parts})
+	if err != nil {
+		// The sections already hold every fact, so serve them rather than losing the
+		// whole summary to a failure in the pass that only improves its readability.
+		slog.WarnContext(ctx, "summary merge failed", slog.String("response_body", err.Error()))
+		return joined, nil
+	}
+	return value, nil
 }
 
 func generateWithRetry(ctx context.Context, client *Client, request Request) (string, error) {
 	value, err := client.Generate(ctx, request)
 	if errors.Is(err, ErrInvalidResponse) {
 		return client.Generate(ctx, request)
+	}
+	return value, err
+}
+
+func mergeWithRetry(ctx context.Context, client *Client, request mergeRequest) (string, error) {
+	value, err := client.merge(ctx, request)
+	if errors.Is(err, ErrInvalidResponse) {
+		return client.merge(ctx, request)
 	}
 	return value, err
 }
