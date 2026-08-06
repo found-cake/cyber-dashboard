@@ -9,7 +9,7 @@ import (
 )
 
 type ChromiumBodyLoader struct {
-	parent context.Context
+	parent  context.Context
 	options []chromedp.ExecAllocatorOption
 	context context.Context
 	cancel  context.CancelFunc
