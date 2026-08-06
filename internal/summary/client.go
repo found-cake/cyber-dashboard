@@ -111,7 +111,7 @@ func (c *Client) AnalyzeArticle(ctx context.Context, request ArticleRequest) (Ar
 	if err != nil {
 		return ArticleAnalysis{}, fmt.Errorf("encode article: %w", err)
 	}
-	content, err := c.complete(ctx, analyzeArticleSystemPrompt(request.Language), string(input))
+	content, err := c.complete(ctx, AnalyzeArticleSystemPrompt(request.Language), string(input))
 	if err != nil {
 		return ArticleAnalysis{}, err
 	}
