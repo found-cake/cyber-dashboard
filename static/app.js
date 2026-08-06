@@ -13,6 +13,7 @@
       noArticles: "이 날짜에 수집된 기사가 없습니다", collectNow: "수집을 시작하시겠습니까?",
       sourcesActive: "개의 활성 소스에서 메타데이터를 가져옵니다.", cancel: "취소", close: "닫기", start: "수집 시작",
       collecting: "수집 중…", collectingHint: "닫아도 백그라운드에서 계속 수집합니다.", collectionCancelled: "수집을 취소했습니다.", collected: "수집을 완료했습니다.", sourceSettings: "수집 소스",
+      language: "언어", languageHint: "대시보드와 AI 요약에 사용할 언어를 선택합니다.",
       nvdTitle: "NVD API 키", nvdHint: "수집을 시작하려면 NVD API 키를 먼저 등록해야 합니다.",
       llmTitle: "LLM 설정", llmHint: "OpenAI Chat Completions 호환 엔드포인트를 연결합니다.",
       baseURL: "Base URL", model: "모델 이름", apiKey: "API 키", timeout: "타임아웃(초)",
@@ -32,7 +33,7 @@
       outsideRetention: "피드 보존 기간(10일)을 벗어난 날짜입니다.", futureDate: "미래 날짜는 선택할 수 없습니다.",
       emptyReport: "선택한 기간에 수집된 기사가 없습니다.",
       noReports: "생성된 보고서가 없습니다", feedSubtitle: "위협 인텔리전스 피드", dailySummary: "일간 요약",
-      settingsSub: "소스 · NVD 키 · LLM 엔드포인트", testing: "확인 중…", unknownActor: "미확인",
+      settingsSub: "언어 · 소스 · NVD 키 · LLM 엔드포인트", testing: "확인 중…", unknownActor: "미확인",
       cveRefreshDone: (updated, removed) => `CVE ${updated}개를 갱신하고 ${removed}개를 제거했습니다.`,
       cveRefreshWarned: "일부 항목을 확인하세요.", deleteReport: "보고서 삭제", deleteReportTitle: "보고서 삭제",
       deleteReportConfirm: "정말로 삭제하시겠습니까?", deleteReportHint: "삭제한 보고서는 복구할 수 없습니다.",
@@ -54,6 +55,7 @@
       noArticles: "No articles collected for this date", collectNow: "Start collection for this date?",
       sourcesActive: " active sources will provide metadata.", cancel: "Cancel", close: "Close", start: "Start",
       collecting: "Collecting…", collectingHint: "You can close this dialog while collection continues in the background.", collectionCancelled: "Collection cancelled.", collected: "Collection finished.", sourceSettings: "Collection sources",
+      language: "Language", languageHint: "Choose the language used by the dashboard and AI summaries.",
       nvdTitle: "NVD API key", nvdHint: "Register an NVD API key before starting collection.",
       llmTitle: "LLM settings", llmHint: "Connect any OpenAI Chat Completions compatible endpoint.",
       baseURL: "Base URL", model: "Model name", apiKey: "API key", timeout: "Timeout (s)",
@@ -73,7 +75,7 @@
       outsideRetention: "This date is outside the 10-day feed retention window.", futureDate: "Future dates cannot be selected.",
       emptyReport: "No articles were collected in this period.",
       noReports: "No reports yet", feedSubtitle: "Threat intelligence feed", dailySummary: "Daily summary",
-      settingsSub: "Sources · NVD key · LLM endpoint", testing: "Testing…", unknownActor: "Unknown",
+      settingsSub: "Language · Sources · NVD key · LLM endpoint", testing: "Testing…", unknownActor: "Unknown",
       cveRefreshDone: (updated, removed) => `Updated ${updated} CVEs and removed ${removed}.`,
       cveRefreshWarned: "Review the warnings for some entries.", deleteReport: "Delete report", deleteReportTitle: "Delete report",
       deleteReportConfirm: "Are you sure you want to delete this report?", deleteReportHint: "Deleted reports cannot be recovered.",
@@ -369,30 +371,10 @@
   function applyChrome() {
     document.documentElement.lang = state.lang;
     document.documentElement.dataset.theme = state.theme;
-    $("[data-lang]").toggleClass("is-selected", false).attr("aria-pressed", "false").filter(`[data-lang="${state.lang}"]`).addClass("is-selected").attr("aria-pressed", "true");
     $("#theme-toggle").attr("aria-pressed", String(state.theme === "light"));
     $("[data-i18n]").each(function () { $(this).text(t($(this).data("i18n"))); });
     renderCalendar();
     renderReportList();
-  }
-
-  function selectLanguage(language) {
-    if (!state.bootstrap || language === state.lang) return;
-    const previous = state.lang;
-    state.lang = language;
-    localStorage.setItem("cyber-lang", language);
-    applyChrome();
-    routeCurrentView();
-    $("[data-lang]").prop("disabled", true);
-    api("PATCH", "/api/settings/language", { language }).done(() => {
-      state.bootstrap.settings.language = language;
-    }).fail(error => {
-      state.lang = previous;
-      localStorage.setItem("cyber-lang", previous);
-      applyChrome();
-      routeCurrentView();
-      showRequestError(error);
-    }).always(() => $("[data-lang]").prop("disabled", false));
   }
 
   function renderCalendar() {
@@ -655,6 +637,7 @@
     setHeader(t("settings"), t("settingsSub"));
     const settings = state.bootstrap.settings;
     const presets = state.bootstrap.llm_presets || [];
+    const languageOptions = [["ko", "한국어"], ["en", "English"]].map(([code, label]) => `<option value="${code}"${code === settings.language ? " selected" : ""}>${label}</option>`).join("");
     const sources = state.bootstrap.sources.map(source => `<div class="source-row"><span class="status-dot${source.enabled ? " is-on" : ""}" aria-hidden="true"></span><span><strong>${esc(source.name)}</strong><small>${esc(source.host)} · RSS feed</small></span><button type="button" class="toggle" role="switch" aria-label="${esc(source.name)}" aria-checked="${source.enabled}" data-source-id="${source.id}"></button><span class="badge ${source.enabled ? "badge-success" : ""}">${source.enabled ? "Active" : "Off"}</span></div>`).join("");
     const preview = `POST ${(settings.llm_base_url || "<base-url>").replace(/\/$/, "")}/chat/completions\nAuthorization: Bearer ${llmKeyIsConfigured(settings) ? "••••••••" : "<api-key>"}\n\n{ "model": "${settings.llm_model || "<model>"}",\n  "temperature": 0.2,\n  "messages": [ … ] }`;
     const schema = `{ "attack_method": "APT | 랜섬웨어 | 공급망 | …",\n  "threat_actor": "Lazarus Group | SideCopy | TeamPCP | 미확인",\n  "actor_country": "DPRK | Pakistan | null",\n  "target_sector": "금융 | 정부 | 통신 | …",\n  "severity": "Critical | High | Medium",\n  "cve": ["CVE-YYYY-NNNN", …]   // 정규식 추출, LLM 응답 아님\n}`;
@@ -664,6 +647,7 @@
     }).join("");
     const addDisabled = !canAddPreset(settings.llm_base_url, settings.llm_model);
     $("#main-content").html(`<div class="content settings-stack">
+      <section class="card"><div class="card-header"><div><h2>${esc(t("language"))}</h2><p class="card-subtitle">${esc(t("languageHint"))}</p></div></div><div class="field"><label for="setting-language">${esc(t("language"))}</label><select id="setting-language">${languageOptions}</select></div></section>
       <section class="card"><div class="card-header"><h2>${esc(t("sourceSettings"))}</h2></div><div class="source-list">${sources}</div></section>
       <section class="card"><div class="card-header"><div><h2>${esc(t("nvdTitle"))}</h2><p class="card-subtitle">${esc(t("nvdHint"))}</p></div><a href="https://nvd.nist.gov/developers/request-an-api-key" target="_blank" rel="noopener noreferrer">NVD ↗</a></div><div class="field"><label for="nvd-api-key">${esc(t("apiKey"))}</label><input id="nvd-api-key" type="password" autocomplete="off" value="" placeholder="${settings.nvd_api_key_configured ? esc(t("keyStoredPlaceholder")) : ""}"><small>${esc(t("keyInputHint"))} · <span class="rate-limit">50 requests / 30s</span></small></div></section>
       <section class="card"><div class="card-header"><div><h2>${esc(t("timezone"))}</h2><p class="card-subtitle">${esc(t("timezoneHint"))}</p></div></div><div class="field"><label for="timezone-offset">UTC offset</label><select id="timezone-offset">${timezoneOptions(Number(settings.timezone_offset_minutes) || 0)}</select></div></section>
@@ -683,7 +667,7 @@
 
   function settingsFormValue() {
     return {
-      language: state.lang, theme: state.theme, accent: state.bootstrap.settings.accent || "#4f6ef7",
+      language: $("#setting-language").val() || state.lang, theme: state.theme, accent: state.bootstrap.settings.accent || "#4f6ef7",
       llm_base_url: $("#llm-base-url").val().trim(), llm_model: $("#llm-model").val().trim(),
       llm_api_key: $("#llm-api-key").val(), llm_timeout: Number($("#llm-timeout").val()), nvd_api_key: $("#nvd-api-key").val(),
       timezone_offset_minutes: Number($("#timezone-offset").val())
@@ -691,6 +675,7 @@
   }
 
   function applyNonSecretSettingsDraft(settings) {
+    $("#setting-language").val(settings.language);
     $("#llm-base-url").val(settings.llm_base_url);
     $("#llm-model").val(settings.llm_model);
     $("#llm-api-key").val("");
@@ -783,8 +768,10 @@
         return saved;
       });
     }).done(() => {
+      state.lang = state.bootstrap.settings.language;
+      localStorage.setItem("cyber-lang", state.lang);
+      applyChrome();
       toast(t("saved"));
-      renderCalendar();
       renderSettings();
     }).fail(error => {
       $("#save-settings,#revert-settings").prop("disabled", false);
@@ -1049,7 +1036,7 @@
     $(document).on("click", "#save-settings", saveSettings);
     $(document).on("click", "#revert-settings", revertSettings);
     $(document).on("click", "#test-llm", testConnection);
-    $(document).on("input change", "#llm-base-url,#llm-model,#llm-api-key,#llm-timeout,#nvd-api-key,#timezone-offset", refreshSettingsFormState);
+    $(document).on("input change", "#setting-language,#llm-base-url,#llm-model,#llm-api-key,#llm-timeout,#nvd-api-key,#timezone-offset", refreshSettingsFormState);
     $(document).on("click", "[data-preset-id]", function () { selectPreset(Number($(this).data("preset-id"))); });
     $(document).on("click", "#add-llm-preset", addCurrentPreset);
     $(document).on("click", "[data-remove-preset-id]", function () { removePreset(Number($(this).data("remove-preset-id"))); });
@@ -1060,7 +1047,6 @@
     $("#open-report-modal").on("click", openReportModal);
     $("#calendar-prev").on("click", () => { state.month = new Date(state.month.getFullYear(), state.month.getMonth() - 1, 1); renderCalendar(); });
     $("#calendar-next").on("click", () => { state.month = new Date(state.month.getFullYear(), state.month.getMonth() + 1, 1); renderCalendar(); });
-    $("[data-lang]").on("click", function () { selectLanguage($(this).data("lang")); });
     $("#theme-toggle").on("click", () => { state.theme = state.theme === "dark" ? "light" : "dark"; localStorage.setItem("cyber-theme", state.theme); document.documentElement.dataset.theme = state.theme; $("#theme-toggle").attr("aria-pressed", String(state.theme === "light")); refreshSettingsFormState(); });
     $("#menu-button").attr({ "aria-controls": "sidebar", "aria-expanded": "false" }).on("click", () => setDrawer(true));
     $("#drawer-close,#drawer-scrim").on("click", closeDrawer);

@@ -125,6 +125,68 @@ func TestSettingsKeepsStoredAPIKeysOutOfInputs_whenPageLoadsAndPresetChanges(t *
 	}
 }
 
+func TestLanguageSelectionLivesInSettingsAndAppliesAfterSave(t *testing.T) {
+	savedRequests := make(chan api.Settings, 3)
+	server := newSettingsSecurityBrowserServer(t, savedRequests)
+	viewports := []struct {
+		width  int64
+		height int64
+	}{{375, 812}, {768, 900}, {1280, 900}}
+
+	for _, viewport := range viewports {
+		t.Run(fmt.Sprintf("%dpx", viewport.width), func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			t.Cleanup(cancel)
+			browser, browserCancel := chromedp.NewContext(ctx)
+			t.Cleanup(browserCancel)
+
+			var headerControls int
+			if err := chromedp.Run(browser,
+				chromedp.EmulateViewport(viewport.width, viewport.height),
+				chromedp.Navigate(server.URL),
+				chromedp.WaitVisible(`#main-content .empty-state`),
+				chromedp.Evaluate(`document.querySelectorAll('.topbar [data-lang], .topbar select').length`, &headerControls),
+			); err != nil {
+				t.Fatalf("initialize dashboard: %v", err)
+			}
+			if headerControls != 0 {
+				t.Fatalf("header language controls = %d, want none", headerControls)
+			}
+
+			openSettingsPage(t, browser, viewport.width)
+			if directory := os.Getenv("CYBER_DASHBOARD_VISUAL_QA_DIR"); directory != "" {
+				warmSettingsCapture(t, browser, viewport.width)
+				screenshot := captureSettingsTarget(t, browser, "#setting-language", viewport.width, viewport.height)
+				writeSettingsScreenshot(t, directory, "language", viewport.width, screenshot)
+			}
+			var options int
+			if err := chromedp.Run(browser,
+				chromedp.WaitVisible(`#setting-language`),
+				chromedp.Evaluate(`document.querySelector('#setting-language').options.length`, &options),
+				chromedp.Evaluate(`(() => { const select = document.querySelector('#setting-language'); select.value = 'en'; select.dispatchEvent(new Event('change', { bubbles: true })); })()`, nil),
+				chromedp.WaitVisible(`#settings-save-bar`),
+				chromedp.Poll(`document.documentElement.lang === 'ko'`, nil),
+				chromedp.Click(`#save-settings`),
+				chromedp.Poll(`document.documentElement.lang === 'en' && document.querySelector('#page-title').textContent === 'Settings'`, nil),
+			); err != nil {
+				t.Fatalf("select and save language: %v", err)
+			}
+			if options != 2 {
+				t.Fatalf("language options = %d, want 2", options)
+			}
+
+			select {
+			case saved := <-savedRequests:
+				if saved.Language != "en" {
+					t.Fatalf("saved language = %q, want en", saved.Language)
+				}
+			default:
+				t.Fatal("settings save request was not received")
+			}
+		})
+	}
+}
+
 func newSettingsSecurityBrowserServer(t *testing.T, savedRequests chan<- api.Settings) *httptest.Server {
 	t.Helper()
 	staticFiles := http.FileServerFS(os.DirFS("../../static"))
