@@ -453,9 +453,11 @@
     return `<div class="bar-list">${rows.map((row, index) => {
       const width = Math.max(3, Math.round(row.value / max * 100));
       const value = percent ? `${Math.round(row.value / Math.max(total, 1) * 100)}%` : row.value;
-      // data-label feeds the hover reveal; the label element keeps the full text so assistive
-      // technology reads it whether or not the visual box clips.
-      return `<div class="bar-row" data-label="${esc(row.label)}"><span class="bar-label">${esc(row.label)}</span><span class="bar-track"><span class="bar-fill" style="width:${width}%;background:${chartColor(index)}"></span></span><span class="bar-value">${value}</span></div>`;
+      // The label element keeps the full text so assistive technology reads it whether or not
+      // the visual box clips. bar-reveal carries the copy the hover reveal shows: it is a real
+      // element because generated content cannot be selected or copied, and it is hidden from
+      // assistive technology so the label is not announced twice.
+      return `<div class="bar-row"><span class="bar-label">${esc(row.label)}</span><span class="bar-track"><span class="bar-fill" style="width:${width}%;background:${chartColor(index)}"></span></span><span class="bar-value">${value}</span><span class="bar-reveal" aria-hidden="true">${esc(row.label)}</span></div>`;
     }).join("")}</div>`;
   }
 
