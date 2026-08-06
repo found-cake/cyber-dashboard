@@ -162,9 +162,6 @@ func (c *Client) AnalyzeArticle(ctx context.Context, request ArticleRequest) (Ar
 	analysis.TargetSector = strings.TrimSpace(analysis.TargetSector)
 	if analysis.ThreatActor == "" {
 		analysis.ThreatActor = "Unknown"
-		if strings.EqualFold(strings.TrimSpace(request.Language), "ko") {
-			analysis.ThreatActor = "미확인"
-		}
 	}
 	if analysis.Summary == "" || analysis.AttackMethod == "" || analysis.TargetSector == "" || analysis.VictimCount < 0 {
 		return ArticleAnalysis{}, invalidResponse(content)

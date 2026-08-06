@@ -111,3 +111,30 @@ func TestCollectedDaysReturnsDistinctAscendingDates_whenArticlesExist(t *testing
 		t.Fatalf("days = %v", days)
 	}
 }
+
+func TestSaveArticleUsesEnglishPlaceholders_whenClassificationIsUnavailable(t *testing.T) {
+	// Given an article without a feed category or AI analysis.
+	db, err := database.Open(context.Background(), filepath.Join(t.TempDir(), "dashboard.db"))
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	repository := NewRepository(db)
+
+	// When the article is saved through the production repository.
+	err = repository.SaveArticle(context.Background(), api.Source{ID: 1}, FeedArticle{
+		ID: "unclassified", URL: "https://example.com/unclassified", Title: "Unclassified article",
+	}, "2026-08-06")
+	if err != nil {
+		t.Fatalf("save article: %v", err)
+	}
+
+	// Then both classification placeholders use stable English labels.
+	var attackMethod, threatActor string
+	if err := db.QueryRow(`SELECT attack_method, threat_actor FROM articles WHERE feed_uid = ?`, "unclassified").Scan(&attackMethod, &threatActor); err != nil {
+		t.Fatalf("read saved classifications: %v", err)
+	}
+	if attackMethod != "Unclassified" || threatActor != "Unknown" {
+		t.Fatalf("classifications = %q, %q, want Unclassified, Unknown", attackMethod, threatActor)
+	}
+}

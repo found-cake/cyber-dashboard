@@ -65,7 +65,7 @@ func (r *Repository) SaveArticle(ctx context.Context, source api.Source, article
 	defer func() { _ = tx.Rollback() }()
 	description := cleanText(article.Description)
 	body := strings.TrimSpace(article.Body)
-	method := "미분류"
+	method := "Unclassified"
 	if len(article.Categories) > 0 && strings.TrimSpace(article.Categories[0]) != "" {
 		method = strings.TrimSpace(article.Categories[0])
 	}
@@ -75,8 +75,8 @@ func (r *Repository) SaveArticle(ctx context.Context, source api.Source, article
 	}
 	var articleID int64
 	err = tx.QueryRowContext(ctx, `INSERT INTO articles
-	(source_id, feed_uid, title, url, published_at, published_time, collected_at, body, summary, attack_method, severity)
-	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	(source_id, feed_uid, title, url, published_at, published_time, collected_at, body, summary, attack_method, threat_actor, severity)
+	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	ON CONFLICT(feed_uid) DO UPDATE SET title = excluded.title, url = excluded.url,
 	published_at = excluded.published_at, published_time = excluded.published_time,
 	body = excluded.body, summary = excluded.summary, attack_method = excluded.attack_method,
@@ -84,7 +84,7 @@ func (r *Repository) SaveArticle(ctx context.Context, source api.Source, article
 		THEN excluded.severity ELSE articles.severity END
 	RETURNING id`,
 		source.ID, article.ID, cleanText(article.Title), article.URL, day, publishedTimestamp(article, day),
-		time.Now().UTC().Format(time.RFC3339), body, description, method, string(initialSeverity)).Scan(&articleID)
+		time.Now().UTC().Format(time.RFC3339), body, description, method, "Unknown", string(initialSeverity)).Scan(&articleID)
 	if err != nil {
 		return fmt.Errorf("upsert article %s: %w", article.ID, err)
 	}

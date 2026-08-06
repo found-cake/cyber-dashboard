@@ -183,8 +183,8 @@ func TestClientAnalyzeArticleUsesUnknownActor_whenResponseLeavesThreatActorEmpty
 	if err != nil {
 		t.Fatalf("analyze article: %v", err)
 	}
-	if analysis.ThreatActor != "미확인" {
-		t.Fatalf("threat actor = %q, want 미확인", analysis.ThreatActor)
+	if analysis.ThreatActor != "Unknown" {
+		t.Fatalf("threat actor = %q, want Unknown", analysis.ThreatActor)
 	}
 }
 
