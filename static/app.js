@@ -446,11 +446,19 @@
   // CSS cannot tell whether an ellipsised label actually overflowed, so the hover reveal is
   // switched on per row by measurement — otherwise every row, including the ones already
   // showing their label in full, would sprout a tooltip.
+  // scrollWidth and clientWidth are rounded to whole pixels, so a label overflowing by less than
+  // a pixel reads as not overflowing at all while its ellipsis is plainly on screen. Box widths
+  // land on fractions constantly once the display scales by a fraction such as 125%, where the
+  // layout grid is 0.8px, so that near miss stops being an edge case. Range rects keep the
+  // fraction, and comparing two rects measured the same way needs no tolerance beyond noise.
   function markClippedBarLabels() {
+    const range = document.createRange();
     $(".bar-row").each(function () {
       const label = this.querySelector(".bar-label");
       if (!label) return;
-      this.classList.toggle("is-clipped", label.scrollWidth > label.clientWidth + 1);
+      range.selectNodeContents(label);
+      const text = range.getBoundingClientRect().width;
+      this.classList.toggle("is-clipped", text > label.getBoundingClientRect().width + 0.05);
     });
   }
 
@@ -485,6 +493,10 @@
         </section>
       </div>`);
       markClippedBarLabels();
+      // Text metrics can still change after this frame when a font further down the stack is
+      // still loading, and that resizes no box the observer below watches. Measuring again once
+      // the fonts settle costs one pass and keeps rows from being judged on fallback metrics.
+      if (document.fonts) document.fonts.ready.then(markClippedBarLabels);
       applyViewScroll("dashboard", restoreScroll);
     }).fail(showRequestError);
   }
