@@ -26,8 +26,10 @@ CREATE TABLE IF NOT EXISTS articles (
   threat_actor TEXT NOT NULL DEFAULT 'Unknown',
   actor_country TEXT NOT NULL DEFAULT '',
   sector TEXT NOT NULL DEFAULT '일반',
-	  victim_count INTEGER NOT NULL DEFAULT 0,
-	  zero_day INTEGER NOT NULL DEFAULT 0,
+  victim_count INTEGER NOT NULL DEFAULT 0,
+  damage_usd INTEGER NOT NULL DEFAULT 0,
+  zero_day INTEGER NOT NULL DEFAULT 0,
+  patch_available TEXT NOT NULL DEFAULT '',
   severity TEXT NOT NULL DEFAULT 'UNKNOWN'
 );
 CREATE TABLE IF NOT EXISTS daily_summaries (
@@ -41,6 +43,7 @@ CREATE TABLE IF NOT EXISTS cves (
   cvss_score REAL NOT NULL DEFAULT 0,
   cvss_source TEXT NOT NULL DEFAULT '',
   cvss_version TEXT NOT NULL DEFAULT '',
+  cvss_vector TEXT NOT NULL DEFAULT '',
   affected_product TEXT NOT NULL DEFAULT 'NVD enrichment pending'
 );
 CREATE TABLE IF NOT EXISTS rejected_cves (

@@ -103,7 +103,29 @@ func (s *Service) AnalyzeArticle(ctx context.Context, request ArticleRequest) (A
 	if err != nil {
 		return ArticleAnalysis{}, fmt.Errorf("%w: %w", ErrUnavailable, err)
 	}
-	return value, nil
+	return pairActorWithMethod(value), nil
+}
+
+// pairActorWithMethod settles the one rule that binds two answers together: an article with
+// no attack has no attacker, and an attack always has one even when nobody knows who. Weaker
+// models state it back correctly and then break it anyway — a 26B model answered "None" for
+// the attacker on 17 of 331 real incidents, every repeat, with the rule written twice in the
+// prompt. It is arithmetic rather than judgement, so the dashboard settles it here instead of
+// storing a contradiction.
+//
+// This lives in the service rather than the client on purpose: cmd/promptbench measures the
+// prompt through the client, and repairing the answer there would report a conformance the
+// model never delivered.
+func pairActorWithMethod(analysis ArticleAnalysis) ArticleAnalysis {
+	if !IsIncidentMethod(analysis.AttackMethod) {
+		analysis.ThreatActor = noAttackActor
+		analysis.ActorCountry = ""
+		return analysis
+	}
+	if analysis.ThreatActor == noAttackActor {
+		analysis.ThreatActor = unknownActor
+	}
+	return analysis
 }
 
 func (s *Service) TestConnection(ctx context.Context) error {

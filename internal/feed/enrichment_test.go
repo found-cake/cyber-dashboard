@@ -60,6 +60,137 @@ func TestSaveArticleAnalysisUsesImpactSeverity_whenNoHigherCVSSExists(t *testing
 	}
 }
 
+func TestSaveArticleAnalysisRaisesSeverityFromDamage_whenNoVictimCountIsStated(t *testing.T) {
+	// Given a stored theft article that names an amount but no victims and no CVE.
+	db, err := database.Open(context.Background(), filepath.Join(t.TempDir(), "dashboard.db"))
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	repository := NewRepository(db)
+	if err := repository.SaveArticle(context.Background(), api.Source{ID: 1}, FeedArticle{
+		ID: "sha256:damage", URL: "https://example.com/damage", Title: "Bridge drained",
+		PublishedAt: "2026-08-03T01:00:00Z", Body: "Attackers drained the bridge",
+	}, "2026-08-03"); err != nil {
+		t.Fatalf("save article: %v", err)
+	}
+	var articleID int64
+	if err := db.QueryRow(`SELECT id FROM articles WHERE feed_uid = ?`, "sha256:damage").Scan(&articleID); err != nil {
+		t.Fatalf("read article id: %v", err)
+	}
+
+	// When analysis reports a 190 million dollar loss and nothing else measurable.
+	err = repository.SaveArticleAnalysis(context.Background(), articleID, summary.ArticleAnalysis{
+		Summary: "Bridge drained", AttackMethod: "Financial / Crypto", ThreatActor: "Unknown",
+		TargetSector: "Finance", DamageUSD: 190_000_000,
+	})
+
+	// Then the stated damage is persisted and carries severity on its own.
+	if err != nil {
+		t.Fatalf("save article analysis: %v", err)
+	}
+	var severity string
+	var damage int64
+	if err := db.QueryRow(`SELECT severity, damage_usd FROM articles WHERE id = ?`, articleID).Scan(&severity, &damage); err != nil {
+		t.Fatalf("read analyzed article: %v", err)
+	}
+	if severity != "CRITICAL" || damage != 190_000_000 {
+		t.Fatalf("severity = %q, damage = %d, want CRITICAL and 190000000", severity, damage)
+	}
+}
+
+func TestSaveArticleAnalysisWeighsWhatTheArticleReports(t *testing.T) {
+	tests := []struct {
+		name         string
+		uid          string
+		method       string
+		actor        string
+		sector       string
+		cvss         float64
+		victimCount  int
+		wantSeverity string
+	}{
+		{
+			// An advisory's whole severity is a score for a flaw nobody has used yet, so it
+			// stays below the band reserved for damage someone has taken.
+			name: "advisory is held below critical", uid: "sha256:advisory",
+			method: "Vulnerability Disclosure", actor: "None", sector: "Technology",
+			cvss: 9.8, wantSeverity: "HIGH",
+		},
+		{
+			// A confirmed intrusion that counted nothing is not therefore harmless.
+			name: "incident keeps a floor without numbers", uid: "sha256:intrusion",
+			method: "Data Breach / Unauthorized Access", actor: "Unknown", sector: "Technology",
+			wantSeverity: "MEDIUM",
+		},
+		{
+			name: "incident against a sector people cannot route around", uid: "sha256:hospital",
+			method: "Ransomware", actor: "Unknown", sector: "Healthcare",
+			wantSeverity: "HIGH",
+		},
+		{
+			// The sector step sharpens an incident, it does not grade an advisory.
+			name: "advisory naming a sector is not raised", uid: "sha256:gov-advisory",
+			method: "Industry / Guidance", actor: "None", sector: "Government",
+			wantSeverity: "UNKNOWN",
+		},
+		{
+			name: "measured impact still outranks the floor", uid: "sha256:mass-breach",
+			method: "Data Breach / Unauthorized Access", actor: "Unknown", sector: "Technology",
+			victimCount: 500_000, wantSeverity: "CRITICAL",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			// Given a stored article carrying one kind of report.
+			db, err := database.Open(context.Background(), filepath.Join(t.TempDir(), "dashboard.db"))
+			if err != nil {
+				t.Fatalf("open database: %v", err)
+			}
+			t.Cleanup(func() { _ = db.Close() })
+			repository := NewRepository(db)
+			title := "Story"
+			if test.cvss > 0 {
+				title = "Story CVE-2026-3001"
+			}
+			if err := repository.SaveArticle(context.Background(), api.Source{ID: 1}, FeedArticle{
+				ID: test.uid, URL: "https://example.com/" + test.uid, Title: title,
+				PublishedAt: "2026-08-03T01:00:00Z", Body: "Body",
+			}, "2026-08-03"); err != nil {
+				t.Fatalf("save article: %v", err)
+			}
+			var articleID int64
+			if err := db.QueryRow(`SELECT id FROM articles WHERE feed_uid = ?`, test.uid).Scan(&articleID); err != nil {
+				t.Fatalf("read article id: %v", err)
+			}
+			if test.cvss > 0 {
+				if _, err := db.Exec(`UPDATE cves SET cvss_score = ?, cvss_vector = ? WHERE cve_id = ?`,
+					test.cvss, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", "CVE-2026-3001"); err != nil {
+					t.Fatalf("score CVE: %v", err)
+				}
+			}
+
+			// When the analysis for that article is saved.
+			err = repository.SaveArticleAnalysis(context.Background(), articleID, summary.ArticleAnalysis{
+				Summary: "Analyzed", AttackMethod: test.method, ThreatActor: test.actor,
+				TargetSector: test.sector, VictimCount: test.victimCount,
+			})
+
+			// Then severity reflects what kind of report it is, not the score alone.
+			if err != nil {
+				t.Fatalf("save analysis: %v", err)
+			}
+			var got string
+			if err := db.QueryRow(`SELECT severity FROM articles WHERE id = ?`, articleID).Scan(&got); err != nil {
+				t.Fatalf("read severity: %v", err)
+			}
+			if got != test.wantSeverity {
+				t.Fatalf("severity = %q, want %q", got, test.wantSeverity)
+			}
+		})
+	}
+}
+
 func TestSaveArticleStartsStepSecurityThreatIntelAtHigh_whenImpactSignalsUnavailable(t *testing.T) {
 	// Given the StepSecurity source and a filtered-in Threat Intel article without CVSS or victim signals.
 	db, err := database.Open(context.Background(), filepath.Join(t.TempDir(), "dashboard.db"))

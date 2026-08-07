@@ -6,9 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/found-cake/cyber-dashboard/internal/severity"
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
 	"github.com/openai/openai-go/v3/shared"
@@ -53,21 +55,32 @@ type ArticleAnalysis struct {
 	ActorCountry string `json:"actor_country"`
 	TargetSector string `json:"target_sector"`
 	VictimCount  int    `json:"victim_count"`
-	ZeroDay      bool   `json:"zero_day"`
+	// DamageUSD is the financial damage the article states for the incident, in whole US
+	// dollars, and 0 when it states none. Severity reads it alongside the victim count.
+	DamageUSD int64 `json:"damage_usd"`
+	// PatchAvailable is "yes", "no", or "" when the article does not say. It stays a
+	// three-state value because an unfixed flaw and an article that never mentions a fix
+	// have to pull severity in different directions.
+	PatchAvailable string `json:"patch_available"`
+	ZeroDay        bool   `json:"zero_day"`
 }
 
 type articleAnalysisResponse struct {
-	Summary       string        `json:"summary"`
-	AttackMethods attackMethods `json:"attack_method"`
-	ThreatActor   string        `json:"threat_actor"`
-	ActorCountry  actorCountry  `json:"actor_country"`
-	TargetSector  string        `json:"target_sector"`
-	VictimCount   int           `json:"victim_count"`
-	ZeroDay       bool          `json:"zero_day"`
+	Summary        string        `json:"summary"`
+	AttackMethods  attackMethods `json:"attack_method"`
+	ThreatActor    string        `json:"threat_actor"`
+	ActorCountry   actorCountry  `json:"actor_country"`
+	TargetSector   string        `json:"target_sector"`
+	VictimCount    int           `json:"victim_count"`
+	DamageUSD      damageAmount  `json:"damage_usd"`
+	PatchAvailable patchState    `json:"patch_available"`
+	ZeroDay        bool          `json:"zero_day"`
 }
 
 type actorCountry string
 type attackMethods []string
+type damageAmount int64
+type patchState string
 
 type Client struct {
 	openai openai.Client
@@ -153,7 +166,8 @@ func (c *Client) AnalyzeArticle(ctx context.Context, request ArticleRequest) (Ar
 	analysis := ArticleAnalysis{
 		Summary: response.Summary, AttackMethod: response.AttackMethods.String(), ThreatActor: response.ThreatActor,
 		ActorCountry: string(response.ActorCountry), TargetSector: response.TargetSector,
-		VictimCount: response.VictimCount, ZeroDay: response.ZeroDay,
+		VictimCount: response.VictimCount, DamageUSD: int64(response.DamageUSD),
+		PatchAvailable: string(response.PatchAvailable), ZeroDay: response.ZeroDay,
 	}
 	analysis.Summary = strings.TrimSpace(analysis.Summary)
 	analysis.AttackMethod = strings.TrimSpace(analysis.AttackMethod)
@@ -161,9 +175,10 @@ func (c *Client) AnalyzeArticle(ctx context.Context, request ArticleRequest) (Ar
 	analysis.ActorCountry = strings.TrimSpace(analysis.ActorCountry)
 	analysis.TargetSector = strings.TrimSpace(analysis.TargetSector)
 	if analysis.ThreatActor == "" {
-		analysis.ThreatActor = "Unknown"
+		analysis.ThreatActor = unknownActor
 	}
-	if analysis.Summary == "" || analysis.AttackMethod == "" || analysis.TargetSector == "" || analysis.VictimCount < 0 {
+	if analysis.Summary == "" || analysis.AttackMethod == "" || analysis.TargetSector == "" ||
+		analysis.VictimCount < 0 || analysis.DamageUSD < 0 {
 		return ArticleAnalysis{}, invalidResponse(content)
 	}
 	return analysis, nil
@@ -191,6 +206,90 @@ func (m attackMethods) String() string {
 		}
 	}
 	return strings.Join(values, ", ")
+}
+
+// UnmarshalJSON keeps patch_available to the three states severity understands. A field
+// named like a boolean invites one, so a bare true is read as a released fix — but a bare
+// false is read as nothing stated, because a model answering false about an article that
+// never mentioned a fix must not be taken as "there is no fix", which raises severity.
+func (p *patchState) UnmarshalJSON(data []byte) error {
+	var flag bool
+	if err := json.Unmarshal(data, &flag); err == nil {
+		*p = ""
+		if flag {
+			*p = severity.PatchAvailable
+		}
+		return nil
+	}
+	var value string
+	if err := json.Unmarshal(data, &value); err != nil {
+		*p = ""
+		return nil
+	}
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case severity.PatchAvailable, "true", "available", "patched", "fixed":
+		*p = severity.PatchAvailable
+	case severity.PatchUnavailable, "false", "unavailable", "unpatched", "none":
+		*p = severity.PatchUnavailable
+	default:
+		*p = ""
+	}
+	return nil
+}
+
+// damageScales are the magnitude words models write instead of zeros, longest first so
+// "billion" is matched before the "b" that starts it.
+var damageScales = []struct {
+	suffix string
+	factor float64
+}{
+	{"trillion", 1e12}, {"billion", 1e9}, {"million", 1e6}, {"thousand", 1e3},
+	{"tn", 1e12}, {"bn", 1e9}, {"t", 1e12}, {"b", 1e9}, {"m", 1e6}, {"k", 1e3},
+}
+
+// UnmarshalJSON accepts the shapes models use for money: a plain number, a float, or prose
+// such as "$1.5 million". Text holding no figure at all, such as "unknown" or "N/A", reads
+// as no stated damage, because one unusable field is not worth discarding the analysis.
+func (d *damageAmount) UnmarshalJSON(data []byte) error {
+	trimmed := strings.TrimSpace(string(data))
+	if trimmed == "null" {
+		*d = 0
+		return nil
+	}
+	var number float64
+	if err := json.Unmarshal(data, &number); err == nil {
+		*d = damageAmount(number)
+		return nil
+	}
+	var text string
+	if err := json.Unmarshal(data, &text); err != nil {
+		return fmt.Errorf("decode damage amount: %w", err)
+	}
+	*d = damageAmount(parseDamageText(text))
+	return nil
+}
+
+func parseDamageText(text string) float64 {
+	normalized := strings.ToLower(strings.TrimSpace(text))
+	for _, unwanted := range []string{"us$", "usd", "$", ",", "_", "약", "달러", "dollars", "dollar", "+", "~"} {
+		normalized = strings.ReplaceAll(normalized, unwanted, "")
+	}
+	normalized = strings.TrimSpace(normalized)
+	digits := 0
+	for digits < len(normalized) && (normalized[digits] == '.' || (normalized[digits] >= '0' && normalized[digits] <= '9')) {
+		digits++
+	}
+	number, err := strconv.ParseFloat(normalized[:digits], 64)
+	if err != nil {
+		return 0
+	}
+	remainder := strings.TrimSpace(normalized[digits:])
+	for _, scale := range damageScales {
+		if strings.HasPrefix(remainder, scale.suffix) {
+			return number * scale.factor
+		}
+	}
+	return number
 }
 
 func (c *actorCountry) UnmarshalJSON(data []byte) error {

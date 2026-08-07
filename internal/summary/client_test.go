@@ -3,6 +3,7 @@ package summary
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -209,6 +210,115 @@ func TestClientAnalyzeArticleJoinsAttackMethods_whenResponseUsesArray(t *testing
 	}
 	if analysis.AttackMethod != "피싱, 악성코드 콜백, DNS 터널링" {
 		t.Fatalf("attack method = %q", analysis.AttackMethod)
+	}
+}
+
+func TestClientAnalyzeArticleReadsDamageAmount_whateverShapeTheModelWritesItIn(t *testing.T) {
+	tests := []struct {
+		name  string
+		value string
+		want  int64
+	}{
+		{name: "whole number", value: `1500000`, want: 1_500_000},
+		{name: "float", value: `1.5e6`, want: 1_500_000},
+		{name: "prose amount", value: `"$1.5 million"`, want: 1_500_000},
+		{name: "separated digits", value: `"USD 190,000,000"`, want: 190_000_000},
+		{name: "no figure", value: `"unknown"`, want: 0},
+		{name: "absent", value: `null`, want: 0},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			// Given an analysis whose damage figure arrives in one of the shapes models use.
+			client := newArticleAnalysisClient(t, `{
+				"summary":"Attackers drained a bridge.",
+				"attack_method":"Financial / Crypto",
+				"threat_actor":"Unknown",
+				"actor_country":"",
+				"target_sector":"Finance",
+				"victim_count":0,
+				"damage_usd":`+test.value+`,
+				"zero_day":false
+			}`)
+
+			// When the response is parsed.
+			analysis, err := client.AnalyzeArticle(context.Background(), ArticleRequest{Language: "en", Title: "Bridge drained", Body: "Body"})
+
+			// Then the amount reaches severity as whole US dollars, and an unusable figure
+			// reads as no stated damage instead of discarding the whole analysis.
+			if err != nil {
+				t.Fatalf("analyze article: %v", err)
+			}
+			if analysis.DamageUSD != test.want {
+				t.Fatalf("damage = %d, want %d", analysis.DamageUSD, test.want)
+			}
+		})
+	}
+}
+
+func TestClientAnalyzeArticleKeepsPatchStateToThreeValues(t *testing.T) {
+	tests := []struct {
+		name  string
+		value string
+		want  string
+	}{
+		{name: "fix released", value: `"yes"`, want: "yes"},
+		{name: "no fix yet", value: `"no"`, want: "no"},
+		{name: "not stated", value: `"unknown"`, want: ""},
+		{name: "wording instead of the enum", value: `"Patched"`, want: "yes"},
+		{name: "boolean true", value: `true`, want: "yes"},
+		// A model answering false about an article that never mentioned a fix would
+		// otherwise raise the article's severity for a claim it never made.
+		{name: "boolean false", value: `false`, want: ""},
+		{name: "prose", value: `"a fix is expected next week"`, want: ""},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			// Given an analysis carrying one of the shapes models write for patch state.
+			client := newArticleAnalysisClient(t, `{
+				"summary":"A critical flaw was disclosed.",
+				"attack_method":"Vulnerability Disclosure",
+				"threat_actor":"None",
+				"actor_country":"",
+				"target_sector":"Technology",
+				"victim_count":0,
+				"damage_usd":0,
+				"patch_available":`+test.value+`,
+				"zero_day":false
+			}`)
+
+			// When the response is parsed.
+			analysis, err := client.AnalyzeArticle(context.Background(), ArticleRequest{Language: "en", Title: "Advisory", Body: "Body"})
+
+			// Then only a stated fix state survives; everything else means nothing stated.
+			if err != nil {
+				t.Fatalf("analyze article: %v", err)
+			}
+			if analysis.PatchAvailable != test.want {
+				t.Fatalf("patch available = %q, want %q", analysis.PatchAvailable, test.want)
+			}
+		})
+	}
+}
+
+func TestClientAnalyzeArticleRejectsNegativeDamage(t *testing.T) {
+	// Given an otherwise complete analysis reporting a negative loss.
+	client := newArticleAnalysisClient(t, `{
+		"summary":"Incident summary",
+		"attack_method":"Ransomware",
+		"threat_actor":"Unknown",
+		"actor_country":"",
+		"target_sector":"Healthcare",
+		"victim_count":0,
+		"damage_usd":-5000,
+		"zero_day":false
+	}`)
+
+	// When the response is parsed.
+	_, err := client.AnalyzeArticle(context.Background(), ArticleRequest{Language: "en", Title: "Incident", Body: "Body"})
+
+	// Then it is rejected rather than lowering the article's severity with nonsense.
+	if !errors.Is(err, ErrInvalidResponse) {
+		t.Fatalf("error = %v, want %v", err, ErrInvalidResponse)
 	}
 }
 

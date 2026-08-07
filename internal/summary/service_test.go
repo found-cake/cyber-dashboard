@@ -205,3 +205,50 @@ func TestServiceGenerateRetriesOneInvalidResponse(t *testing.T) {
 		t.Fatalf("summary = %q, want Recovered", value)
 	}
 }
+
+func TestAnalyzeArticlePairsActorWithMethod_whenTheModelContradictsItself(t *testing.T) {
+	tests := []struct {
+		name        string
+		method      string
+		actor       string
+		country     string
+		wantActor   string
+		wantCountry string
+	}{
+		{
+			name: "incident answered with no attacker", method: "Vulnerability Exploitation",
+			actor: "None", wantActor: "Unknown",
+		},
+		{
+			name: "advisory answered with an attacker", method: "Vulnerability Disclosure",
+			actor: "Lazarus Group", country: "North Korea", wantActor: "None",
+		},
+		{
+			name: "attributed incident is left alone", method: "Ransomware",
+			actor: "Lazarus Group", country: "North Korea",
+			wantActor: "Lazarus Group", wantCountry: "North Korea",
+		},
+		{
+			name: "AI-run incident keeps its placeholder", method: "AI / LLM Abuse",
+			actor: "Unknown (AI-operated)", wantActor: "Unknown (AI-operated)",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			// Given an analysis whose two classification fields disagree.
+			analysis := ArticleAnalysis{
+				AttackMethod: test.method, ThreatActor: test.actor, ActorCountry: test.country,
+			}
+
+			// When the pairing rule is applied.
+			got := pairActorWithMethod(analysis)
+
+			// Then the actor follows the method, so the dashboard never stores a real
+			// incident with no attacker or a patch notice with one.
+			if got.ThreatActor != test.wantActor || got.ActorCountry != test.wantCountry {
+				t.Fatalf("actor = %q country = %q, want %q and %q",
+					got.ThreatActor, got.ActorCountry, test.wantActor, test.wantCountry)
+			}
+		})
+	}
+}
