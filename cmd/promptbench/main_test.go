@@ -62,6 +62,7 @@ func TestScoreBucketsActorForms(t *testing.T) {
 		{Runs: []summary.ArticleAnalysis{analysis("Botnet", "Unknown", "", "Technology")}},
 		{Runs: []summary.ArticleAnalysis{analysis("APT / Espionage", "Unidentified China-linked actor", "China", "Government")}},
 		{Runs: []summary.ArticleAnalysis{analysis("Ransomware", "Unknown (Chinese-speaking)", "", "Finance")}},
+		{Runs: []summary.ArticleAnalysis{analysis("AI / LLM Abuse", aiOperatedActor, "", "Technology")}},
 		{Runs: []summary.ArticleAnalysis{analysis("Ransomware", "Lazarus Group", "North Korea", "Finance")}},
 		{Runs: []summary.ArticleAnalysis{analysis("Ransomware", "Lazarus Group", "North Korea", "Finance")}},
 		{Runs: []summary.ArticleAnalysis{analysis("Malware / Stealer", "Shai-Hulud 2.0", "", "Technology")}},
@@ -72,9 +73,9 @@ func TestScoreBucketsActorForms(t *testing.T) {
 
 	// Then placeholders stay out of the attributed-group count, which is what keeps the
 	// dashboard's actor tail meaningful.
-	if card.none != 1 || card.unknown != 2 || card.unidentified != 1 || card.languageOnly != 1 {
-		t.Errorf("buckets none=%d unknown=%d unidentified=%d languageOnly=%d, want 1/2/1/1",
-			card.none, card.unknown, card.unidentified, card.languageOnly)
+	if card.none != 1 || card.unknown != 2 || card.unidentified != 1 || card.languageOnly != 1 || card.aiOperated != 1 {
+		t.Errorf("buckets none=%d unknown=%d unidentified=%d languageOnly=%d aiOperated=%d, want 1/2/1/1/1",
+			card.none, card.unknown, card.unidentified, card.languageOnly, card.aiOperated)
 	}
 	if card.named != 3 || card.distinctNamed != 2 {
 		t.Errorf("named = %d over %d distinct, want 3 over 2", card.named, card.distinctNamed)
@@ -82,6 +83,45 @@ func TestScoreBucketsActorForms(t *testing.T) {
 	// Only the once-seen actor is surfaced for review; a repeated one is not suspicious.
 	if !reflect.DeepEqual(card.singletonActors, []string{"Shai-Hulud 2.0"}) {
 		t.Errorf("singleton actors = %v, want [Shai-Hulud 2.0]", card.singletonActors)
+	}
+}
+
+func TestScoreCountsAnalysesCarryingADamageFigure(t *testing.T) {
+	// Given analyses where only some articles stated a financial loss.
+	drained := analysis("Financial / Crypto", "Unknown", "", "Finance")
+	drained.DamageUSD = 190_000_000
+	observations := []observation{
+		{Runs: []summary.ArticleAnalysis{drained}},
+		{Runs: []summary.ArticleAnalysis{analysis("Ransomware", "Unknown", "", "Healthcare")}},
+	}
+
+	// When the run is scored.
+	card := score(observations)
+
+	// Then the coverage of the field severity reads is reported, so a prompt that stops
+	// finding amounts is visible rather than looking like a quiet news week.
+	if card.damageStated != 1 {
+		t.Errorf("damage figures captured = %d, want 1", card.damageStated)
+	}
+}
+
+func TestScoreMeasuresPatchStateOnFlawArticlesOnly(t *testing.T) {
+	// Given two advisories, one carrying a patch state and one leaving it blank, plus a
+	// ransomware article that has no flaw to patch.
+	patched := analysis("Vulnerability Disclosure", "None", "", "Technology")
+	patched.PatchAvailable = "yes"
+	observations := []observation{
+		{Runs: []summary.ArticleAnalysis{patched}},
+		{Runs: []summary.ArticleAnalysis{analysis("Vulnerability Exploitation", "Unknown", "", "Technology")}},
+		{Runs: []summary.ArticleAnalysis{analysis("Ransomware", "Unknown", "", "Healthcare")}},
+	}
+
+	// When the run is scored.
+	card := score(observations)
+
+	// Then only the two flaw articles are counted, and one of them is a miss.
+	if card.flawArticles != 2 || card.patchStated != 1 {
+		t.Errorf("patch state = %d of %d flaw articles, want 1 of 2", card.patchStated, card.flawArticles)
 	}
 }
 

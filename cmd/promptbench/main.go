@@ -6,6 +6,7 @@
 // what collection would store.
 //
 //	go run ./cmd/promptbench -base-url http://127.0.0.1:8888/v1 -model gpt-5.6-luna
+//	go run ./cmd/promptbench -base-url http://127.0.0.1:8888/v1 -model gpt-5.4-mini
 //	go run ./cmd/promptbench -base-url http://127.0.0.1:8989/v1 -model Gemma-4-26B-A4B -repeat 3
 package main
 
@@ -170,7 +171,9 @@ type scorecard struct {
 	offEnumMethod, offEnumSector                        int
 	sentinelMismatch, languageLeak, countryFromLanguage int
 	unstableMethod, unstableActor                       int
+	damageStated, flawArticles, patchStated             int
 	none, unknown, unidentified, languageOnly, named    int
+	aiOperated                                          int
 	distinctNamed                                       int
 	methods, actors                                     map[string]int
 	singletonActors                                     []string
@@ -194,6 +197,20 @@ func score(observations []observation) scorecard {
 			}
 			if !isTargetSector(analysis.TargetSector) {
 				card.offEnumSector++
+			}
+			// Severity reads damage_usd, so how often the model finds a figure at all is
+			// worth watching: a run where it never does is a prompt problem, not quiet news.
+			if analysis.DamageUSD > 0 {
+				card.damageStated++
+			}
+			// Severity moves a step on the patch state, so a blank one on an article about
+			// a specific flaw is a miss. Articles that are not about a flaw are left out of
+			// the denominator: having no patch state is the right answer there.
+			if isFlawMethod(analysis.AttackMethod) {
+				card.flawArticles++
+				if analysis.PatchAvailable != "" {
+					card.patchStated++
+				}
 			}
 			// The prompt pins these two together: every non-incident label means no actor,
 			// and an incident always carries some actor value. Only labels inside the
@@ -227,6 +244,8 @@ func score(observations []observation) scorecard {
 			card.none += count
 		case actor == unknownActor:
 			card.unknown += count
+		case actor == aiOperatedActor:
+			card.aiOperated += count
 		case isUnidentifiedActor(actor):
 			card.unidentified += count
 		case isLanguageOnlyActor(actor):
@@ -256,6 +275,8 @@ func report(observations []observation, opts options) {
 	line("None paired across the two fields", card.analyzed-card.sentinelMismatch, card.analyzed)
 	line("labels kept in English", card.analyzed-card.languageLeak, card.analyzed)
 	line("language community not made a country", card.analyzed-card.countryFromLanguage, card.analyzed)
+	line("damage figure captured", card.damageStated, card.analyzed)
+	line("patch state on flaw articles", card.patchStated, card.flawArticles)
 
 	if opts.repeat > 1 {
 		fmt.Println("\n── self-consistency across repeats ──────────")
@@ -271,6 +292,7 @@ func report(observations []observation, opts options) {
 	line("unattributed (Unknown)", card.unknown, card.analyzed)
 	line("country-linked placeholder", card.unidentified, card.analyzed)
 	line("language-community placeholder", card.languageOnly, card.analyzed)
+	line("AI-operated placeholder", card.aiOperated, card.analyzed)
 	line("attributed group", card.named, card.analyzed)
 	fmt.Printf("  %-34s %d of %d distinct named actors\n", "seen exactly once", len(card.singletonActors), card.distinctNamed)
 	if len(card.singletonActors) > 0 {

@@ -14,6 +14,7 @@ var attackMethodLabels = []string{
 	"Financial / Crypto",
 	"Social Engineering",
 	"Vulnerability Exploitation",
+	"AI / LLM Abuse",
 	"Denial of Service",
 	"Insider Threat",
 	"Data Breach / Unauthorized Access",
@@ -31,6 +32,19 @@ var nonIncidentLabels = []string{
 	"Industry / Guidance",
 	"None",
 }
+
+// patchStates is the closed set of patch_available values the analysis prompt allows. The
+// client folds anything it does not recognize into the empty value, so this list is not a
+// filter over model output: it exists so the prompt and the code cannot drift apart on
+// which three words are offered.
+var patchStates = []string{"yes", "no", "unknown"}
+
+// flawMethods are the attack_method labels whose articles are about a specific weakness,
+// which is where a patch state is expected to be reported.
+var flawMethods = []string{"Vulnerability Disclosure", "Vulnerability Exploitation"}
+
+// isFlawMethod reports whether an article with this label should carry a patch state.
+func isFlawMethod(label string) bool { return contains(flawMethods, label) }
 
 // targetSectorLabels is the closed set of target_sector labels the analysis prompt allows.
 var targetSectorLabels = []string{
@@ -52,6 +66,11 @@ var targetSectorLabels = []string{
 const (
 	noAttack     = "None"
 	unknownActor = "Unknown"
+	// aiOperatedActor is the fixed wording for an attack the article says an AI agent ran
+	// itself. It is one string rather than a form with a slot in it, so every such attack
+	// lands on one bar instead of on the name of whichever model the article happened to
+	// mention. Attribution to a group or a country still wins over it.
+	aiOperatedActor = "Unknown (AI-operated)"
 )
 
 // isAttackMethod reports whether label is one of the allowed attack_method values.
@@ -82,7 +101,7 @@ func isLanguageOnlyActor(actor string) bool {
 // sentinel or evidence-preserving placeholder forms.
 func isNamedActor(actor string) bool {
 	switch {
-	case actor == "", actor == noAttack, actor == unknownActor:
+	case actor == "", actor == noAttack, actor == unknownActor, actor == aiOperatedActor:
 		return false
 	case isUnidentifiedActor(actor), isLanguageOnlyActor(actor):
 		return false

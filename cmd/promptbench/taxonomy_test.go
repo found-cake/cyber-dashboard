@@ -21,6 +21,30 @@ func TestPromptListsEveryTaxonomyLabel(t *testing.T) {
 	}
 }
 
+func TestPromptOffersEveryPatchState(t *testing.T) {
+	// Given the analysis prompt and the patch states the bench measures against.
+	prompt := summary.AnalyzeArticleSystemPrompt("en")
+
+	for _, state := range patchStates {
+		// Then each one is spelled out in the prompt: a state the code knows but the
+		// prompt never offers would be counted as coverage the model cannot deliver.
+		if !strings.Contains(prompt, `"`+state+`"`) {
+			t.Errorf("prompt does not offer patch state %q", state)
+		}
+	}
+}
+
+func TestFlawMethodsAreRealTaxonomyLabels(t *testing.T) {
+	// Given the labels used to decide where a patch state is expected.
+	for _, label := range flawMethods {
+		// Then each is a label the prompt can actually return, so the denominator of the
+		// patch-state measurement cannot silently become zero after a taxonomy rename.
+		if !isAttackMethod(label) {
+			t.Errorf("flaw method %q is not in the attack_method taxonomy", label)
+		}
+	}
+}
+
 func TestIncidentMethodSeparatesNonIncidentLabels(t *testing.T) {
 	// Given every allowed attack_method label.
 	for _, label := range attackMethodLabels {
@@ -53,6 +77,7 @@ func TestActorFormClassification(t *testing.T) {
 		{name: "attributed group", actor: "Lazarus Group", namedForm: true},
 		{name: "country linked", actor: "Unidentified Russia-linked actor", unidentified: true},
 		{name: "language community", actor: "Unknown (Chinese-speaking)", languageOnly: true},
+		{name: "AI operated", actor: aiOperatedActor},
 		{name: "unattributed", actor: unknownActor},
 		{name: "no attack", actor: noAttack},
 		{name: "empty", actor: ""},
