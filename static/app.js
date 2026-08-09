@@ -90,7 +90,7 @@
 
   const state = {
     view: "dashboard",
-    lang: localStorage.getItem("cyber-lang") || "ko",
+    lang: localStorage.getItem("cyber-lang") || "en",
     theme: localStorage.getItem("cyber-theme") || "dark",
     // Placeholders until /api/bootstrap supplies the configured offset; start() re-derives both.
     month: null,
@@ -652,7 +652,9 @@
     const languageOptions = [["ko", "한국어"], ["en", "English"]].map(([code, label]) => `<option value="${code}"${code === settings.language ? " selected" : ""}>${label}</option>`).join("");
     const sources = state.bootstrap.sources.map(source => `<div class="source-row"><span class="status-dot${source.enabled ? " is-on" : ""}" aria-hidden="true"></span><span><strong>${esc(source.name)}</strong><small>${esc(source.host)} · RSS feed</small></span><button type="button" class="toggle" role="switch" aria-label="${esc(source.name)}" aria-checked="${source.enabled}" data-source-id="${source.id}"></button><span class="badge ${source.enabled ? "badge-success" : ""}">${source.enabled ? "Active" : "Off"}</span></div>`).join("");
     const preview = `POST ${(settings.llm_base_url || "<base-url>").replace(/\/$/, "")}/chat/completions\nAuthorization: Bearer ${llmKeyIsConfigured(settings) ? "••••••••" : "<api-key>"}\n\n{ "model": "${settings.llm_model || "<model>"}",\n  "temperature": 0.2,\n  "messages": [ … ] }`;
-    const schema = `{ "attack_method": "APT | 랜섬웨어 | 공급망 | …",\n  "threat_actor": "Lazarus Group | SideCopy | TeamPCP | 미확인",\n  "actor_country": "DPRK | Pakistan | null",\n  "target_sector": "금융 | 정부 | 통신 | …",\n  "severity": "Critical | High | Medium",\n  "cve": ["CVE-YYYY-NNNN", …]   // 정규식 추출, LLM 응답 아님\n}`;
+    const schema = state.lang === "ko"
+      ? `{ "attack_method": "APT | 랜섬웨어 | 공급망 | …",\n  "threat_actor": "Lazarus Group | SideCopy | TeamPCP | 미확인",\n  "actor_country": "DPRK | Pakistan | null",\n  "target_sector": "금융 | 정부 | 통신 | …",\n  "severity": "Critical | High | Medium",\n  "cve": ["CVE-YYYY-NNNN", …]   // 정규식 추출, LLM 응답 아님\n}`
+      : `{ "attack_method": "APT | Ransomware | Supply chain | …",\n  "threat_actor": "Lazarus Group | SideCopy | TeamPCP | Unknown",\n  "actor_country": "DPRK | Pakistan | null",\n  "target_sector": "Finance | Government | Telecommunications | …",\n  "severity": "Critical | High | Medium",\n  "cve": ["CVE-YYYY-NNNN", …]   // Extracted with regex, not returned by the LLM\n}`;
     const presetItems = presets.map(preset => {
       const active = matchesPreset(preset, settings.llm_base_url, settings.llm_model);
       return `<span class="preset-item"><button class="preset-chip${active ? " is-active" : ""}" type="button" data-preset-id="${preset.id}" aria-pressed="${active}" title="${esc(preset.base_url)} · ${esc(preset.model)}"><span class="preset-dot" aria-hidden="true"></span><span><strong>${esc(preset.label)}</strong><small>${esc(preset.model)}${preset.api_key_configured ? ` · ${esc(t("keySaved"))}` : ""}</small></span></button>${preset.builtin ? "" : `<button class="preset-remove" type="button" data-remove-preset-id="${preset.id}" aria-label="${esc(t("presetRemove"))}: ${esc(preset.label)}" title="${esc(t("presetRemove"))}">×</button>`}</span>`;

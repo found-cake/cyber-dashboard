@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="ko" data-theme="dark">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="뉴스 기반 사이버 공격 동향을 수집하고 분석하는 로컬 대시보드">
+  <meta name="description" content="A local dashboard for collecting and analyzing news-based cyber threat trends">
   <meta name="theme-color" content="#0d1117">
   <title>Cyber Dashboard</title>
   <link rel="icon" href="data:,">
@@ -15,52 +15,52 @@
 </head>
 <body>
   <div class="app-shell">
-    <aside class="sidebar" id="sidebar" aria-label="주요 탐색">
+    <aside class="sidebar" id="sidebar" aria-label="Main navigation">
       <div class="brand-row">
         <span class="brand-mark" aria-hidden="true">C</span>
         <strong>Cyber Dashboard</strong>
-        <button class="icon-button drawer-close" id="drawer-close" type="button" aria-label="메뉴 닫기">×</button>
+        <button class="icon-button drawer-close" id="drawer-close" type="button" aria-label="Close menu">×</button>
       </div>
-      <section class="calendar" aria-label="수집 날짜 선택">
+      <section class="calendar" aria-label="Select collection date">
         <div class="calendar-head">
-          <button class="icon-button" id="calendar-prev" type="button" aria-label="이전 달">‹</button>
+          <button class="icon-button" id="calendar-prev" type="button" aria-label="Previous month">‹</button>
           <strong id="calendar-label"></strong>
-          <button class="icon-button" id="calendar-next" type="button" aria-label="다음 달">›</button>
+          <button class="icon-button" id="calendar-next" type="button" aria-label="Next month">›</button>
         </div>
         <div class="calendar-weekdays" id="calendar-weekdays"></div>
         <div class="calendar-grid" id="calendar-grid"></div>
       </section>
-      <nav class="primary-nav" aria-label="화면 탐색">
+      <nav class="primary-nav" aria-label="Screen navigation">
         <button class="nav-item dashboard-nav is-active" data-view="dashboard" type="button" aria-current="page">
           <span class="dashboard-glyph" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
-          <span data-i18n="dashboard">대시보드</span><span class="nav-chevron" aria-hidden="true">›</span>
+          <span data-i18n="dashboard">Dashboard</span><span class="nav-chevron" aria-hidden="true">›</span>
         </button>
       </nav>
       <section class="report-nav" aria-labelledby="report-nav-title">
         <div class="section-kicker-row">
-          <span class="section-kicker" id="report-nav-title" data-i18n="reports">보고서</span>
-          <button class="small-button" id="open-report-modal" type="button"><span aria-hidden="true">＋</span> <span data-i18n="newReport">새로 만들기</span></button>
+          <span class="section-kicker" id="report-nav-title" data-i18n="reports">Reports</span>
+          <button class="small-button" id="open-report-modal" type="button"><span aria-hidden="true">＋</span> <span data-i18n="newReport">New report</span></button>
         </div>
         <div class="report-list" id="report-list"></div>
       </section>
-      <nav class="settings-nav" aria-label="설정">
+      <nav class="settings-nav" aria-label="Settings">
         <button class="nav-item" data-view="settings" type="button">
-          <span class="nav-symbol" aria-hidden="true">S</span><span data-i18n="settings">설정</span>
+          <span class="nav-symbol" aria-hidden="true">S</span><span data-i18n="settings">Settings</span>
         </button>
       </nav>
     </aside>
-    <button class="drawer-scrim" id="drawer-scrim" type="button" aria-label="메뉴 닫기"></button>
+    <button class="drawer-scrim" id="drawer-scrim" type="button" aria-label="Close menu"></button>
     <div class="main-column">
       <header class="topbar">
         <div class="topbar-title-row">
-          <button class="icon-button menu-button" id="menu-button" type="button" aria-label="메뉴 열기"><span class="menu-glyph" aria-hidden="true"></span></button>
+          <button class="icon-button menu-button" id="menu-button" type="button" aria-label="Open menu"><span class="menu-glyph" aria-hidden="true"></span></button>
           <div>
-            <h1 id="page-title">대시보드</h1>
-            <p id="page-subtitle">최근 30일 집계</p>
+            <h1 id="page-title">Dashboard</h1>
+            <p id="page-subtitle">Last 30 days</p>
           </div>
         </div>
         <div class="topbar-actions">
-          <button class="icon-button theme-toggle" id="theme-toggle" type="button" aria-label="테마 전환" aria-pressed="false">
+          <button class="icon-button theme-toggle" id="theme-toggle" type="button" aria-label="Toggle theme" aria-pressed="false">
             <span class="theme-glyph" aria-hidden="true"></span>
           </button>
         </div>

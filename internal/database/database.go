@@ -51,12 +51,12 @@ func Close(db *gorm.DB) error {
 
 func seed(ctx context.Context, db *gorm.DB) error {
 	sources := []Source{
-		{Name: "보안뉴스", Host: "boannews.com", Slug: "boannews", Enabled: true},
+		{Name: "보안뉴스", Host: "boannews.com", Slug: "boannews", Enabled: false},
 		{Name: "The Hacker News", Host: "thehackernews.com", Slug: "thehackernews", Enabled: true},
 		{Name: "Cybersecurity News", Host: "cybersecuritynews.com", Slug: "cybersecuritynews", Enabled: true},
 		{Name: "StepSecurity Blog", Host: "stepsecurity.io/blog", Slug: "stepsecurity", Enabled: true},
 		{Name: "Dark Reading TI", Host: "darkreading.com/threat-intelligence", Slug: "darkreading", Enabled: true},
-		{Name: "BleepingComputer", Host: "bleepingcomputer.com/news/security", Slug: "bleepingcomputer", Enabled: false},
+		{Name: "BleepingComputer", Host: "bleepingcomputer.com/news/security", Slug: "bleepingcomputer", Enabled: true},
 	}
 	if err := db.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).
 		Select("Name", "Host", "Slug", "Enabled").Create(&sources).Error; err != nil {

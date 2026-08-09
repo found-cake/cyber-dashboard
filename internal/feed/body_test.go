@@ -44,7 +44,7 @@ func (f roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) 
 }
 
 func (s *selectedFeedStub) Fetch(_ context.Context, source api.Source) (Document, error) {
-	if source.Slug == "boannews" {
+	if source.Slug == "bleepingcomputer" {
 		return s.document, nil
 	}
 	return Document{}, nil

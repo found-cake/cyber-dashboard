@@ -3,6 +3,7 @@ package cmd_test
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"io"
 	"net"
 	"net/http"
@@ -12,6 +13,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/found-cake/cyber-dashboard/api"
 )
 
 func TestEmbeddedEntrypointServesFrontend_whenBinaryStarts(t *testing.T) {
@@ -45,6 +48,38 @@ func TestDiskEntrypointServesFrontend_whenStaticDirectoryIsConfigured(t *testing
 	assertResponseContains(t, baseURL+"/", "Cyber Dashboard")
 	assertResponseContains(t, baseURL+"/styles.css", "--sidebar-width")
 	assertResponseContains(t, baseURL+"/legal/THIRD_PARTY_NOTICES.txt", "github.com/openai/openai-go/v3")
+}
+
+func TestEmbeddedEntrypointUsesGlobalDefaults_whenFreshProfileStarts(t *testing.T) {
+	// Given the distribution command with a fresh data directory and no saved browser state.
+	baseURL := startEntrypoint(t, "./cmd/cyber-dashboard-full", nil)
+
+	// When the initial document and bootstrap response are loaded.
+	assertResponseContains(t, baseURL+"/", `<html lang="en"`)
+	response, err := (&http.Client{Timeout: 3 * time.Second}).Get(baseURL + "/api/bootstrap")
+	if err != nil {
+		t.Fatalf("GET bootstrap: %v", err)
+	}
+	defer response.Body.Close()
+	var bootstrap api.Bootstrap
+	if err := json.NewDecoder(response.Body).Decode(&bootstrap); err != nil {
+		t.Fatalf("decode bootstrap: %v", err)
+	}
+
+	// Then English and globally useful publishers are selected by default.
+	if response.StatusCode != http.StatusOK || bootstrap.Settings.Language != "en" {
+		t.Fatalf("bootstrap status/language = %d/%q, want 200/en", response.StatusCode, bootstrap.Settings.Language)
+	}
+	states := make(map[string]bool, len(bootstrap.Sources))
+	for _, source := range bootstrap.Sources {
+		states[source.Slug] = source.Enabled
+	}
+	if states["boannews"] {
+		t.Fatal("BoanNews is enabled, want disabled")
+	}
+	if !states["bleepingcomputer"] {
+		t.Fatal("BleepingComputer is disabled, want enabled")
+	}
 }
 
 func TestDiskEntrypointFails_whenStaticDirectoryIsMissing(t *testing.T) {

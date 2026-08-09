@@ -28,16 +28,36 @@ func TestOpenAppliesSchemaAndSeedsIdempotently(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = Close(db) })
 
-	// Then source and built-in preset seeds exist exactly once.
+	// Then global source, language, and built-in preset defaults exist exactly once.
 	var sources, presets int
+	var language string
+	var boannewsEnabled, bleepingEnabled bool
 	if err := db.Raw(`SELECT COUNT(*) FROM sources`).Row().Scan(&sources); err != nil {
 		t.Fatalf("count sources: %v", err)
 	}
 	if err := db.Raw(`SELECT COUNT(*) FROM llm_presets WHERE builtin = 1`).Row().Scan(&presets); err != nil {
 		t.Fatalf("count built-in presets: %v", err)
 	}
+	if err := db.Raw(`SELECT lang FROM settings WHERE id = 1`).Row().Scan(&language); err != nil {
+		t.Fatalf("read default language: %v", err)
+	}
+	if err := db.Raw(`SELECT enabled FROM sources WHERE slug = 'boannews'`).Row().Scan(&boannewsEnabled); err != nil {
+		t.Fatalf("read BoanNews source: %v", err)
+	}
+	if err := db.Raw(`SELECT enabled FROM sources WHERE slug = 'bleepingcomputer'`).Row().Scan(&bleepingEnabled); err != nil {
+		t.Fatalf("read BleepingComputer source: %v", err)
+	}
 	if sources != 6 || presets != 1 {
 		t.Fatalf("seed counts = sources:%d presets:%d, want 6 and 1", sources, presets)
+	}
+	if language != "en" {
+		t.Fatalf("default language = %q, want en", language)
+	}
+	if boannewsEnabled {
+		t.Fatal("BoanNews seed is enabled, want disabled")
+	}
+	if !bleepingEnabled {
+		t.Fatal("BleepingComputer seed is disabled, want enabled")
 	}
 }
 
