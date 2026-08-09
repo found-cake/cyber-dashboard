@@ -2,13 +2,14 @@ package settings
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"net/url"
 	"strings"
 
 	"github.com/found-cake/cyber-dashboard/api"
+	"github.com/found-cake/cyber-dashboard/internal/database"
+	"gorm.io/gorm"
 )
 
 var ErrPresetNotFound = errors.New("LLM preset not found")
@@ -16,27 +17,18 @@ var ErrBuiltinPreset = errors.New("built-in LLM presets cannot be deleted")
 var ErrDuplicatePreset = errors.New("an LLM preset for this endpoint and model already exists")
 
 func (r *Repository) Presets(ctx context.Context) ([]api.LLMPreset, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT id, label, base_url, model, api_key, builtin
-    FROM llm_presets ORDER BY builtin DESC, id`)
-	if err != nil {
+	var stored []database.LLMPreset
+	if err := r.db.WithContext(ctx).Order("builtin DESC, id").Find(&stored).Error; err != nil {
 		return nil, fmt.Errorf("query LLM presets: %w", err)
 	}
-	defer rows.Close()
-	presets := []api.LLMPreset{}
-	for rows.Next() {
-		var preset api.LLMPreset
-		var encryptedKey string
-		if err := rows.Scan(&preset.ID, &preset.Label, &preset.BaseURL, &preset.Model, &encryptedKey, &preset.Builtin); err != nil {
-			return nil, fmt.Errorf("scan LLM preset: %w", err)
-		}
-		preset.APIKey, err = r.secrets.open(encryptedKey)
+	presets := make([]api.LLMPreset, 0, len(stored))
+	for _, item := range stored {
+		apiKey, err := r.secrets.open(item.APIKey)
 		if err != nil {
-			return nil, fmt.Errorf("open LLM preset %d API key: %w", preset.ID, err)
+			return nil, fmt.Errorf("open LLM preset %d API key: %w", item.ID, err)
 		}
-		presets = append(presets, preset)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate LLM presets: %w", err)
+		presets = append(presets, api.LLMPreset{ID: item.ID, Label: item.Label, BaseURL: item.BaseURL,
+			Model: item.Model, APIKey: apiKey, Builtin: item.Builtin})
 	}
 	return presets, nil
 }
@@ -48,27 +40,18 @@ func (r *Repository) CreatePreset(ctx context.Context, request api.CreateLLMPres
 	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") || model == "" {
 		return api.LLMPreset{}, fmt.Errorf("invalid LLM preset")
 	}
-	var exists int
-	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM llm_presets WHERE base_url = ? AND model = ?`, baseURL, model).Scan(&exists); err != nil {
-		return api.LLMPreset{}, fmt.Errorf("check LLM preset: %w", err)
-	}
-	if exists > 0 {
-		return api.LLMPreset{}, ErrDuplicatePreset
-	}
 	encryptedKey, err := r.secrets.seal(request.APIKey)
 	if err != nil {
 		return api.LLMPreset{}, fmt.Errorf("seal LLM preset API key: %w", err)
 	}
-	result, err := r.db.ExecContext(ctx, `INSERT INTO llm_presets (label, base_url, model, api_key, builtin)
-    VALUES (?, ?, ?, ?, 0)`, parsed.Host, baseURL, model, encryptedKey)
-	if err != nil {
+	stored := database.LLMPreset{Label: parsed.Host, BaseURL: baseURL, Model: model, APIKey: encryptedKey}
+	if err := r.db.WithContext(ctx).Create(&stored).Error; err != nil {
+		if errors.Is(err, gorm.ErrDuplicatedKey) {
+			return api.LLMPreset{}, ErrDuplicatePreset
+		}
 		return api.LLMPreset{}, fmt.Errorf("insert LLM preset: %w", err)
 	}
-	id, err := result.LastInsertId()
-	if err != nil {
-		return api.LLMPreset{}, fmt.Errorf("LLM preset id: %w", err)
-	}
-	return api.LLMPreset{ID: id, Label: parsed.Host, BaseURL: baseURL, Model: model, APIKey: request.APIKey}, nil
+	return api.LLMPreset{ID: stored.ID, Label: parsed.Host, BaseURL: baseURL, Model: model, APIKey: request.APIKey}, nil
 }
 
 func (r *Repository) UpdatePresetAPIKey(ctx context.Context, id int64, apiKey string) error {
@@ -76,34 +59,40 @@ func (r *Repository) UpdatePresetAPIKey(ctx context.Context, id int64, apiKey st
 	if err != nil {
 		return fmt.Errorf("seal LLM preset API key: %w", err)
 	}
-	result, err := r.db.ExecContext(ctx, `UPDATE llm_presets
-	SET api_key = CASE WHEN ? THEN ? ELSE api_key END WHERE id = ?`, replaceKey, encryptedKey, id)
-	if err != nil {
-		return fmt.Errorf("update LLM preset %d API key: %w", id, err)
+	if !replaceKey {
+		var preset database.LLMPreset
+		err := r.db.WithContext(ctx).Select("id").First(&preset, id).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrPresetNotFound
+		}
+		if err != nil {
+			return fmt.Errorf("query LLM preset %d: %w", id, err)
+		}
+		return nil
 	}
-	changed, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("LLM preset rows affected: %w", err)
+	result := r.db.WithContext(ctx).Model(&database.LLMPreset{}).Where("id = ?", id).Update("api_key", encryptedKey)
+	if result.Error != nil {
+		return fmt.Errorf("update LLM preset %d API key: %w", id, result.Error)
 	}
-	if changed == 0 {
+	if result.RowsAffected == 0 {
 		return ErrPresetNotFound
 	}
 	return nil
 }
 
 func (r *Repository) DeletePreset(ctx context.Context, id int64) error {
-	var builtin bool
-	err := r.db.QueryRowContext(ctx, `SELECT builtin FROM llm_presets WHERE id = ?`, id).Scan(&builtin)
-	if errors.Is(err, sql.ErrNoRows) {
+	var preset database.LLMPreset
+	err := r.db.WithContext(ctx).Select("id", "builtin").First(&preset, id).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return ErrPresetNotFound
 	}
 	if err != nil {
 		return fmt.Errorf("query LLM preset %d: %w", id, err)
 	}
-	if builtin {
+	if preset.Builtin {
 		return ErrBuiltinPreset
 	}
-	if _, err := r.db.ExecContext(ctx, `DELETE FROM llm_presets WHERE id = ?`, id); err != nil {
+	if err := r.db.WithContext(ctx).Delete(&preset).Error; err != nil {
 		return fmt.Errorf("delete LLM preset %d: %w", id, err)
 	}
 	return nil

@@ -27,7 +27,7 @@ func TestSaveArticleAnalysisUsesImpactSeverity_whenNoHigherCVSSExists(t *testing
 	if err != nil {
 		t.Fatalf("open database: %v", err)
 	}
-	t.Cleanup(func() { _ = db.Close() })
+	t.Cleanup(func() { _ = database.Close(db) })
 	repository := NewRepository(db)
 	if err := repository.SaveArticle(context.Background(), api.Source{ID: 1}, FeedArticle{
 		ID: "sha256:impact", URL: "https://example.com/impact", Title: "Incident CVE-2026-1001",
@@ -36,7 +36,7 @@ func TestSaveArticleAnalysisUsesImpactSeverity_whenNoHigherCVSSExists(t *testing
 		t.Fatalf("save article: %v", err)
 	}
 	var articleID int64
-	if err := db.QueryRow(`SELECT id FROM articles WHERE feed_uid = ?`, "sha256:impact").Scan(&articleID); err != nil {
+	if err := db.Raw(`SELECT id FROM articles WHERE feed_uid = ?`, "sha256:impact").Row().Scan(&articleID); err != nil {
 		t.Fatalf("read article id: %v", err)
 	}
 
@@ -52,7 +52,7 @@ func TestSaveArticleAnalysisUsesImpactSeverity_whenNoHigherCVSSExists(t *testing
 	}
 	var articleSummary, severity string
 	var victims int
-	if err := db.QueryRow(`SELECT summary, severity, victim_count FROM articles WHERE id = ?`, articleID).Scan(&articleSummary, &severity, &victims); err != nil {
+	if err := db.Raw(`SELECT summary, severity, victim_count FROM articles WHERE id = ?`, articleID).Row().Scan(&articleSummary, &severity, &victims); err != nil {
 		t.Fatalf("read analyzed article: %v", err)
 	}
 	if articleSummary != "Analyzed summary" || severity != "HIGH" || victims != 15_000 {
@@ -66,7 +66,7 @@ func TestSaveArticleAnalysisRaisesSeverityFromDamage_whenNoVictimCountIsStated(t
 	if err != nil {
 		t.Fatalf("open database: %v", err)
 	}
-	t.Cleanup(func() { _ = db.Close() })
+	t.Cleanup(func() { _ = database.Close(db) })
 	repository := NewRepository(db)
 	if err := repository.SaveArticle(context.Background(), api.Source{ID: 1}, FeedArticle{
 		ID: "sha256:damage", URL: "https://example.com/damage", Title: "Bridge drained",
@@ -75,7 +75,7 @@ func TestSaveArticleAnalysisRaisesSeverityFromDamage_whenNoVictimCountIsStated(t
 		t.Fatalf("save article: %v", err)
 	}
 	var articleID int64
-	if err := db.QueryRow(`SELECT id FROM articles WHERE feed_uid = ?`, "sha256:damage").Scan(&articleID); err != nil {
+	if err := db.Raw(`SELECT id FROM articles WHERE feed_uid = ?`, "sha256:damage").Row().Scan(&articleID); err != nil {
 		t.Fatalf("read article id: %v", err)
 	}
 
@@ -91,7 +91,7 @@ func TestSaveArticleAnalysisRaisesSeverityFromDamage_whenNoVictimCountIsStated(t
 	}
 	var severity string
 	var damage int64
-	if err := db.QueryRow(`SELECT severity, damage_usd FROM articles WHERE id = ?`, articleID).Scan(&severity, &damage); err != nil {
+	if err := db.Raw(`SELECT severity, damage_usd FROM articles WHERE id = ?`, articleID).Row().Scan(&severity, &damage); err != nil {
 		t.Fatalf("read analyzed article: %v", err)
 	}
 	if severity != "CRITICAL" || damage != 190_000_000 {
@@ -147,7 +147,7 @@ func TestSaveArticleAnalysisWeighsWhatTheArticleReports(t *testing.T) {
 			if err != nil {
 				t.Fatalf("open database: %v", err)
 			}
-			t.Cleanup(func() { _ = db.Close() })
+			t.Cleanup(func() { _ = database.Close(db) })
 			repository := NewRepository(db)
 			title := "Story"
 			if test.cvss > 0 {
@@ -160,12 +160,12 @@ func TestSaveArticleAnalysisWeighsWhatTheArticleReports(t *testing.T) {
 				t.Fatalf("save article: %v", err)
 			}
 			var articleID int64
-			if err := db.QueryRow(`SELECT id FROM articles WHERE feed_uid = ?`, test.uid).Scan(&articleID); err != nil {
+			if err := db.Raw(`SELECT id FROM articles WHERE feed_uid = ?`, test.uid).Row().Scan(&articleID); err != nil {
 				t.Fatalf("read article id: %v", err)
 			}
 			if test.cvss > 0 {
-				if _, err := db.Exec(`UPDATE cves SET cvss_score = ?, cvss_vector = ? WHERE cve_id = ?`,
-					test.cvss, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", "CVE-2026-3001"); err != nil {
+				if err := db.Exec(`UPDATE cves SET cvss_score = ?, cvss_vector = ? WHERE cve_id = ?`,
+					test.cvss, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", "CVE-2026-3001").Error; err != nil {
 					t.Fatalf("score CVE: %v", err)
 				}
 			}
@@ -181,7 +181,7 @@ func TestSaveArticleAnalysisWeighsWhatTheArticleReports(t *testing.T) {
 				t.Fatalf("save analysis: %v", err)
 			}
 			var got string
-			if err := db.QueryRow(`SELECT severity FROM articles WHERE id = ?`, articleID).Scan(&got); err != nil {
+			if err := db.Raw(`SELECT severity FROM articles WHERE id = ?`, articleID).Row().Scan(&got); err != nil {
 				t.Fatalf("read severity: %v", err)
 			}
 			if got != test.wantSeverity {
@@ -197,9 +197,9 @@ func TestSaveArticleStartsStepSecurityThreatIntelAtHigh_whenImpactSignalsUnavail
 	if err != nil {
 		t.Fatalf("open database: %v", err)
 	}
-	t.Cleanup(func() { _ = db.Close() })
+	t.Cleanup(func() { _ = database.Close(db) })
 	var source api.Source
-	if err := db.QueryRow(`SELECT id, slug FROM sources WHERE slug = 'stepsecurity'`).Scan(&source.ID, &source.Slug); err != nil {
+	if err := db.Raw(`SELECT id, slug FROM sources WHERE slug = 'stepsecurity'`).Row().Scan(&source.ID, &source.Slug); err != nil {
 		t.Fatalf("read StepSecurity source: %v", err)
 	}
 	repository := NewRepository(db)
@@ -215,7 +215,7 @@ func TestSaveArticleStartsStepSecurityThreatIntelAtHigh_whenImpactSignalsUnavail
 		t.Fatalf("save article: %v", err)
 	}
 	var got string
-	if err := db.QueryRow(`SELECT severity FROM articles WHERE feed_uid = 'sha256:step-threat'`).Scan(&got); err != nil {
+	if err := db.Raw(`SELECT severity FROM articles WHERE feed_uid = 'sha256:step-threat'`).Row().Scan(&got); err != nil {
 		t.Fatalf("read article severity: %v", err)
 	}
 	if got != "HIGH" {
@@ -229,9 +229,9 @@ func TestSaveArticleAnalysisKeepsStepSecurityThreatIntelHigh_whenLLMSignalsUnkno
 	if err != nil {
 		t.Fatalf("open database: %v", err)
 	}
-	t.Cleanup(func() { _ = db.Close() })
+	t.Cleanup(func() { _ = database.Close(db) })
 	var source api.Source
-	if err := db.QueryRow(`SELECT id, slug FROM sources WHERE slug = 'stepsecurity'`).Scan(&source.ID, &source.Slug); err != nil {
+	if err := db.Raw(`SELECT id, slug FROM sources WHERE slug = 'stepsecurity'`).Row().Scan(&source.ID, &source.Slug); err != nil {
 		t.Fatalf("read StepSecurity source: %v", err)
 	}
 	repository := NewRepository(db)
@@ -242,7 +242,7 @@ func TestSaveArticleAnalysisKeepsStepSecurityThreatIntelHigh_whenLLMSignalsUnkno
 		t.Fatalf("save article: %v", err)
 	}
 	var articleID int64
-	if err := db.QueryRow(`SELECT id FROM articles WHERE feed_uid = 'sha256:step-analysis'`).Scan(&articleID); err != nil {
+	if err := db.Raw(`SELECT id FROM articles WHERE feed_uid = 'sha256:step-analysis'`).Row().Scan(&articleID); err != nil {
 		t.Fatalf("read article id: %v", err)
 	}
 
@@ -256,7 +256,7 @@ func TestSaveArticleAnalysisKeepsStepSecurityThreatIntelHigh_whenLLMSignalsUnkno
 		t.Fatalf("save analysis: %v", err)
 	}
 	var got string
-	if err := db.QueryRow(`SELECT severity FROM articles WHERE id = ?`, articleID).Scan(&got); err != nil {
+	if err := db.Raw(`SELECT severity FROM articles WHERE id = ?`, articleID).Row().Scan(&got); err != nil {
 		t.Fatalf("read article severity: %v", err)
 	}
 	if got != "HIGH" {
@@ -270,7 +270,7 @@ func TestSaveAssessmentKeepsCriticalContext_whenCVSSIsLower(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open database: %v", err)
 	}
-	t.Cleanup(func() { _ = db.Close() })
+	t.Cleanup(func() { _ = database.Close(db) })
 	repository := NewRepository(db)
 	if err := repository.SaveArticle(context.Background(), api.Source{ID: 1}, FeedArticle{
 		ID: "sha256:zero-day", URL: "https://example.com/zero-day", Title: "CVE-2026-2002",
@@ -279,7 +279,7 @@ func TestSaveAssessmentKeepsCriticalContext_whenCVSSIsLower(t *testing.T) {
 		t.Fatalf("save article: %v", err)
 	}
 	var articleID int64
-	if err := db.QueryRow(`SELECT id FROM articles WHERE feed_uid = ?`, "sha256:zero-day").Scan(&articleID); err != nil {
+	if err := db.Raw(`SELECT id FROM articles WHERE feed_uid = ?`, "sha256:zero-day").Row().Scan(&articleID); err != nil {
 		t.Fatalf("read article id: %v", err)
 	}
 	if err := repository.SaveArticleAnalysis(context.Background(), articleID, summary.ArticleAnalysis{
@@ -299,7 +299,7 @@ func TestSaveAssessmentKeepsCriticalContext_whenCVSSIsLower(t *testing.T) {
 		t.Fatalf("save assessment: %v", err)
 	}
 	var severity string
-	if err := db.QueryRow(`SELECT severity FROM articles WHERE id = ?`, articleID).Scan(&severity); err != nil {
+	if err := db.Raw(`SELECT severity FROM articles WHERE id = ?`, articleID).Row().Scan(&severity); err != nil {
 		t.Fatalf("read severity: %v", err)
 	}
 	if severity != "CRITICAL" {
@@ -313,7 +313,7 @@ func TestArticleEnrichmentServiceSendsStoredFullBody_toConfiguredAI(t *testing.T
 	if err != nil {
 		t.Fatalf("open database: %v", err)
 	}
-	t.Cleanup(func() { _ = db.Close() })
+	t.Cleanup(func() { _ = database.Close(db) })
 	repository := NewRepository(db)
 	if err := repository.SaveArticle(context.Background(), api.Source{ID: 1}, FeedArticle{
 		ID: "sha256:full-ai", URL: "https://example.com/full-ai", Title: "Full article",

@@ -131,7 +131,7 @@ func loadArticles(ctx context.Context, opts options) ([]feed.ArticleForAnalysis,
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = db.Close() }()
+	defer func() { _ = database.Close(db) }()
 	repository := feed.NewRepository(db)
 	days := splitDays(opts.days)
 	if len(days) == 0 {

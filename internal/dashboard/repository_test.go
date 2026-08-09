@@ -17,21 +17,21 @@ func TestDashboardAggregatesRecentThreatData(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open database: %v", err)
 	}
-	t.Cleanup(func() { _ = db.Close() })
+	t.Cleanup(func() { _ = database.Close(db) })
 	today := time.Now().Format(time.DateOnly)
 	windowStart := time.Now().AddDate(0, 0, -29).Format(time.DateOnly)
 	for _, row := range []struct{ uid, title, severity, method, actor string }{
 		{uid: "critical", title: "Critical threat", severity: "CRITICAL", method: "APT", actor: "Group A"},
 		{uid: "high", title: "High threat", severity: "HIGH", method: "Ransomware", actor: "Group B"},
 	} {
-		_, err := db.Exec(`INSERT INTO articles (source_id, feed_uid, title, url, published_at, collected_at, attack_method, threat_actor, severity)
-      VALUES (1, ?, ?, 'https://example.com', ?, ?, ?, ?, ?)`, row.uid, row.title, today, today, row.method, row.actor, row.severity)
+		err := db.Exec(`INSERT INTO articles (source_id, feed_uid, title, url, published_at, collected_at, attack_method, threat_actor, severity)
+      VALUES (1, ?, ?, 'https://example.com', ?, ?, ?, ?, ?)`, row.uid, row.title, today, today, row.method, row.actor, row.severity).Error
 		if err != nil {
 			t.Fatalf("insert article: %v", err)
 		}
 	}
-	if _, err := db.Exec(`INSERT INTO cves (cve_id, first_seen, cvss_score, affected_product)
-    VALUES ('CVE-2026-1000', ?, 9.8, 'Example')`, today); err != nil {
+	if err := db.Exec(`INSERT INTO cves (cve_id, first_seen, cvss_score, affected_product)
+    VALUES ('CVE-2026-1000', ?, 9.8, 'Example')`, today).Error; err != nil {
 		t.Fatalf("insert CVE: %v", err)
 	}
 
@@ -56,7 +56,7 @@ func TestBreakdownRejectsColumnOutsideAllowlist(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open database: %v", err)
 	}
-	t.Cleanup(func() { _ = db.Close() })
+	t.Cleanup(func() { _ = database.Close(db) })
 
 	// When the column reaches the dynamic breakdown boundary.
 	_, err = NewRepository(db).breakdown(context.Background(), "attack_method); DROP TABLE articles; --", 8, "2026-07-06")
@@ -73,38 +73,38 @@ func TestDashboardRanksCVEsByCVSSPlusWeightedMentions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open database: %v", err)
 	}
-	t.Cleanup(func() { _ = db.Close() })
+	t.Cleanup(func() { _ = database.Close(db) })
 	today := time.Now().Format(time.DateOnly)
 	windowStart := time.Now().AddDate(0, 0, -29).Format(time.DateOnly)
-	if _, err := db.Exec(`INSERT INTO cves (cve_id, first_seen, cvss_score, affected_product) VALUES
+	if err := db.Exec(`INSERT INTO cves (cve_id, first_seen, cvss_score, affected_product) VALUES
     ('CVE-2026-9000', ?, 9.0, 'High CVSS'),
-    ('CVE-2026-8000', ?, 8.0, 'More mentions')`, today, today); err != nil {
+    ('CVE-2026-8000', ?, 8.0, 'More mentions')`, today, today).Error; err != nil {
 		t.Fatalf("insert CVEs: %v", err)
 	}
 	for index := range 7 {
-		result, insertErr := db.Exec(`INSERT INTO articles (source_id, feed_uid, title, url, published_at, collected_at)
+		result := db.Exec(`INSERT INTO articles (source_id, feed_uid, title, url, published_at, collected_at)
       VALUES (1, ?, 'Threat', 'https://example.com', ?, ?)`, "mention-"+string(rune('a'+index)), today, today)
-		if insertErr != nil {
-			t.Fatalf("insert article: %v", insertErr)
+		if result.Error != nil {
+			t.Fatalf("insert article: %v", result.Error)
 		}
-		articleID, insertErr := result.LastInsertId()
-		if insertErr != nil {
+		var articleID int64
+		if insertErr := db.Raw("SELECT last_insert_rowid()").Row().Scan(&articleID); insertErr != nil {
 			t.Fatalf("article id: %v", insertErr)
 		}
-		if _, insertErr := db.Exec(`INSERT INTO article_cves (article_id, cve_id) VALUES (?, 'CVE-2026-8000')`, articleID); insertErr != nil {
+		if insertErr := db.Exec(`INSERT INTO article_cves (article_id, cve_id) VALUES (?, 'CVE-2026-8000')`, articleID).Error; insertErr != nil {
 			t.Fatalf("link lower-CVSS CVE: %v", insertErr)
 		}
 	}
-	result, err := db.Exec(`INSERT INTO articles (source_id, feed_uid, title, url, published_at, collected_at)
+	result := db.Exec(`INSERT INTO articles (source_id, feed_uid, title, url, published_at, collected_at)
     VALUES (1, 'high-cvss', 'Threat', 'https://example.com', ?, ?)`, today, today)
-	if err != nil {
-		t.Fatalf("insert high-CVSS article: %v", err)
+	if result.Error != nil {
+		t.Fatalf("insert high-CVSS article: %v", result.Error)
 	}
-	articleID, err := result.LastInsertId()
-	if err != nil {
+	var articleID int64
+	if err := db.Raw("SELECT last_insert_rowid()").Row().Scan(&articleID); err != nil {
 		t.Fatalf("high-CVSS article id: %v", err)
 	}
-	if _, err := db.Exec(`INSERT INTO article_cves (article_id, cve_id) VALUES (?, 'CVE-2026-9000')`, articleID); err != nil {
+	if err := db.Exec(`INSERT INTO article_cves (article_id, cve_id) VALUES (?, 'CVE-2026-9000')`, articleID).Error; err != nil {
 		t.Fatalf("link high-CVSS CVE: %v", err)
 	}
 
@@ -126,12 +126,12 @@ func TestDashboardReturnsAllCVEsForExplorer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open database: %v", err)
 	}
-	t.Cleanup(func() { _ = db.Close() })
+	t.Cleanup(func() { _ = database.Close(db) })
 	today := time.Now().Format(time.DateOnly)
 	windowStart := time.Now().AddDate(0, 0, -29).Format(time.DateOnly)
 	for index := range 10 {
-		if _, err := db.Exec(`INSERT INTO cves (cve_id, first_seen, cvss_score, affected_product)
-      VALUES (?, ?, ?, 'Example')`, fmt.Sprintf("CVE-2026-%04d", index), today, float64(index)); err != nil {
+		if err := db.Exec(`INSERT INTO cves (cve_id, first_seen, cvss_score, affected_product)
+      VALUES (?, ?, ?, 'Example')`, fmt.Sprintf("CVE-2026-%04d", index), today, float64(index)).Error; err != nil {
 			t.Fatalf("insert CVE %d: %v", index, err)
 		}
 	}

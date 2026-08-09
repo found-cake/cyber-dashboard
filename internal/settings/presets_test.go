@@ -79,10 +79,10 @@ func TestPresetsKeepSeparateEncryptedAPIKeys_whenMultipleServersAreSaved(t *test
 		}
 	}
 	var rawFirst, rawSecond string
-	if err := repository.db.QueryRow(`SELECT api_key FROM llm_presets WHERE id = ?`, first.ID).Scan(&rawFirst); err != nil {
+	if err := repository.db.Raw(`SELECT api_key FROM llm_presets WHERE id = ?`, first.ID).Row().Scan(&rawFirst); err != nil {
 		t.Fatalf("read first raw key: %v", err)
 	}
-	if err := repository.db.QueryRow(`SELECT api_key FROM llm_presets WHERE id = ?`, second.ID).Scan(&rawSecond); err != nil {
+	if err := repository.db.Raw(`SELECT api_key FROM llm_presets WHERE id = ?`, second.ID).Row().Scan(&rawSecond); err != nil {
 		t.Fatalf("read second raw key: %v", err)
 	}
 	if strings.Contains(rawFirst, "ollama-secret") || strings.Contains(rawSecond, "gateway-secret") {
@@ -174,7 +174,7 @@ func newPresetTestRepository(t *testing.T) *Repository {
 	if err != nil {
 		t.Fatalf("open database: %v", err)
 	}
-	t.Cleanup(func() { _ = db.Close() })
+	t.Cleanup(func() { _ = database.Close(db) })
 	repository, err := NewRepository(db, databasePath+".key")
 	if err != nil {
 		t.Fatalf("open repository: %v", err)

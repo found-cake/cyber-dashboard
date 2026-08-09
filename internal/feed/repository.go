@@ -2,67 +2,52 @@ package feed
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/found-cake/cyber-dashboard/api"
+	"github.com/found-cake/cyber-dashboard/internal/database"
 	"github.com/found-cake/cyber-dashboard/internal/severity"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 var ErrNotFound = errors.New("feed item not found")
 
 type Repository struct {
-	db *sql.DB
+	db *gorm.DB
 }
 
-func NewRepository(db *sql.DB) *Repository {
+func NewRepository(db *gorm.DB) *Repository {
 	return &Repository{db: db}
 }
 
 func (r *Repository) Sources(ctx context.Context) ([]api.Source, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT id, name, host, slug, enabled FROM sources ORDER BY id`)
-	if err != nil {
+	var stored []database.Source
+	if err := r.db.WithContext(ctx).Order("id").Find(&stored).Error; err != nil {
 		return nil, fmt.Errorf("query sources: %w", err)
 	}
-	defer rows.Close()
-	sources := []api.Source{}
-	for rows.Next() {
-		var source api.Source
-		if err := rows.Scan(&source.ID, &source.Name, &source.Host, &source.Slug, &source.Enabled); err != nil {
-			return nil, fmt.Errorf("scan source: %w", err)
-		}
-		sources = append(sources, source)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate sources: %w", err)
+	sources := make([]api.Source, 0, len(stored))
+	for _, source := range stored {
+		sources = append(sources, api.Source{ID: source.ID, Name: source.Name, Host: source.Host, Slug: source.Slug, Enabled: source.Enabled})
 	}
 	return sources, nil
 }
 
 func (r *Repository) SetSourceEnabled(ctx context.Context, id int64, enabled bool) error {
-	result, err := r.db.ExecContext(ctx, `UPDATE sources SET enabled = ? WHERE id = ?`, enabled, id)
-	if err != nil {
-		return fmt.Errorf("update source %d: %w", id, err)
+	result := r.db.WithContext(ctx).Model(&database.Source{}).Where("id = ?", id).Update("enabled", enabled)
+	if result.Error != nil {
+		return fmt.Errorf("update source %d: %w", id, result.Error)
 	}
-	changed, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("source rows affected: %w", err)
-	}
-	if changed == 0 {
+	if result.RowsAffected == 0 {
 		return fmt.Errorf("source %d: %w", id, ErrNotFound)
 	}
 	return nil
 }
 
 func (r *Repository) SaveArticle(ctx context.Context, source api.Source, article FeedArticle, day string) error {
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("begin article transaction: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
 	description := cleanText(article.Description)
 	body := strings.TrimSpace(article.Body)
 	method := "Unclassified"
@@ -73,36 +58,39 @@ func (r *Repository) SaveArticle(ctx context.Context, source api.Source, article
 	if source.Slug == "stepsecurity" {
 		initialSeverity = severity.High
 	}
-	var articleID int64
-	err = tx.QueryRowContext(ctx, `INSERT INTO articles
-	(source_id, feed_uid, title, url, published_at, published_time, collected_at, body, summary, attack_method, threat_actor, severity)
-	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	ON CONFLICT(feed_uid) DO UPDATE SET title = excluded.title, url = excluded.url,
-	published_at = excluded.published_at, published_time = excluded.published_time,
-	body = excluded.body, summary = excluded.summary, attack_method = excluded.attack_method,
-	severity = CASE WHEN excluded.severity = 'HIGH' AND articles.severity IN ('UNKNOWN', 'LOW', 'MEDIUM')
-		THEN excluded.severity ELSE articles.severity END
-	RETURNING id`,
-		source.ID, article.ID, cleanText(article.Title), article.URL, day, publishedTimestamp(article, day),
-		time.Now().UTC().Format(time.RFC3339), body, description, method, "Unknown", string(initialSeverity)).Scan(&articleID)
-	if err != nil {
-		return fmt.Errorf("upsert article %s: %w", article.ID, err)
-	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM article_cves WHERE article_id = ?`, articleID); err != nil {
-		return fmt.Errorf("clear article %d CVE links: %w", articleID, err)
-	}
-	for _, cve := range extractCVEs(article.Title + " " + description + " " + body) {
-		if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO cves (cve_id, first_seen)
-			SELECT ?, ? WHERE NOT EXISTS (SELECT 1 FROM rejected_cves WHERE cve_id = ?)`, cve, day, cve); err != nil {
-			return fmt.Errorf("insert cve %s: %w", cve, err)
+	stored := database.Article{SourceID: source.ID, FeedUID: article.ID, Title: cleanText(article.Title), URL: article.URL,
+		PublishedAt: day, PublishedTime: publishedTimestamp(article, day), CollectedAt: time.Now().UTC().Format(time.RFC3339),
+		Body: body, Summary: description, AttackMethod: method, ThreatActor: "Unknown", Severity: string(initialSeverity)}
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		updates := map[string]any{
+			"title": stored.Title, "url": stored.URL, "published_at": stored.PublishedAt,
+			"published_time": stored.PublishedTime, "body": stored.Body, "summary": stored.Summary,
+			"attack_method": stored.AttackMethod,
+			"severity":      gorm.Expr("CASE WHEN excluded.severity = 'HIGH' AND articles.severity IN ('UNKNOWN', 'LOW', 'MEDIUM') THEN excluded.severity ELSE articles.severity END"),
 		}
-		if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO article_cves (article_id, cve_id)
-			SELECT ?, ? WHERE EXISTS (SELECT 1 FROM cves WHERE cve_id = ?)`, articleID, cve, cve); err != nil {
-			return fmt.Errorf("link cve %s: %w", cve, err)
+		if err := tx.Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "feed_uid"}}, DoUpdates: clause.Assignments(updates)}, clause.Returning{Columns: []clause.Column{{Name: "id"}}}).Create(&stored).Error; err != nil {
+			return fmt.Errorf("upsert article %s: %w", article.ID, err)
 		}
-	}
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit article: %w", err)
-	}
-	return nil
+		if err := tx.Where("article_id = ?", stored.ID).Delete(&database.ArticleCVE{}).Error; err != nil {
+			return fmt.Errorf("clear article %d CVE links: %w", stored.ID, err)
+		}
+		for _, cveID := range extractCVEs(article.Title + " " + description + " " + body) {
+			var rejected int64
+			if err := tx.Model(&database.RejectedCVE{}).Where("cve_id = ?", cveID).Count(&rejected).Error; err != nil {
+				return fmt.Errorf("check rejected CVE %s: %w", cveID, err)
+			}
+			if rejected > 0 {
+				continue
+			}
+			cve := database.CVE{CVEID: cveID, FirstSeen: day}
+			if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&cve).Error; err != nil {
+				return fmt.Errorf("insert cve %s: %w", cveID, err)
+			}
+			link := database.ArticleCVE{ArticleID: stored.ID, CVEID: cveID}
+			if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&link).Error; err != nil {
+				return fmt.Errorf("link cve %s: %w", cveID, err)
+			}
+		}
+		return nil
+	})
 }

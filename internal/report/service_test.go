@@ -28,10 +28,10 @@ func TestServiceCreatePersistsGeneratedReport_whenArticlesExist(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open database: %v", err)
 	}
-	t.Cleanup(func() { _ = db.Close() })
-	if _, err := db.Exec(`INSERT INTO articles (source_id, feed_uid, title, url, published_at, collected_at, severity)
+	t.Cleanup(func() { _ = database.Close(db) })
+	if err := db.Exec(`INSERT INTO articles (source_id, feed_uid, title, url, published_at, collected_at, severity)
 		VALUES (1, 'reportable', 'Critical incident', 'https://example.com', '2026-08-03',
-		'2026-08-03T00:00:00Z', 'CRITICAL')`); err != nil {
+		'2026-08-03T00:00:00Z', 'CRITICAL')`).Error; err != nil {
 		t.Fatalf("insert article: %v", err)
 	}
 	repository := NewRepository(db)
@@ -65,9 +65,9 @@ func TestServiceCreateDoesNotPersistReport_whenSummaryGenerationFails(t *testing
 	if err != nil {
 		t.Fatalf("open database: %v", err)
 	}
-	t.Cleanup(func() { _ = db.Close() })
-	if _, err := db.Exec(`INSERT INTO articles (source_id, feed_uid, title, url, published_at, collected_at)
-		VALUES (1, 'reportable', 'Incident', 'https://example.com', '2026-08-03', '2026-08-03T00:00:00Z')`); err != nil {
+	t.Cleanup(func() { _ = database.Close(db) })
+	if err := db.Exec(`INSERT INTO articles (source_id, feed_uid, title, url, published_at, collected_at)
+		VALUES (1, 'reportable', 'Incident', 'https://example.com', '2026-08-03', '2026-08-03T00:00:00Z')`).Error; err != nil {
 		t.Fatalf("insert article: %v", err)
 	}
 	repository := NewRepository(db)

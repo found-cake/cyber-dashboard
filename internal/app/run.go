@@ -39,7 +39,7 @@ func Run(ctx context.Context, assets fs.FS) (runErr error) {
 		return err
 	}
 	defer func() {
-		runErr = errors.Join(runErr, db.Close())
+		runErr = errors.Join(runErr, database.Close(db))
 	}()
 	settingsRepository, err := settings.NewRepository(db, databasePath+".key")
 	if err != nil {

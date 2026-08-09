@@ -16,7 +16,7 @@ func TestDailyReturnsMultipleArticles_whenPoolHasOneConnection(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open database: %v", err)
 	}
-	t.Cleanup(func() { _ = db.Close() })
+	t.Cleanup(func() { _ = database.Close(db) })
 	repository := NewRepository(db)
 	source := api.Source{ID: 1}
 	for index, article := range []FeedArticle{
@@ -48,7 +48,7 @@ func TestDailyOrdersArticlesByPublishedTime_whenFeedsArriveOutOfOrder(t *testing
 	if err != nil {
 		t.Fatalf("open database: %v", err)
 	}
-	t.Cleanup(func() { _ = db.Close() })
+	t.Cleanup(func() { _ = database.Close(db) })
 	repository := NewRepository(db)
 	source := api.Source{ID: 1}
 	for _, article := range []FeedArticle{

@@ -2,20 +2,21 @@ package settings
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/found-cake/cyber-dashboard/api"
+	"github.com/found-cake/cyber-dashboard/internal/database"
+	"gorm.io/gorm"
 )
 
 type Repository struct {
-	db      *sql.DB
+	db      *gorm.DB
 	secrets *secretBox
 }
 
-func NewRepository(db *sql.DB, keyPath string) (*Repository, error) {
+func NewRepository(db *gorm.DB, keyPath string) (*Repository, error) {
 	secrets, err := openSecretBox(keyPath)
 	if err != nil {
 		return nil, err
@@ -24,20 +25,21 @@ func NewRepository(db *sql.DB, keyPath string) (*Repository, error) {
 }
 
 func (r *Repository) Get(ctx context.Context) (api.Settings, error) {
-	var result api.Settings
-	var llmSecret, nvdSecret string
-	err := r.db.QueryRowContext(ctx, `SELECT lang, theme, accent, llm_base_url, llm_model,
-    llm_api_key, llm_timeout, nvd_api_key, timezone_offset_minutes FROM settings WHERE id = 1`).Scan(
-		&result.Language, &result.Theme, &result.Accent, &result.LLMBaseURL,
-		&result.LLMModel, &llmSecret, &result.LLMTimeout, &nvdSecret, &result.TimezoneOffsetMinutes)
-	if err != nil {
+	var stored database.Setting
+	if err := r.db.WithContext(ctx).First(&stored, 1).Error; err != nil {
 		return api.Settings{}, fmt.Errorf("query settings: %w", err)
 	}
-	result.LLMAPIKey, err = r.secrets.open(llmSecret)
+	result := api.Settings{Language: stored.Lang, Theme: stored.Theme, Accent: stored.Accent, LLMBaseURL: stored.LLMBaseURL,
+		LLMModel: stored.LLMModel, LLMTimeout: stored.LLMTimeout}
+	if stored.TimezoneOffsetMinutes != nil {
+		result.TimezoneOffsetMinutes = *stored.TimezoneOffsetMinutes
+	}
+	var err error
+	result.LLMAPIKey, err = r.secrets.open(stored.LLMAPIKey)
 	if err != nil {
 		return api.Settings{}, fmt.Errorf("open LLM API key: %w", err)
 	}
-	result.NVDAPIKey, err = r.secrets.open(nvdSecret)
+	result.NVDAPIKey, err = r.secrets.open(stored.NVDAPIKey)
 	if err != nil {
 		return api.Settings{}, fmt.Errorf("open NVD API key: %w", err)
 	}
@@ -53,12 +55,16 @@ func (r *Repository) Save(ctx context.Context, value api.Settings) error {
 	if err != nil {
 		return fmt.Errorf("seal NVD API key: %w", err)
 	}
-	_, err = r.db.ExecContext(ctx, `UPDATE settings SET lang = ?, theme = ?, accent = ?,
-	llm_base_url = ?, llm_model = ?, llm_api_key = CASE WHEN ? THEN ? ELSE llm_api_key END,
-	llm_timeout = ?, nvd_api_key = CASE WHEN ? THEN ? ELSE nvd_api_key END, timezone_offset_minutes = ? WHERE id = 1`,
-		value.Language, value.Theme, value.Accent, value.LLMBaseURL, value.LLMModel,
-		replaceLLM, llmSecret, value.LLMTimeout, replaceNVD, nvdSecret, value.TimezoneOffsetMinutes)
-	if err != nil {
+	updates := map[string]any{"lang": value.Language, "theme": value.Theme, "accent": value.Accent,
+		"llm_base_url": value.LLMBaseURL, "llm_model": value.LLMModel, "llm_timeout": value.LLMTimeout,
+		"timezone_offset_minutes": value.TimezoneOffsetMinutes}
+	if replaceLLM {
+		updates["llm_api_key"] = llmSecret
+	}
+	if replaceNVD {
+		updates["nvd_api_key"] = nvdSecret
+	}
+	if err := r.db.WithContext(ctx).Model(&database.Setting{}).Where("id = 1").Updates(updates).Error; err != nil {
 		return fmt.Errorf("save settings: %w", err)
 	}
 	return nil
@@ -78,17 +84,17 @@ func (r *Repository) ResolveSecrets(ctx context.Context, value api.Settings) (ap
 	if strings.TrimSpace(value.LLMAPIKey) != "" {
 		return value, nil
 	}
-	var encryptedKey string
-	err = r.db.QueryRowContext(ctx, `SELECT api_key FROM llm_presets WHERE base_url = ? AND model = ?`,
-		strings.TrimRight(strings.TrimSpace(value.LLMBaseURL), "/"), strings.TrimSpace(value.LLMModel)).Scan(&encryptedKey)
-	if errors.Is(err, sql.ErrNoRows) {
+	var preset database.LLMPreset
+	err = r.db.WithContext(ctx).Where("base_url = ? AND model = ?",
+		strings.TrimRight(strings.TrimSpace(value.LLMBaseURL), "/"), strings.TrimSpace(value.LLMModel)).First(&preset).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		value.LLMAPIKey = current.LLMAPIKey
 		return value, nil
 	}
 	if err != nil {
 		return api.Settings{}, fmt.Errorf("query matching LLM preset: %w", err)
 	}
-	presetKey, err := r.secrets.open(encryptedKey)
+	presetKey, err := r.secrets.open(preset.APIKey)
 	if err != nil {
 		return api.Settings{}, fmt.Errorf("open matching LLM preset API key: %w", err)
 	}

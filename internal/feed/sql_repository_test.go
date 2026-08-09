@@ -16,7 +16,7 @@ func TestSetSourceEnabledUpdatesSelectedSource_whenSourceExists(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open database: %v", err)
 	}
-	t.Cleanup(func() { _ = db.Close() })
+	t.Cleanup(func() { _ = database.Close(db) })
 	repository := NewRepository(db)
 
 	// When the first source is disabled.
@@ -40,7 +40,7 @@ func TestSetSourceEnabledReturnsNotFound_whenSourceDoesNotExist(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open database: %v", err)
 	}
-	t.Cleanup(func() { _ = db.Close() })
+	t.Cleanup(func() { _ = database.Close(db) })
 
 	// When an unknown source is updated.
 	err = NewRepository(db).SetSourceEnabled(context.Background(), 999, false)
@@ -57,7 +57,7 @@ func TestSaveDailySummaryReplacesValue_whenDayIsRegenerated(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open database: %v", err)
 	}
-	t.Cleanup(func() { _ = db.Close() })
+	t.Cleanup(func() { _ = database.Close(db) })
 	repository := NewRepository(db)
 	if err := repository.SaveDailySummary(context.Background(), "2026-08-03", "First summary"); err != nil {
 		t.Fatalf("save first summary: %v", err)
@@ -84,7 +84,7 @@ func TestCollectedDaysReturnsDistinctAscendingDates_whenArticlesExist(t *testing
 	if err != nil {
 		t.Fatalf("open database: %v", err)
 	}
-	t.Cleanup(func() { _ = db.Close() })
+	t.Cleanup(func() { _ = database.Close(db) })
 	repository := NewRepository(db)
 	for _, article := range []struct {
 		id, publishedAt, day string
@@ -118,7 +118,7 @@ func TestSaveArticleUsesEnglishPlaceholders_whenClassificationIsUnavailable(t *t
 	if err != nil {
 		t.Fatalf("open database: %v", err)
 	}
-	t.Cleanup(func() { _ = db.Close() })
+	t.Cleanup(func() { _ = database.Close(db) })
 	repository := NewRepository(db)
 
 	// When the article is saved through the production repository.
@@ -131,7 +131,7 @@ func TestSaveArticleUsesEnglishPlaceholders_whenClassificationIsUnavailable(t *t
 
 	// Then both classification placeholders use stable English labels.
 	var attackMethod, threatActor string
-	if err := db.QueryRow(`SELECT attack_method, threat_actor FROM articles WHERE feed_uid = ?`, "unclassified").Scan(&attackMethod, &threatActor); err != nil {
+	if err := db.Raw(`SELECT attack_method, threat_actor FROM articles WHERE feed_uid = ?`, "unclassified").Row().Scan(&attackMethod, &threatActor); err != nil {
 		t.Fatalf("read saved classifications: %v", err)
 	}
 	if attackMethod != "Unclassified" || threatActor != "Unknown" {

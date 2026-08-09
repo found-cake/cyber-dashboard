@@ -17,7 +17,7 @@ func TestRepositoryEncryptsSecrets_whenSettingsAreSaved(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open database: %v", err)
 	}
-	t.Cleanup(func() { _ = db.Close() })
+	t.Cleanup(func() { _ = database.Close(db) })
 	repository, err := NewRepository(db, databasePath+".key")
 	if err != nil {
 		t.Fatalf("open repository: %v", err)
@@ -41,7 +41,7 @@ func TestRepositoryEncryptsSecrets_whenSettingsAreSaved(t *testing.T) {
 		t.Fatalf("timezone offset = %d, want %d", loaded.TimezoneOffsetMinutes, value.TimezoneOffsetMinutes)
 	}
 	var rawLLM, rawNVD string
-	if err := db.QueryRow(`SELECT llm_api_key, nvd_api_key FROM settings WHERE id = 1`).Scan(&rawLLM, &rawNVD); err != nil {
+	if err := db.Raw(`SELECT llm_api_key, nvd_api_key FROM settings WHERE id = 1`).Row().Scan(&rawLLM, &rawNVD); err != nil {
 		t.Fatalf("read raw settings: %v", err)
 	}
 	if strings.Contains(rawLLM, "llm-secret") || strings.Contains(rawNVD, "nvd-secret") {
@@ -56,7 +56,7 @@ func TestRepositoryPreservesSecrets_whenSavedValuesAreBlank(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open database: %v", err)
 	}
-	t.Cleanup(func() { _ = db.Close() })
+	t.Cleanup(func() { _ = database.Close(db) })
 	repository, err := NewRepository(db, databasePath+".key")
 	if err != nil {
 		t.Fatalf("open repository: %v", err)

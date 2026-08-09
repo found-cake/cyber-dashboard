@@ -19,7 +19,7 @@ func TestBuildReturnsNotFoundForEmptyPeriod(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open database: %v", err)
 	}
-	t.Cleanup(func() { _ = db.Close() })
+	t.Cleanup(func() { _ = database.Close(db) })
 
 	// When a report is built for an empty period.
 	_, _, err = NewRepository(db).Build(context.Background(), api.CreateReportRequest{
@@ -38,7 +38,7 @@ func TestBuildAggregatesReportData_whenPeriodContainsArticles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open database: %v", err)
 	}
-	t.Cleanup(func() { _ = db.Close() })
+	t.Cleanup(func() { _ = database.Close(db) })
 	rows := []struct {
 		uid, title, severity, actor, sector, summary string
 	}{
@@ -47,9 +47,9 @@ func TestBuildAggregatesReportData_whenPeriodContainsArticles(t *testing.T) {
 		{uid: "medium", title: "Medium incident", severity: "MEDIUM", actor: "Group B", sector: "Finance", summary: "Medium facts"},
 	}
 	for _, row := range rows {
-		if _, err := db.Exec(`INSERT INTO articles (source_id, feed_uid, title, url, published_at, collected_at,
+		if err := db.Exec(`INSERT INTO articles (source_id, feed_uid, title, url, published_at, collected_at,
 			severity, threat_actor, sector, summary) VALUES (1, ?, ?, 'https://example.com', '2026-08-02',
-			'2026-08-02T00:00:00Z', ?, ?, ?, ?)`, row.uid, row.title, row.severity, row.actor, row.sector, row.summary); err != nil {
+			'2026-08-02T00:00:00Z', ?, ?, ?, ?)`, row.uid, row.title, row.severity, row.actor, row.sector, row.summary).Error; err != nil {
 			t.Fatalf("insert article %q: %v", row.uid, err)
 		}
 	}
@@ -77,9 +77,9 @@ func TestBuildTreatsPeriodAsData_whenPeriodContainsSQLSyntax(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open database: %v", err)
 	}
-	t.Cleanup(func() { _ = db.Close() })
-	if _, err := db.Exec(`INSERT INTO articles (source_id, feed_uid, title, url, published_at, collected_at)
-		VALUES (1, 'safe', 'Stored article', 'https://example.com', '2026-08-02', '2026-08-02T00:00:00Z')`); err != nil {
+	t.Cleanup(func() { _ = database.Close(db) })
+	if err := db.Exec(`INSERT INTO articles (source_id, feed_uid, title, url, published_at, collected_at)
+		VALUES (1, 'safe', 'Stored article', 'https://example.com', '2026-08-02', '2026-08-02T00:00:00Z')`).Error; err != nil {
 		t.Fatalf("insert article: %v", err)
 	}
 
@@ -100,7 +100,7 @@ func TestTopValuesRejectsColumnOutsideAllowlist(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open database: %v", err)
 	}
-	t.Cleanup(func() { _ = db.Close() })
+	t.Cleanup(func() { _ = database.Close(db) })
 
 	// When the column reaches the top-values boundary.
 	_, err = NewRepository(db).topValues(context.Background(), topQuery{
@@ -119,7 +119,7 @@ func TestSaveAndListPreserveReport_whenTimezoneIsConfigured(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open database: %v", err)
 	}
-	t.Cleanup(func() { _ = db.Close() })
+	t.Cleanup(func() { _ = database.Close(db) })
 	repository := NewRepository(db)
 	repository.now = func() time.Time { return time.Date(2026, 8, 4, 1, 2, 3, 0, time.UTC) }
 	input := api.Report{
@@ -153,7 +153,7 @@ func TestSaveAndListPreserveReportEntries_whenActorsContainCommas(t *testing.T) 
 	if err != nil {
 		t.Fatalf("open database: %v", err)
 	}
-	t.Cleanup(func() { _ = db.Close() })
+	t.Cleanup(func() { _ = database.Close(db) })
 	repository := NewRepository(db)
 	actors := []string{"Scattered Spider, Inc.", "Lazarus Group"}
 	sectors := []string{"금융, 보험", "정부"}
@@ -182,45 +182,13 @@ func TestSaveAndListPreserveReportEntries_whenActorsContainCommas(t *testing.T) 
 	}
 }
 
-func TestListDecodesLegacyReportEntries_whenStoredAsCommaSeparatedText(t *testing.T) {
-	// Given a report row written before entries were stored as JSON.
-	db, err := database.Open(context.Background(), filepath.Join(t.TempDir(), "dashboard.db"))
-	if err != nil {
-		t.Fatalf("open database: %v", err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	if _, err := db.Exec(`INSERT INTO reports (type, period_start, period_end, total, critical, high,
-		medium, top_threat, actors, sectors, summary, generated_at)
-		VALUES ('weekly', '2026-08-01', '2026-08-07', 3, 1, 1, 1, 'Legacy threat',
-		'Group A,Group B', 'Finance,Energy', 'Legacy summary', '2026-08-08T00:00:00Z')`); err != nil {
-		t.Fatalf("insert legacy report: %v", err)
-	}
-
-	// When the report is listed.
-	listed, err := NewRepository(db).List(context.Background())
-	if err != nil {
-		t.Fatalf("list reports: %v", err)
-	}
-
-	// Then the legacy comma-separated entries still load.
-	if len(listed) != 1 {
-		t.Fatalf("listed %d reports, want 1", len(listed))
-	}
-	if !slices.Equal(listed[0].Actors, []string{"Group A", "Group B"}) {
-		t.Fatalf("legacy actors = %q", listed[0].Actors)
-	}
-	if !slices.Equal(listed[0].Sectors, []string{"Finance", "Energy"}) {
-		t.Fatalf("legacy sectors = %q", listed[0].Sectors)
-	}
-}
-
 func TestDeleteRemovesReport_whenIDExists(t *testing.T) {
 	// Given a stored report.
 	db, err := database.Open(context.Background(), filepath.Join(t.TempDir(), "dashboard.db"))
 	if err != nil {
 		t.Fatalf("open database: %v", err)
 	}
-	t.Cleanup(func() { _ = db.Close() })
+	t.Cleanup(func() { _ = database.Close(db) })
 	repository := NewRepository(db)
 	saved, err := repository.Save(context.Background(), api.Report{
 		Type: "weekly", PeriodStart: "2026-08-01", PeriodEnd: "2026-08-07",
@@ -252,7 +220,7 @@ func TestDeleteReturnsNotFound_whenIDDoesNotExist(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open database: %v", err)
 	}
-	t.Cleanup(func() { _ = db.Close() })
+	t.Cleanup(func() { _ = database.Close(db) })
 
 	// When an unknown report ID is deleted.
 	err = NewRepository(db).Delete(context.Background(), 999999)

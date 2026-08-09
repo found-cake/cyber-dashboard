@@ -44,7 +44,7 @@ func newTestServerWithConfig(t *testing.T, config testServerConfig) (*web.Server
 	if err != nil {
 		t.Fatalf("open database: %v", err)
 	}
-	t.Cleanup(func() { _ = db.Close() })
+	t.Cleanup(func() { _ = database.Close(db) })
 	settingsRepository, err := settings.NewRepository(db, databasePath+".key")
 	if err != nil {
 		t.Fatalf("open settings: %v", err)

@@ -133,8 +133,8 @@ func TestCollectorSkipsFilteredStepSecurityProduct_withoutWarningOrPersistence(t
 	if err != nil {
 		t.Fatalf("open database: %v", err)
 	}
-	t.Cleanup(func() { _ = db.Close() })
-	if _, err := db.Exec(`UPDATE sources SET enabled = (slug = 'stepsecurity')`); err != nil {
+	t.Cleanup(func() { _ = database.Close(db) })
+	if err := db.Exec(`UPDATE sources SET enabled = (slug = 'stepsecurity')`).Error; err != nil {
 		t.Fatalf("select StepSecurity source: %v", err)
 	}
 	collector := NewCollector(NewRepository(db), &allSourcesFeedStub{document: Document{
@@ -155,7 +155,7 @@ func TestCollectorSkipsFilteredStepSecurityProduct_withoutWarningOrPersistence(t
 		t.Fatalf("result = %+v", result)
 	}
 	var stored int
-	if err := db.QueryRow(`SELECT COUNT(*) FROM articles WHERE feed_uid = 'sha256:product'`).Scan(&stored); err != nil {
+	if err := db.Raw(`SELECT COUNT(*) FROM articles WHERE feed_uid = 'sha256:product'`).Row().Scan(&stored); err != nil {
 		t.Fatalf("count product articles: %v", err)
 	}
 	if stored != 0 {
@@ -286,7 +286,7 @@ func TestCollectorStoresFullBodyAndExtractsCVE_whenCVEAppearsOnlyInArticleBody(t
 	if err != nil {
 		t.Fatalf("open database: %v", err)
 	}
-	t.Cleanup(func() { _ = db.Close() })
+	t.Cleanup(func() { _ = database.Close(db) })
 	repository := NewRepository(db)
 	feedStub := &selectedFeedStub{document: Document{Status: Status{OK: true}, Articles: []FeedArticle{{
 		ID: "sha256:body-cve", URL: "https://www.boannews.com/article", Title: "Incident report",
@@ -302,7 +302,7 @@ func TestCollectorStoresFullBodyAndExtractsCVE_whenCVEAppearsOnlyInArticleBody(t
 		t.Fatalf("collect day: %v", err)
 	}
 	var body string
-	if err := db.QueryRow(`SELECT body FROM articles WHERE feed_uid = ?`, "sha256:body-cve").Scan(&body); err != nil {
+	if err := db.Raw(`SELECT body FROM articles WHERE feed_uid = ?`, "sha256:body-cve").Row().Scan(&body); err != nil {
 		t.Fatalf("read article body: %v", err)
 	}
 	if body != "Full story details CVE-2026-48449." {

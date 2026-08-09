@@ -4,10 +4,17 @@ go 1.26
 
 require (
 	github.com/chromedp/chromedp v0.16.0
+	github.com/found-cake/gorm-sqlite v0.1.0
 	github.com/labstack/echo/v5 v5.3.1
 	github.com/openai/openai-go/v3 v3.50.0
 	golang.org/x/net v0.57.0
-	modernc.org/sqlite v1.56.0
+	gorm.io/gorm v1.31.2
+)
+
+require (
+	github.com/jinzhu/inflection v1.0.0 // indirect
+	github.com/jinzhu/now v1.1.5 // indirect
+	modernc.org/sqlite v1.46.1 // indirect
 )
 
 require (

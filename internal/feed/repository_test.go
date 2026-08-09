@@ -14,7 +14,7 @@ func TestCollectorCollect_RecollectionDoesNotIncreaseCVEMentions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open database: %v", err)
 	}
-	t.Cleanup(func() { _ = db.Close() })
+	t.Cleanup(func() { _ = database.Close(db) })
 	repository := NewRepository(db)
 	collector := NewCollector(repository, &selectedFeedStub{document: Document{
 		Status: Status{OK: true},
@@ -26,8 +26,8 @@ func TestCollectorCollect_RecollectionDoesNotIncreaseCVEMentions(t *testing.T) {
 	if _, err := collector.Collect(context.Background(), "2026-08-03"); err != nil {
 		t.Fatalf("collect day: %v", err)
 	}
-	if _, err := db.Exec(`INSERT INTO article_cves (article_id, cve_id)
-		SELECT id, 'CVE-2026-1001' FROM articles WHERE feed_uid = 'article-b'`); err != nil {
+	if err := db.Exec(`INSERT INTO article_cves (article_id, cve_id)
+		SELECT id, 'CVE-2026-1001' FROM articles WHERE feed_uid = 'article-b'`).Error; err != nil {
 		t.Fatalf("seed incorrect CVE link: %v", err)
 	}
 
@@ -38,15 +38,15 @@ func TestCollectorCollect_RecollectionDoesNotIncreaseCVEMentions(t *testing.T) {
 
 	// Then the CVE remains linked only to the article that mentions it.
 	var mentions int
-	if err := db.QueryRow(`SELECT COUNT(*) FROM article_cves WHERE cve_id = 'CVE-2026-1001'`).Scan(&mentions); err != nil {
+	if err := db.Raw(`SELECT COUNT(*) FROM article_cves WHERE cve_id = 'CVE-2026-1001'`).Row().Scan(&mentions); err != nil {
 		t.Fatalf("count CVE mentions: %v", err)
 	}
 	if mentions != 1 {
 		t.Fatalf("CVE mentions = %d, want 1 after recollection", mentions)
 	}
 	var unrelatedLinks int
-	if err := db.QueryRow(`SELECT COUNT(*) FROM article_cves ac
-		JOIN articles a ON a.id = ac.article_id WHERE a.feed_uid = 'article-b'`).Scan(&unrelatedLinks); err != nil {
+	if err := db.Raw(`SELECT COUNT(*) FROM article_cves ac
+		JOIN articles a ON a.id = ac.article_id WHERE a.feed_uid = 'article-b'`).Row().Scan(&unrelatedLinks); err != nil {
 		t.Fatalf("count unrelated CVE links: %v", err)
 	}
 	if unrelatedLinks != 0 {

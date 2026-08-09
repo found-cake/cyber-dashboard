@@ -2,41 +2,80 @@ package database
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"net/url"
 	"time"
 
-	_ "modernc.org/sqlite"
+	sqlite "github.com/found-cake/gorm-sqlite"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
+	"gorm.io/gorm/logger"
 )
 
-func Open(ctx context.Context, path string) (*sql.DB, error) {
-	// foreign_keys is a per-connection pragma, so it has to travel in the DSN: running it
-	// once as a statement only arms the connection that executed it, and any replacement
-	// connection the pool opens would silently stop enforcing the constraints.
-	db, err := sql.Open("sqlite", dataSourceName(path))
+func Open(ctx context.Context, path string) (*gorm.DB, error) {
+	db, err := gorm.Open(sqlite.Open(dataSourceName(path)), &gorm.Config{
+		Logger:         logger.Default.LogMode(logger.Silent),
+		TranslateError: true,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
-	db.SetMaxOpenConns(1)
-	if _, err := db.ExecContext(ctx, schema); err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("apply schema: %w", err)
+	sqlDB, err := db.DB()
+	if err != nil {
+		return nil, fmt.Errorf("access sqlite pool: %w", err)
+	}
+	sqlDB.SetMaxOpenConns(1)
+	if err := db.WithContext(ctx).AutoMigrate(&Source{}, &Article{}, &DailySummary{}, &CVE{}, &RejectedCVE{}, &ArticleCVE{}, &Report{}, &Setting{}, &LLMPreset{}); err != nil {
+		_ = sqlDB.Close()
+		return nil, fmt.Errorf("auto migrate: %w", err)
+	}
+	if err := seed(ctx, db); err != nil {
+		_ = sqlDB.Close()
+		return nil, err
 	}
 	_, offsetSeconds := time.Now().Zone()
-	if _, err := db.ExecContext(ctx, `UPDATE settings SET timezone_offset_minutes = ? WHERE timezone_offset_minutes IS NULL`, offsetSeconds/60); err != nil {
-		_ = db.Close()
+	if err := db.WithContext(ctx).Model(&Setting{}).Where("timezone_offset_minutes IS NULL").Update("timezone_offset_minutes", offsetSeconds/60).Error; err != nil {
+		_ = sqlDB.Close()
 		return nil, fmt.Errorf("initialize timezone setting: %w", err)
 	}
 	return db, nil
 }
 
-// dataSourceName builds a file: DSN carrying the per-connection pragmas. busy_timeout
-// keeps a contended write waiting instead of failing immediately with SQLITE_BUSY.
+func Close(db *gorm.DB) error {
+	sqlDB, err := db.DB()
+	if err != nil {
+		return fmt.Errorf("access sqlite pool: %w", err)
+	}
+	return sqlDB.Close()
+}
+
+func seed(ctx context.Context, db *gorm.DB) error {
+	sources := []Source{
+		{Name: "보안뉴스", Host: "boannews.com", Slug: "boannews", Enabled: true},
+		{Name: "The Hacker News", Host: "thehackernews.com", Slug: "thehackernews", Enabled: true},
+		{Name: "Cybersecurity News", Host: "cybersecuritynews.com", Slug: "cybersecuritynews", Enabled: true},
+		{Name: "StepSecurity Blog", Host: "stepsecurity.io/blog", Slug: "stepsecurity", Enabled: true},
+		{Name: "Dark Reading TI", Host: "darkreading.com/threat-intelligence", Slug: "darkreading", Enabled: true},
+		{Name: "BleepingComputer", Host: "bleepingcomputer.com/news/security", Slug: "bleepingcomputer", Enabled: false},
+	}
+	if err := db.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).
+		Select("Name", "Host", "Slug", "Enabled").Create(&sources).Error; err != nil {
+		return fmt.Errorf("seed sources: %w", err)
+	}
+	setting := Setting{ID: 1}
+	if err := db.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).Create(&setting).Error; err != nil {
+		return fmt.Errorf("seed settings: %w", err)
+	}
+	preset := LLMPreset{Label: "OpenAI", BaseURL: "https://api.openai.com/v1", Model: "gpt-4o-mini", Builtin: true}
+	if err := db.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).Create(&preset).Error; err != nil {
+		return fmt.Errorf("seed LLM preset: %w", err)
+	}
+	return nil
+}
 func dataSourceName(path string) string {
 	return (&url.URL{
 		Scheme:   "file",
 		Opaque:   (&url.URL{Path: path}).EscapedPath(),
-		RawQuery: url.Values{"_pragma": {"foreign_keys(1)", "busy_timeout(5000)"}}.Encode(),
+		RawQuery: url.Values{"_pragma": {"foreign_keys(1)", "journal_mode(WAL)", "synchronous(FULL)"}}.Encode(),
 	}).String()
 }

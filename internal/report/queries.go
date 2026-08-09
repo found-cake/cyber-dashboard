@@ -3,6 +3,8 @@ package report
 import (
 	"context"
 	"fmt"
+
+	"github.com/found-cake/cyber-dashboard/internal/database"
 )
 
 type valuePeriod struct {
@@ -17,53 +19,32 @@ type topQuery struct {
 }
 
 func (r *Repository) topValues(ctx context.Context, query topQuery) ([]string, error) {
-	var statement string
 	switch query.column {
 	case "threat_actor":
-		statement = `SELECT threat_actor FROM articles WHERE published_at BETWEEN ? AND ?
-    AND threat_actor != '' GROUP BY threat_actor ORDER BY COUNT(*) DESC LIMIT ?`
 	case "sector":
-		statement = `SELECT sector FROM articles WHERE published_at BETWEEN ? AND ?
-    AND sector != '' GROUP BY sector ORDER BY COUNT(*) DESC LIMIT ?`
 	default:
 		return nil, fmt.Errorf("top values column %q: invalid", query.column)
 	}
-	rows, err := r.db.QueryContext(ctx, statement, query.period.start, query.period.end, query.limit)
-	if err != nil {
-		return nil, fmt.Errorf("query top %s: %w", query.column, err)
-	}
-	defer rows.Close()
 	values := []string{}
-	for rows.Next() {
-		var value string
-		if err := rows.Scan(&value); err != nil {
-			return nil, fmt.Errorf("scan top %s: %w", query.column, err)
-		}
-		values = append(values, value)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate top %s: %w", query.column, err)
+	if err := r.db.WithContext(ctx).Model(&database.Article{}).Where("published_at BETWEEN ? AND ?", query.period.start, query.period.end).
+		Where(query.column+" != ''").Group(query.column).Order("COUNT(*) DESC").Limit(query.limit).Pluck(query.column, &values).Error; err != nil {
+		return nil, fmt.Errorf("query top %s: %w", query.column, err)
 	}
 	return values, nil
 }
 
 func (r *Repository) articleFacts(ctx context.Context, period valuePeriod) ([]string, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT title, summary FROM articles
-    WHERE published_at BETWEEN ? AND ? ORDER BY published_at DESC LIMIT 30`, period.start, period.end)
-	if err != nil {
+	var rows []struct {
+		Title   string
+		Summary string
+	}
+	if err := r.db.WithContext(ctx).Model(&database.Article{}).Select("title", "summary").
+		Where("published_at BETWEEN ? AND ?", period.start, period.end).Order("published_at DESC").Limit(30).Find(&rows).Error; err != nil {
 		return nil, fmt.Errorf("query report facts: %w", err)
 	}
-	defer rows.Close()
-	facts := []string{}
-	for rows.Next() {
-		var title, articleSummary string
-		if err := rows.Scan(&title, &articleSummary); err != nil {
-			return nil, fmt.Errorf("scan report fact: %w", err)
-		}
-		facts = append(facts, title+": "+articleSummary)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate report facts: %w", err)
+	facts := make([]string, 0, len(rows))
+	for _, row := range rows {
+		facts = append(facts, row.Title+": "+row.Summary)
 	}
 	return facts, nil
 }

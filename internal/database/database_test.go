@@ -18,7 +18,7 @@ func TestOpenAppliesSchemaAndSeedsIdempotently(t *testing.T) {
 		if err != nil {
 			t.Fatalf("open database: %v", err)
 		}
-		if err := db.Close(); err != nil {
+		if err := Close(db); err != nil {
 			t.Fatalf("close database: %v", err)
 		}
 	}
@@ -26,14 +26,14 @@ func TestOpenAppliesSchemaAndSeedsIdempotently(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reopen database: %v", err)
 	}
-	t.Cleanup(func() { _ = db.Close() })
+	t.Cleanup(func() { _ = Close(db) })
 
 	// Then source and built-in preset seeds exist exactly once.
 	var sources, presets int
-	if err := db.QueryRow(`SELECT COUNT(*) FROM sources`).Scan(&sources); err != nil {
+	if err := db.Raw(`SELECT COUNT(*) FROM sources`).Row().Scan(&sources); err != nil {
 		t.Fatalf("count sources: %v", err)
 	}
-	if err := db.QueryRow(`SELECT COUNT(*) FROM llm_presets WHERE builtin = 1`).Scan(&presets); err != nil {
+	if err := db.Raw(`SELECT COUNT(*) FROM llm_presets WHERE builtin = 1`).Row().Scan(&presets); err != nil {
 		t.Fatalf("count built-in presets: %v", err)
 	}
 	if sources != 6 || presets != 1 {
@@ -47,28 +47,52 @@ func TestOpenEnforcesForeignKeys_whenPoolReplacesTheConnection(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open database: %v", err)
 	}
-	t.Cleanup(func() { _ = db.Close() })
-	db.SetMaxIdleConns(0)
+	t.Cleanup(func() { _ = Close(db) })
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatalf("access database pool: %v", err)
+	}
+	sqlDB.SetMaxIdleConns(0)
 	for range 3 {
 		var probe int
-		if err := db.QueryRow(`SELECT 1`).Scan(&probe); err != nil {
+		if err := db.Raw(`SELECT 1`).Row().Scan(&probe); err != nil {
 			t.Fatalf("cycle connection: %v", err)
 		}
 	}
 
 	// When a row that violates a foreign key is inserted on the replacement connection.
-	_, err = db.Exec(`INSERT INTO article_cves (article_id, cve_id) VALUES (999999, 'CVE-0000-0000')`)
+	err = db.Exec(`INSERT INTO article_cves (article_id, cve_id) VALUES (999999, 'CVE-0000-0000')`).Error
 
 	// Then the constraint is still enforced: the pragma travels with every connection.
 	if err == nil {
 		t.Fatal("orphan article_cves row was accepted, want foreign key violation")
 	}
 	var enabled int
-	if err := db.QueryRow(`PRAGMA foreign_keys`).Scan(&enabled); err != nil {
+	if err := db.Raw(`PRAGMA foreign_keys`).Row().Scan(&enabled); err != nil {
 		t.Fatalf("read foreign_keys pragma: %v", err)
 	}
 	if enabled != 1 {
 		t.Fatalf("foreign_keys = %d, want 1", enabled)
+	}
+	var busyTimeout, synchronous int
+	if err := db.Raw(`PRAGMA busy_timeout`).Row().Scan(&busyTimeout); err != nil {
+		t.Fatalf("read busy_timeout pragma: %v", err)
+	}
+	if busyTimeout != 5000 {
+		t.Fatalf("busy_timeout = %d, want 5000", busyTimeout)
+	}
+	var journalMode string
+	if err := db.Raw(`PRAGMA journal_mode`).Row().Scan(&journalMode); err != nil {
+		t.Fatalf("read journal_mode pragma: %v", err)
+	}
+	if journalMode != "wal" {
+		t.Fatalf("journal_mode = %q, want wal", journalMode)
+	}
+	if err := db.Raw(`PRAGMA synchronous`).Row().Scan(&synchronous); err != nil {
+		t.Fatalf("read synchronous pragma: %v", err)
+	}
+	if synchronous != 2 {
+		t.Fatalf("synchronous = %d, want FULL (2)", synchronous)
 	}
 }
 
@@ -85,7 +109,7 @@ func TestOpenInitializesLocalTimezoneAndPreservesSavedValue(t *testing.T) {
 
 	// Then the timezone is initialized from the local environment.
 	var offsetMinutes int
-	if err := db.QueryRow(`SELECT timezone_offset_minutes FROM settings WHERE id = 1`).Scan(&offsetMinutes); err != nil {
+	if err := db.Raw(`SELECT timezone_offset_minutes FROM settings WHERE id = 1`).Row().Scan(&offsetMinutes); err != nil {
 		t.Fatalf("read initialized timezone: %v", err)
 	}
 	if want := offsetSeconds / 60; offsetMinutes != want {
@@ -94,20 +118,20 @@ func TestOpenInitializesLocalTimezoneAndPreservesSavedValue(t *testing.T) {
 
 	// When a user-defined timezone is saved and the database is reopened.
 	const savedOffset = 123
-	if _, err := db.Exec(`UPDATE settings SET timezone_offset_minutes = ? WHERE id = 1`, savedOffset); err != nil {
+	if err := db.Exec(`UPDATE settings SET timezone_offset_minutes = ? WHERE id = 1`, savedOffset).Error; err != nil {
 		t.Fatalf("save timezone: %v", err)
 	}
-	if err := db.Close(); err != nil {
+	if err := Close(db); err != nil {
 		t.Fatalf("close database: %v", err)
 	}
 	db, err = Open(context.Background(), path)
 	if err != nil {
 		t.Fatalf("reopen database: %v", err)
 	}
-	t.Cleanup(func() { _ = db.Close() })
+	t.Cleanup(func() { _ = Close(db) })
 
 	// Then the saved timezone is preserved.
-	if err := db.QueryRow(`SELECT timezone_offset_minutes FROM settings WHERE id = 1`).Scan(&offsetMinutes); err != nil {
+	if err := db.Raw(`SELECT timezone_offset_minutes FROM settings WHERE id = 1`).Row().Scan(&offsetMinutes); err != nil {
 		t.Fatalf("read saved timezone: %v", err)
 	}
 	if offsetMinutes != savedOffset {
@@ -121,7 +145,7 @@ func TestOpenCreatesIndexesUsedByArticleDateAndCVEQueries(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open database: %v", err)
 	}
-	t.Cleanup(func() { _ = db.Close() })
+	t.Cleanup(func() { _ = Close(db) })
 
 	tests := []struct {
 		name      string
@@ -146,7 +170,7 @@ func TestOpenCreatesIndexesUsedByArticleDateAndCVEQueries(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			// When SQLite plans the production query shape.
-			rows, err := db.Query(test.statement, test.argument)
+			rows, err := db.Raw(test.statement, test.argument).Rows()
 			if err != nil {
 				t.Fatalf("explain query plan: %v", err)
 			}
