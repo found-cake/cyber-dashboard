@@ -98,7 +98,7 @@ func NewClient(config Config) (*Client, error) {
 	client := openai.NewClient(
 		option.WithAPIKey(apiKey),
 		option.WithBaseURL(strings.TrimRight(config.BaseURL, "/")),
-		option.WithHTTPClient(&http.Client{Timeout: config.Timeout}),
+		option.WithHTTPClient(&http.Client{Timeout: config.Timeout, CheckRedirect: checkSameOriginRedirect}),
 		option.WithMaxRetries(0),
 	)
 	return &Client{openai: client, model: config.Model}, nil
