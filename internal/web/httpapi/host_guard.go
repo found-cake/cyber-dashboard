@@ -33,7 +33,7 @@ func (g *hostGuard) middleware(next echo.HandlerFunc) echo.HandlerFunc {
 			return next(c)
 		}
 		parsed, err := url.Parse(origin)
-		if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.User != nil ||
+		if err != nil || parsed.Scheme != "http" || parsed.User != nil ||
 			!strings.EqualFold(parsed.Host, c.Request().Host) {
 			return rejectUntrustedHost(c)
 		}

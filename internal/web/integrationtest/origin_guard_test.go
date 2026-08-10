@@ -40,6 +40,22 @@ func TestRequestIsAccepted_whenOriginMatchesTheDashboard(t *testing.T) {
 	}
 }
 
+func TestRequestIsRejected_whenOriginUsesHTTPSForHTTPDashboard(t *testing.T) {
+	// Given the dashboard serves HTTP on an otherwise matching trusted authority.
+	server, _, _ := newTestServer(t, &stubFetcher{})
+
+	// When a request claims the HTTPS origin for that authority.
+	request := httptest.NewRequest(http.MethodGet, "/api/bootstrap", nil)
+	request.Header.Set("Origin", "https://"+request.Host)
+	recorder := httptest.NewRecorder()
+	server.ServeHTTP(recorder, request)
+
+	// Then the different scheme is rejected as a cross-origin request.
+	if recorder.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d, body = %s", recorder.Code, http.StatusForbidden, recorder.Body.String())
+	}
+}
+
 func TestRequestIsAccepted_whenOriginIsAbsent(t *testing.T) {
 	// Given a client such as curl that sends no origin.
 	server, _, _ := newTestServer(t, &stubFetcher{})
