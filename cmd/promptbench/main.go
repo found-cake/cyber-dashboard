@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"github.com/found-cake/cyber-dashboard/internal/database"
-	"github.com/found-cake/cyber-dashboard/internal/feed"
+	feedstore "github.com/found-cake/cyber-dashboard/internal/feed/store"
 	"github.com/found-cake/cyber-dashboard/internal/summary"
 )
 
@@ -126,13 +126,13 @@ func defaultDataDir() string {
 	return filepath.Join(configDir, "cyber-dashboard")
 }
 
-func loadArticles(ctx context.Context, opts options) ([]feed.ArticleForAnalysis, error) {
+func loadArticles(ctx context.Context, opts options) ([]feedstore.ArticleForAnalysis, error) {
 	db, err := database.Open(ctx, filepath.Join(opts.dataDir, "dashboard.db"))
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = database.Close(db) }()
-	repository := feed.NewRepository(db)
+	repository := feedstore.NewRepository(db)
 	days := splitDays(opts.days)
 	if len(days) == 0 {
 		days, err = repository.CollectedDays(ctx)
@@ -140,7 +140,7 @@ func loadArticles(ctx context.Context, opts options) ([]feed.ArticleForAnalysis,
 			return nil, err
 		}
 	}
-	var articles []feed.ArticleForAnalysis
+	var articles []feedstore.ArticleForAnalysis
 	for _, day := range days {
 		dayArticles, dayErr := repository.ArticlesForAnalysis(ctx, day)
 		if dayErr != nil {

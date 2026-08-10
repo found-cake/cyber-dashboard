@@ -14,7 +14,10 @@ import (
 
 	"github.com/found-cake/cyber-dashboard/internal/dashboard"
 	"github.com/found-cake/cyber-dashboard/internal/database"
-	"github.com/found-cake/cyber-dashboard/internal/feed"
+	feedbody "github.com/found-cake/cyber-dashboard/internal/feed/body"
+	"github.com/found-cake/cyber-dashboard/internal/feed/collector"
+	"github.com/found-cake/cyber-dashboard/internal/feed/enrichment"
+	feedstore "github.com/found-cake/cyber-dashboard/internal/feed/store"
 	"github.com/found-cake/cyber-dashboard/internal/report"
 	"github.com/found-cake/cyber-dashboard/internal/settings"
 	"github.com/found-cake/cyber-dashboard/internal/summary"
@@ -45,22 +48,22 @@ func Run(ctx context.Context, assets fs.FS) (runErr error) {
 	if err != nil {
 		return err
 	}
-	feedRepository := feed.NewRepository(db)
+	feedRepository := feedstore.NewRepository(db)
 	reportRepository := report.NewRepository(db)
 	summaryService := summary.NewService(settingsRepository)
 	vulnerabilityService := vulnerability.NewService(feedRepository, settingsRepository, vulnerability.NewClient(nil, ""))
-	browserBodyLoader := feed.NewChromiumBodyLoader(ctx)
+	browserBodyLoader := feedbody.NewChromiumBodyLoader(ctx)
 	defer browserBodyLoader.Close()
 	handler := web.NewServer(web.Dependencies{
 		Assets:          assets,
 		Feeds:           feedRepository,
-		Collector:       feed.NewCollector(feedRepository, feed.NewHTTPFetcher(), feed.NewArticleBodyLoader(nil, browserBodyLoader)),
+		Collector:       collector.NewCollector(feedRepository, collector.NewHTTPFetcher(), feedbody.NewArticleBodyLoader(nil, browserBodyLoader)),
 		Dashboard:       dashboard.NewRepository(db),
 		Settings:        settingsRepository,
 		Reports:         reportRepository,
 		ReportService:   report.NewService(reportRepository, summaryService),
 		Summaries:       summaryService,
-		Articles:        feed.NewArticleEnrichmentService(feedRepository, summaryService),
+		Articles:        enrichment.NewArticleEnrichmentService(feedRepository, summaryService),
 		Vulnerabilities: vulnerabilityService,
 	})
 	return serve(ctx, handler)
