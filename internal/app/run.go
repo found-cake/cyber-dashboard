@@ -48,6 +48,15 @@ func Run(ctx context.Context, assets fs.FS) (runErr error) {
 	if err != nil {
 		return err
 	}
+	trustedHosts, err := trustedHostsFromEnvironment()
+	if err != nil {
+		return err
+	}
+	if len(trustedHosts) == 0 {
+		slog.Warn("dashboard is bound to all interfaces without a trusted host",
+			slog.String("address", configuredAddress()),
+			slog.String("set_environment_variable", "CYBER_DASHBOARD_TRUSTED_HOST"))
+	}
 	feedRepository := feedstore.NewRepository(db)
 	reportRepository := report.NewRepository(db)
 	summaryService := summary.NewService(settingsRepository)
@@ -65,6 +74,7 @@ func Run(ctx context.Context, assets fs.FS) (runErr error) {
 		Summaries:       summaryService,
 		Articles:        enrichment.NewArticleEnrichmentService(feedRepository, summaryService),
 		Vulnerabilities: vulnerabilityService,
+		TrustedHosts:    trustedHosts,
 	})
 	return serve(ctx, handler)
 }
@@ -81,10 +91,7 @@ func resolveDataDir() (string, error) {
 }
 
 func serve(ctx context.Context, handler http.Handler) error {
-	address := "127.0.0.1:8080"
-	if configured := os.Getenv("CYBER_DASHBOARD_ADDR"); configured != "" {
-		address = configured
-	}
+	address := configuredAddress()
 	listener, err := net.Listen("tcp", address)
 	if err != nil {
 		return fmt.Errorf("listen on %s: %w", address, err)
@@ -117,4 +124,34 @@ func serve(ctx context.Context, handler http.Handler) error {
 		}
 		return fmt.Errorf("serve dashboard: %w", err)
 	}
+}
+
+func configuredAddress() string {
+	if configured := os.Getenv("CYBER_DASHBOARD_ADDR"); configured != "" {
+		return configured
+	}
+	return "127.0.0.1:8080"
+}
+
+func trustedHostsFromEnvironment() ([]string, error) {
+	addressHost, _, err := net.SplitHostPort(configuredAddress())
+	if err != nil {
+		return nil, fmt.Errorf("parse dashboard address: %w", err)
+	}
+	values := []string{addressHost, os.Getenv("CYBER_DASHBOARD_TRUSTED_HOST")}
+	hosts := make([]string, 0, len(values))
+	for _, value := range values {
+		if value == "" {
+			continue
+		}
+		host, err := web.NormalizeTrustedHost(value)
+		if err != nil {
+			return nil, fmt.Errorf("parse trusted host %q: %w", value, err)
+		}
+		if ip := net.ParseIP(host); ip != nil && ip.IsUnspecified() {
+			continue
+		}
+		hosts = append(hosts, host)
+	}
+	return hosts, nil
 }

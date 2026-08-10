@@ -66,6 +66,7 @@ func newTestServerWithConfig(t *testing.T, config testServerConfig) (*web.Server
 		Summaries: summaryService, Articles: enrichment.NewArticleEnrichmentService(feedRepository, summaryService),
 		Vulnerabilities: config.vulnerabilities,
 		Now:             config.now,
+		TrustedHosts:    []string{"example.com"},
 	})
 	return server, feedRepository, settingsRepository
 }

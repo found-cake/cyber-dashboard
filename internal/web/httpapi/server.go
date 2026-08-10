@@ -30,6 +30,7 @@ type Dependencies struct {
 	Articles        ArticleEnricher
 	Vulnerabilities VulnerabilityEnricher
 	Now             func() time.Time
+	TrustedHosts    []string
 }
 
 type ArticleEnricher interface {
@@ -59,6 +60,8 @@ type Server struct {
 
 func NewServer(dependencies Dependencies) *Server {
 	e := echo.New()
+	hostGuard := newHostGuard(dependencies.TrustedHosts)
+	e.Pre(hostGuard.middleware)
 	now := dependencies.Now
 	if now == nil {
 		now = time.Now
