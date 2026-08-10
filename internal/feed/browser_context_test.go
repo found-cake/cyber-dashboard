@@ -13,6 +13,24 @@ import (
 	"github.com/chromedp/chromedp"
 )
 
+func TestChromiumBodyLoaderUsesUnifiedExtendedTimeouts(t *testing.T) {
+	// Given every Chromium-backed source shares one loader policy.
+	wantArticleTimeout := 90 * time.Second
+	wantBodyWaitTimeout := 75 * time.Second
+
+	// When the shared timeout policy is inspected.
+	articleTimeout := chromiumArticleTimeout
+	bodyWaitTimeout := chromiumBodyWaitTimeout
+
+	// Then both Dark Reading and BleepingComputer receive the extended limits.
+	if articleTimeout != wantArticleTimeout {
+		t.Fatalf("article timeout = %s, want %s", articleTimeout, wantArticleTimeout)
+	}
+	if bodyWaitTimeout != wantBodyWaitTimeout {
+		t.Fatalf("body wait timeout = %s, want %s", bodyWaitTimeout, wantBodyWaitTimeout)
+	}
+}
+
 func TestChromiumBodyLoaderHonorsCanceledCaller_beforeStartingChromium(t *testing.T) {
 	// Given a loader with no valid Chromium executable and an already-canceled call.
 	loader := newChromiumBodyLoader(context.Background(),

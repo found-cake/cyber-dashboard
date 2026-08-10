@@ -14,7 +14,11 @@ import (
 	"github.com/chromedp/chromedp"
 )
 
-const chromiumUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36"
+const (
+	chromiumUserAgent       = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36"
+	chromiumArticleTimeout  = 90 * time.Second
+	chromiumBodyWaitTimeout = 75 * time.Second
+)
 
 func (l *ChromiumBodyLoader) Load(ctx context.Context, articleURL, sourceHost string) (string, error) {
 	l.mutex.Lock()
@@ -33,7 +37,7 @@ func (l *ChromiumBodyLoader) Load(ctx context.Context, articleURL, sourceHost st
 		return "", err
 	}
 	sessionContext := l.context
-	tabContext, timeoutCancel := context.WithTimeout(sessionContext, 60*time.Second)
+	tabContext, timeoutCancel := context.WithTimeout(sessionContext, chromiumArticleTimeout)
 	defer timeoutCancel()
 	stopCancellation := context.AfterFunc(ctx, timeoutCancel)
 	defer stopCancellation()
@@ -104,7 +108,7 @@ func (l *ChromiumBodyLoader) Load(ctx context.Context, articleURL, sourceHost st
 		}),
 	)
 	if loadErr == nil {
-		waitContext, waitCancel := context.WithTimeout(tabContext, 50*time.Second)
+		waitContext, waitCancel := context.WithTimeout(tabContext, chromiumBodyWaitTimeout)
 		defer waitCancel()
 		ticker := time.NewTicker(500 * time.Millisecond)
 		defer ticker.Stop()
