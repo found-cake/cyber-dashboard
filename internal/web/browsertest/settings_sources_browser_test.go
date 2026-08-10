@@ -22,83 +22,94 @@ func TestSourceSettingsWaitForSaveAndSupportRevert(t *testing.T) {
 		width  int64
 		height int64
 	}{{375, 812}, {768, 900}, {1280, 900}}
+	languages := []string{"en", "ko"}
+	themes := []string{"light", "dark"}
 
-	for _, viewport := range viewports {
-		t.Run(fmt.Sprintf("%dpx", viewport.width), func(t *testing.T) {
-			// Given BleepingComputer is enabled in persisted settings.
-			savedRequests := make(chan api.SaveSettingsRequest, 1)
-			server := newSourceSettingsBrowserServer(t, savedRequests)
-			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-			t.Cleanup(cancel)
-			browser, browserCancel := chromedp.NewContext(ctx)
-			t.Cleanup(browserCancel)
-			if err := chromedp.Run(browser,
-				chromedp.EmulateViewport(viewport.width, viewport.height),
-				chromedp.Navigate(server.URL),
-				chromedp.WaitVisible(`#main-content .empty-state`),
-			); err != nil {
-				t.Fatalf("initialize dashboard: %v", err)
-			}
-			openSettingsPage(t, browser, viewport.width)
+	for _, language := range languages {
+		for _, theme := range themes {
+			for _, viewport := range viewports {
+				t.Run(fmt.Sprintf("%s-%s-%dpx", language, theme, viewport.width), func(t *testing.T) {
+					// Given BleepingComputer is enabled in persisted settings.
+					savedRequests := make(chan api.SaveSettingsRequest, 1)
+					server := newSourceSettingsBrowserServer(t, savedRequests, language)
+					ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+					t.Cleanup(cancel)
+					browser, browserCancel := chromedp.NewContext(ctx)
+					t.Cleanup(browserCancel)
+					if err := chromedp.Run(browser,
+						chromedp.EmulateViewport(viewport.width, viewport.height),
+						chromedp.Navigate(server.URL),
+						chromedp.WaitVisible(`#main-content .empty-state`),
+					); err != nil {
+						t.Fatalf("initialize dashboard: %v", err)
+					}
+					openSettingsPage(t, browser, viewport.width)
+					if err := chromedp.Run(browser, chromedp.Evaluate(fmt.Sprintf(`localStorage.setItem("cyber-theme", %q); document.documentElement.dataset.theme = %q`, theme, theme), nil)); err != nil {
+						t.Fatalf("apply %s theme: %v", theme, err)
+					}
 
-			// When the source is toggled without saving.
-			if err := chromedp.Run(browser,
-				chromedp.Click(`[data-source-id="2"]`),
-				chromedp.WaitVisible(`#settings-save-bar`),
-				chromedp.Poll(`document.querySelector('[data-source-id="2"]').getAttribute('aria-checked') === 'false'`, nil),
-			); err != nil {
-				t.Fatalf("draft source change: %v", err)
-			}
-			captureSourceSettingsScreenshot(t, browser, viewport.width)
-			select {
-			case <-savedRequests:
-				t.Fatal("source was persisted before Save was activated")
-			default:
-			}
+					// When the source is toggled without saving.
+					if err := chromedp.Run(browser,
+						chromedp.Click(`[data-source-id="2"]`),
+						chromedp.WaitVisible(`#settings-save-bar`),
+						chromedp.Poll(`document.querySelector('[data-source-id="2"]').getAttribute('aria-checked') === 'false'`, nil),
+					); err != nil {
+						t.Fatalf("draft source change: %v", err)
+					}
+					captureSourceSettingsScreenshot(t, browser, sourceSettingsCapture{
+						width: viewport.width, language: language, theme: theme,
+					})
+					select {
+					case <-savedRequests:
+						t.Fatal("source was persisted before Save was activated")
+					default:
+					}
 
-			// Then Revert restores the persisted source state and hides the action bar.
-			if err := chromedp.Run(browser,
-				chromedp.Click(`#revert-settings`),
-				chromedp.Poll(`document.querySelector('#settings-save-bar').hidden && document.querySelector('[data-source-id="2"]').getAttribute('aria-checked') === 'true'`, nil),
-			); err != nil {
-				t.Fatalf("revert source draft: %v", err)
-			}
+					// Then Revert restores the persisted source state and hides the action bar.
+					if err := chromedp.Run(browser,
+						chromedp.Click(`#revert-settings`),
+						chromedp.Poll(`document.querySelector('#settings-save-bar').hidden && document.querySelector('[data-source-id="2"]').getAttribute('aria-checked') === 'true'`, nil),
+					); err != nil {
+						t.Fatalf("revert source draft: %v", err)
+					}
 
-			// When the source is toggled again and Save is activated.
-			if err := chromedp.Run(browser,
-				chromedp.Click(`[data-source-id="2"]`),
-				chromedp.WaitVisible(`#settings-save-bar`),
-				chromedp.Click(`#save-settings`),
-				chromedp.WaitVisible(`#toast-region .toast`),
-				chromedp.Poll(`document.querySelector('#settings-save-bar').hidden`, nil),
-			); err != nil {
-				t.Fatalf("save source draft: %v", err)
-			}
-			select {
-			case request := <-savedRequests:
-				if len(request.Sources) != 1 || request.Sources[0].ID != 2 || request.Sources[0].Enabled {
-					t.Fatalf("saved sources = %+v, want BleepingComputer disabled", request.Sources)
-				}
-			default:
-				t.Fatal("settings save request was not received")
-			}
+					// When the source is toggled again and Save is activated.
+					if err := chromedp.Run(browser,
+						chromedp.Click(`[data-source-id="2"]`),
+						chromedp.WaitVisible(`#settings-save-bar`),
+						chromedp.Click(`#save-settings`),
+						chromedp.WaitVisible(`#toast-region .toast`),
+						chromedp.Poll(`document.querySelector('#settings-save-bar').hidden`, nil),
+					); err != nil {
+						t.Fatalf("save source draft: %v", err)
+					}
+					select {
+					case request := <-savedRequests:
+						if len(request.Sources) != 1 || request.Sources[0].ID != 2 || request.Sources[0].Enabled {
+							t.Fatalf("saved sources = %+v, want BleepingComputer disabled", request.Sources)
+						}
+					default:
+						t.Fatal("settings save request was not received")
+					}
 
-			// Then a reload shows the saved source state without an unsaved action bar.
-			if err := chromedp.Run(browser,
-				chromedp.Reload(),
-				chromedp.WaitVisible(`#main-content .empty-state`),
-			); err != nil {
-				t.Fatalf("reload dashboard: %v", err)
+					// Then a reload shows the saved source state without an unsaved action bar.
+					if err := chromedp.Run(browser,
+						chromedp.Reload(),
+						chromedp.WaitVisible(`#main-content .empty-state`),
+					); err != nil {
+						t.Fatalf("reload dashboard: %v", err)
+					}
+					openSettingsPage(t, browser, viewport.width)
+					if err := chromedp.Run(browser, chromedp.Poll(`document.querySelector('#settings-save-bar').hidden && document.querySelector('[data-source-id="2"]').getAttribute('aria-checked') === 'false'`, nil)); err != nil {
+						t.Fatalf("inspect persisted source state: %v", err)
+					}
+				})
 			}
-			openSettingsPage(t, browser, viewport.width)
-			if err := chromedp.Run(browser, chromedp.Poll(`document.querySelector('#settings-save-bar').hidden && document.querySelector('[data-source-id="2"]').getAttribute('aria-checked') === 'false'`, nil)); err != nil {
-				t.Fatalf("inspect persisted source state: %v", err)
-			}
-		})
+		}
 	}
 }
 
-func newSourceSettingsBrowserServer(t *testing.T, savedRequests chan<- api.SaveSettingsRequest) *httptest.Server {
+func newSourceSettingsBrowserServer(t *testing.T, savedRequests chan<- api.SaveSettingsRequest, language string) *httptest.Server {
 	t.Helper()
 	sources := []api.Source{
 		{ID: 1, Name: "BoanNews", Host: "boannews.com", Slug: "boannews", Enabled: false},
@@ -108,7 +119,7 @@ func newSourceSettingsBrowserServer(t *testing.T, savedRequests chan<- api.SaveS
 		{ID: 5, Name: "StepSecurity", Host: "stepsecurity.io", Slug: "stepsecurity", Enabled: true},
 		{ID: 6, Name: "The Hacker News", Host: "thehackernews.com", Slug: "thehackernews", Enabled: true},
 	}
-	settings := api.SettingsResponse{Language: "en", Accent: "#4f6ef7", LLMBaseURL: "http://localhost:11434/v1", LLMModel: "local-model", LLMTimeout: 60, TimezoneOffsetMinutes: 540}
+	settings := api.SettingsResponse{Language: language, Accent: "#4f6ef7", LLMBaseURL: "http://localhost:11434/v1", LLMModel: "local-model", LLMTimeout: 60, TimezoneOffsetMinutes: 540}
 	var mutex sync.Mutex
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/bootstrap", func(writer http.ResponseWriter, _ *http.Request) {
@@ -127,6 +138,7 @@ func newSourceSettingsBrowserServer(t *testing.T, savedRequests chan<- api.SaveS
 			return
 		}
 		mutex.Lock()
+		settings.Language = value.Language
 		for _, changed := range value.Sources {
 			for index := range sources {
 				if sources[index].ID == changed.ID {
@@ -134,9 +146,10 @@ func newSourceSettingsBrowserServer(t *testing.T, savedRequests chan<- api.SaveS
 				}
 			}
 		}
+		response := settings
 		mutex.Unlock()
 		savedRequests <- value
-		writeJSON(t, writer, settings)
+		writeJSON(t, writer, response)
 	})
 	mux.Handle("/", http.FileServerFS(os.DirFS("../../../static")))
 	server := httptest.NewServer(mux)
@@ -144,7 +157,13 @@ func newSourceSettingsBrowserServer(t *testing.T, savedRequests chan<- api.SaveS
 	return server
 }
 
-func captureSourceSettingsScreenshot(t *testing.T, browser context.Context, width int64) {
+type sourceSettingsCapture struct {
+	width    int64
+	language string
+	theme    string
+}
+
+func captureSourceSettingsScreenshot(t *testing.T, browser context.Context, capture sourceSettingsCapture) {
 	t.Helper()
 	directory := os.Getenv("CYBER_DASHBOARD_VISUAL_QA_DIR")
 	if directory == "" {
@@ -158,7 +177,7 @@ func captureSourceSettingsScreenshot(t *testing.T, browser context.Context, widt
 		chromedp.Poll(`document.querySelector('#settings-save-bar').getAnimations().every(animation => animation.playState === 'finished')`, nil),
 		chromedp.Screenshot(`.app-shell`, &screenshot, chromedp.ByQuery),
 	); err != nil {
-		t.Fatalf("capture source settings at %dpx: %v", width, err)
+		t.Fatalf("capture source settings at %dpx: %v", capture.width, err)
 	}
-	writeSettingsScreenshot(t, directory, "source-draft", width, screenshot)
+	writeSettingsScreenshot(t, directory, fmt.Sprintf("source-draft-%s-%s", capture.language, capture.theme), capture.width, screenshot)
 }
