@@ -77,7 +77,6 @@ type Report struct {
 type Setting struct {
 	ID                    int64  `gorm:"primaryKey;check:id = 1"`
 	Lang                  string `gorm:"not null;default:en"`
-	Theme                 string `gorm:"not null;default:dark"`
 	Accent                string `gorm:"not null;default:#4f6ef7"`
 	LLMBaseURL            string `gorm:"not null;default:https://api.openai.com/v1"`
 	LLMModel              string `gorm:"not null;default:gpt-4o-mini"`

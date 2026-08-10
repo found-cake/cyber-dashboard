@@ -185,7 +185,7 @@ func newCVENavigationServer(t *testing.T, cves []api.CVEInsight) *httptest.Serve
 		writeJSON(t, writer, api.Bootstrap{
 			Sources:       []api.Source{},
 			Reports:       []api.Report{},
-			Settings:      api.SettingsResponse{Language: "ko", Theme: "dark"},
+			Settings:      api.SettingsResponse{Language: "ko"},
 			LLMPresets:    []api.LLMPresetResponse{},
 			CollectedDays: []string{},
 		})
@@ -215,7 +215,7 @@ func newCVERefreshServer(t *testing.T) (*httptest.Server, <-chan struct{}, func(
 	staticFiles := http.FileServerFS(os.DirFS("../../static"))
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/bootstrap", func(writer http.ResponseWriter, _ *http.Request) {
-		writeJSON(t, writer, api.Bootstrap{Settings: api.SettingsResponse{Language: "ko", Theme: "dark"}})
+		writeJSON(t, writer, api.Bootstrap{Settings: api.SettingsResponse{Language: "ko"}})
 	})
 	mux.HandleFunc("GET /api/dashboard", func(writer http.ResponseWriter, _ *http.Request) {
 		if !completed.Load() {

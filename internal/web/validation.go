@@ -46,9 +46,6 @@ func validateSettings(value api.Settings) error {
 	if err := validateLanguage(value.Language); err != nil {
 		return err
 	}
-	if value.Theme != "dark" && value.Theme != "light" {
-		return fmt.Errorf("theme must be dark or light")
-	}
 	parsed, err := url.ParseRequestURI(value.LLMBaseURL)
 	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
 		return fmt.Errorf("LLM base URL must be an absolute HTTP URL")
@@ -98,7 +95,6 @@ func writeBadRequest(c *echo.Context, message string) error {
 		"invalid LLM preset id":                            "LLM 프리셋 ID가 올바르지 않습니다",
 		"invalid source id":                                "뉴스 출처 ID가 올바르지 않습니다",
 		"language must be ko or en":                        "언어는 ko 또는 en이어야 합니다",
-		"theme must be dark or light":                      "테마는 dark 또는 light여야 합니다",
 		"LLM base URL must be an absolute HTTP URL":        "LLM Base URL은 절대 HTTP URL이어야 합니다",
 		"LLM base URL must use HTTP or HTTPS":              "LLM Base URL은 HTTP 또는 HTTPS를 사용해야 합니다",
 		"model and timeout are required":                   "모델과 타임아웃이 필요합니다",

@@ -8,7 +8,7 @@ import (
 
 func settingsResponse(value api.Settings) api.SettingsResponse {
 	return api.SettingsResponse{
-		Language: value.Language, Theme: value.Theme, Accent: value.Accent,
+		Language: value.Language, Accent: value.Accent,
 		LLMBaseURL: value.LLMBaseURL, LLMModel: value.LLMModel,
 		LLMAPIKeyConfigured: strings.TrimSpace(value.LLMAPIKey) != "", LLMTimeout: value.LLMTimeout,
 		NVDAPIKeyConfigured:   strings.TrimSpace(value.NVDAPIKey) != "",

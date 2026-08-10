@@ -71,7 +71,7 @@ func newCVEResumeServer(t *testing.T) (*httptest.Server, func(), *atomic.Int32, 
 	mux.HandleFunc("GET /api/bootstrap", func(writer http.ResponseWriter, _ *http.Request) {
 		bootstrapCalls.Add(1)
 		writeJSON(t, writer, api.Bootstrap{
-			Settings: api.SettingsResponse{Language: "ko", Theme: "dark"},
+			Settings: api.SettingsResponse{Language: "ko"},
 			CVERefresh: &api.CVERefreshJob{
 				ID: "cve-refresh-resume", Status: api.CVERefreshRunning,
 			},

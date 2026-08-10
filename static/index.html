@@ -7,6 +7,15 @@
   <meta name="theme-color" content="#0d1117">
   <title>Cyber Dashboard</title>
   <link rel="icon" href="data:,">
+  <!-- app.js is deferred, so resolve the theme here or light users get a dark flash. Mirrors resolveTheme(). -->
+  <script>
+    (() => {
+      const stored = localStorage.getItem("cyber-theme");
+      const theme = stored === "dark" || stored === "light" ? stored
+        : window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+      document.documentElement.dataset.theme = theme;
+    })();
+  </script>
   <link rel="stylesheet" href="/styles.css">
   <script defer src="/jquery-4.0.0.min.js"></script>
   <script defer src="/collection-task.js"></script>

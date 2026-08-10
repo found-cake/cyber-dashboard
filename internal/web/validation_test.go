@@ -37,13 +37,12 @@ func TestParseCollectableDayEnforcesRetentionWindow(t *testing.T) {
 
 func TestValidateSettingsRejectsInvalidWireValues(t *testing.T) {
 	// Given a valid public settings request and one invalid field per case.
-	valid := api.Settings{Language: "ko", Theme: "dark", LLMBaseURL: "https://api.openai.com/v1", LLMModel: "gpt-4o-mini", LLMTimeout: 60, TimezoneOffsetMinutes: 540}
+	valid := api.Settings{Language: "ko", LLMBaseURL: "https://api.openai.com/v1", LLMModel: "gpt-4o-mini", LLMTimeout: 60, TimezoneOffsetMinutes: 540}
 	tests := []struct {
 		name   string
 		mutate func(*api.Settings)
 	}{
 		{name: "language", mutate: func(value *api.Settings) { value.Language = "jp" }},
-		{name: "theme", mutate: func(value *api.Settings) { value.Theme = "system" }},
 		{name: "relative URL", mutate: func(value *api.Settings) { value.LLMBaseURL = "/v1" }},
 		{name: "FTP URL", mutate: func(value *api.Settings) { value.LLMBaseURL = "ftp://example.com/v1" }},
 		{name: "model", mutate: func(value *api.Settings) { value.LLMModel = " " }},

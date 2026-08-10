@@ -180,7 +180,7 @@ func newReportDeleteBrowserServer(t *testing.T) (*httptest.Server, *atomic.Int32
 				Total: 4, Critical: 1, High: 2, Medium: 1, TopThreat: "Supply-chain intrusion",
 				Actors: []string{"Unknown"}, Sectors: []string{"Technology"}, Summary: "Weekly report summary",
 			}},
-			Settings: api.SettingsResponse{Language: "ko", Theme: "dark", TimezoneOffsetMinutes: 540},
+			Settings: api.SettingsResponse{Language: "ko", TimezoneOffsetMinutes: 540},
 		})
 	})
 	mux.HandleFunc("GET /api/dashboard", func(writer http.ResponseWriter, _ *http.Request) {

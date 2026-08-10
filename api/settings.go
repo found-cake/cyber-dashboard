@@ -3,7 +3,6 @@ package api
 // Settings is the request body for PUT /api/settings and POST /api/llm/test.
 type Settings struct {
 	Language              string `json:"language"`
-	Theme                 string `json:"theme"`
 	Accent                string `json:"accent"`
 	LLMBaseURL            string `json:"llm_base_url"`
 	LLMModel              string `json:"llm_model"`
@@ -15,9 +14,9 @@ type Settings struct {
 
 // SettingsResponse is returned by GET /api/bootstrap and PUT /api/settings.
 // Secret values are represented only by configured flags and never serialized.
+// Theme is deliberately absent: it is browser-local, kept only in localStorage.
 type SettingsResponse struct {
 	Language              string `json:"language"`
-	Theme                 string `json:"theme"`
 	Accent                string `json:"accent"`
 	LLMBaseURL            string `json:"llm_base_url"`
 	LLMModel              string `json:"llm_model"`

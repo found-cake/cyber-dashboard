@@ -22,7 +22,7 @@ func TestRepositoryEncryptsSecrets_whenSettingsAreSaved(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open repository: %v", err)
 	}
-	value := api.Settings{Language: "ko", Theme: "dark", Accent: "#4f6ef7", LLMBaseURL: "https://api.openai.com/v1", LLMModel: "gpt-4o-mini", LLMAPIKey: "llm-secret", LLMTimeout: 60, NVDAPIKey: "nvd-secret", TimezoneOffsetMinutes: 540}
+	value := api.Settings{Language: "ko", Accent: "#4f6ef7", LLMBaseURL: "https://api.openai.com/v1", LLMModel: "gpt-4o-mini", LLMAPIKey: "llm-secret", LLMTimeout: 60, NVDAPIKey: "nvd-secret", TimezoneOffsetMinutes: 540}
 
 	// When the settings are saved and read through the feature boundary.
 	if err := repository.Save(context.Background(), value); err != nil {
@@ -61,7 +61,7 @@ func TestRepositoryPreservesSecrets_whenSavedValuesAreBlank(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open repository: %v", err)
 	}
-	value := api.Settings{Language: "ko", Theme: "dark", Accent: "#4f6ef7", LLMBaseURL: "https://api.openai.com/v1", LLMModel: "gpt-4o-mini", LLMAPIKey: "llm-secret", LLMTimeout: 60, NVDAPIKey: "nvd-secret", TimezoneOffsetMinutes: 540}
+	value := api.Settings{Language: "ko", Accent: "#4f6ef7", LLMBaseURL: "https://api.openai.com/v1", LLMModel: "gpt-4o-mini", LLMAPIKey: "llm-secret", LLMTimeout: 60, NVDAPIKey: "nvd-secret", TimezoneOffsetMinutes: 540}
 	if err := repository.Save(context.Background(), value); err != nil {
 		t.Fatalf("save initial settings: %v", err)
 	}

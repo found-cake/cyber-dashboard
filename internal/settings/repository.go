@@ -29,7 +29,7 @@ func (r *Repository) Get(ctx context.Context) (api.Settings, error) {
 	if err := r.db.WithContext(ctx).First(&stored, 1).Error; err != nil {
 		return api.Settings{}, fmt.Errorf("query settings: %w", err)
 	}
-	result := api.Settings{Language: stored.Lang, Theme: stored.Theme, Accent: stored.Accent, LLMBaseURL: stored.LLMBaseURL,
+	result := api.Settings{Language: stored.Lang, Accent: stored.Accent, LLMBaseURL: stored.LLMBaseURL,
 		LLMModel: stored.LLMModel, LLMTimeout: stored.LLMTimeout}
 	if stored.TimezoneOffsetMinutes != nil {
 		result.TimezoneOffsetMinutes = *stored.TimezoneOffsetMinutes
@@ -55,7 +55,7 @@ func (r *Repository) Save(ctx context.Context, value api.Settings) error {
 	if err != nil {
 		return fmt.Errorf("seal NVD API key: %w", err)
 	}
-	updates := map[string]any{"lang": value.Language, "theme": value.Theme, "accent": value.Accent,
+	updates := map[string]any{"lang": value.Language, "accent": value.Accent,
 		"llm_base_url": value.LLMBaseURL, "llm_model": value.LLMModel, "llm_timeout": value.LLMTimeout,
 		"timezone_offset_minutes": value.TimezoneOffsetMinutes}
 	if replaceLLM {

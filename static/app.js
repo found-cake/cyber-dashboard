@@ -88,10 +88,23 @@
     }
   };
 
+  // Only seeds the first render; /api/bootstrap overwrites it. Stale values can name a dropped language.
+  const cachedLanguage = () => {
+    const language = localStorage.getItem("cyber-lang");
+    return TEXT[language] ? language : "en";
+  };
+
+  // Duplicated by the pre-paint script in index.html — keep both in sync.
+  const resolveTheme = () => {
+    const stored = localStorage.getItem("cyber-theme");
+    if (stored === "dark" || stored === "light") return stored;
+    return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+  };
+
   const state = {
     view: "dashboard",
-    lang: localStorage.getItem("cyber-lang") || "en",
-    theme: localStorage.getItem("cyber-theme") || "dark",
+    lang: cachedLanguage(),
+    theme: resolveTheme(),
     // Placeholders until /api/bootstrap supplies the configured offset; start() re-derives both.
     month: null,
     selectedDay: null,
@@ -115,6 +128,11 @@
   const cveRefreshTask = window.createCVERefreshTask(serverCVERefresh);
 
   const t = key => TEXT[state.lang][key] || key;
+  // Single writer for state.lang, so the cache can't drift from the server.
+  function adoptLanguage(language) {
+    state.lang = TEXT[language] ? language : state.lang;
+    localStorage.setItem("cyber-lang", state.lang);
+  }
   // Escapes for both text and quoted-attribute contexts: interpolated values reach
   // attributes (title, aria-label, value), and LLM-derived labels or a saved base URL
   // may contain quotes that would otherwise close the attribute.
@@ -681,7 +699,7 @@
 
   function settingsFormValue() {
     return {
-      language: $("#setting-language").val() || state.lang, theme: state.theme, accent: state.bootstrap.settings.accent || "#4f6ef7",
+      language: $("#setting-language").val() || state.lang, accent: state.bootstrap.settings.accent || "#4f6ef7",
       llm_base_url: $("#llm-base-url").val().trim(), llm_model: $("#llm-model").val().trim(),
       llm_api_key: $("#llm-api-key").val(), llm_timeout: Number($("#llm-timeout").val()), nvd_api_key: $("#nvd-api-key").val(),
       timezone_offset_minutes: Number($("#timezone-offset").val())
@@ -700,7 +718,7 @@
   }
 
   function sameSettings(left, right) {
-    return left.language === right.language && left.theme === right.theme && left.accent === right.accent &&
+    return left.language === right.language && left.accent === right.accent &&
       left.llm_base_url === right.llm_base_url && left.llm_model === right.llm_model && left.llm_api_key === (right.llm_api_key || "") &&
       left.llm_timeout === Number(right.llm_timeout) && left.nvd_api_key === (right.nvd_api_key || "") &&
       left.timezone_offset_minutes === Number(right.timezone_offset_minutes);
@@ -719,10 +737,7 @@
 
   function revertSettings() {
     const settings = state.bootstrap.settings;
-    state.lang = settings.language;
-    state.theme = settings.theme;
-    localStorage.setItem("cyber-lang", state.lang);
-    localStorage.setItem("cyber-theme", state.theme);
+    adoptLanguage(settings.language);
     applyChrome();
     renderSettings();
   }
@@ -782,8 +797,7 @@
         return saved;
       });
     }).done(() => {
-      state.lang = state.bootstrap.settings.language;
-      localStorage.setItem("cyber-lang", state.lang);
+      adoptLanguage(state.bootstrap.settings.language);
       applyChrome();
       toast(t("saved"));
       renderSettings();
@@ -1061,7 +1075,8 @@
     $("#open-report-modal").on("click", openReportModal);
     $("#calendar-prev").on("click", () => { state.month = new Date(state.month.getFullYear(), state.month.getMonth() - 1, 1); renderCalendar(); });
     $("#calendar-next").on("click", () => { state.month = new Date(state.month.getFullYear(), state.month.getMonth() + 1, 1); renderCalendar(); });
-    $("#theme-toggle").on("click", () => { state.theme = state.theme === "dark" ? "light" : "dark"; localStorage.setItem("cyber-theme", state.theme); document.documentElement.dataset.theme = state.theme; $("#theme-toggle").attr("aria-pressed", String(state.theme === "light")); refreshSettingsFormState(); });
+    // Pins an explicit choice; the system preference stops applying from here on.
+    $("#theme-toggle").on("click", () => { state.theme = state.theme === "dark" ? "light" : "dark"; localStorage.setItem("cyber-theme", state.theme); document.documentElement.dataset.theme = state.theme; $("#theme-toggle").attr("aria-pressed", String(state.theme === "light")); });
     $("#menu-button").attr({ "aria-controls": "sidebar", "aria-expanded": "false" }).on("click", () => setDrawer(true));
     $("#drawer-close,#drawer-scrim").on("click", closeDrawer);
     // Re-measured synchronously: reading scrollWidth flushes pending style and layout, so the
@@ -1104,8 +1119,7 @@
     setLoading();
     api("GET", "/api/bootstrap").done(data => {
       state.bootstrap = data;
-      state.lang = localStorage.getItem("cyber-lang") || data.settings.language || state.lang;
-      state.theme = localStorage.getItem("cyber-theme") || data.settings.theme || state.theme;
+      adoptLanguage(data.settings.language);
       applyConfiguredToday();
       applyChrome();
       if (window.location.hash === "#cves") renderCVEExplorer();

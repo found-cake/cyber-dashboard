@@ -195,7 +195,7 @@ func newSettingsSecurityBrowserServer(t *testing.T, savedRequests chan<- api.Set
 		writeJSON(t, writer, api.Bootstrap{
 			Sources: []api.Source{}, Reports: []api.Report{}, CollectedDays: []string{},
 			Settings: api.SettingsResponse{
-				Language: "ko", Theme: "dark", Accent: "#4f6ef7",
+				Language: "ko", Accent: "#4f6ef7",
 				LLMBaseURL: "https://api.openai.com/v1", LLMModel: "gpt-4o-mini",
 				LLMAPIKeyConfigured: true, LLMTimeout: 60, NVDAPIKeyConfigured: true,
 				TimezoneOffsetMinutes: 540,
@@ -218,7 +218,7 @@ func newSettingsSecurityBrowserServer(t *testing.T, savedRequests chan<- api.Set
 		}
 		savedRequests <- value
 		writeJSON(t, writer, api.SettingsResponse{
-			Language: value.Language, Theme: value.Theme, Accent: value.Accent,
+			Language: value.Language, Accent: value.Accent,
 			LLMBaseURL: value.LLMBaseURL, LLMModel: value.LLMModel,
 			LLMAPIKeyConfigured: true, LLMTimeout: value.LLMTimeout, NVDAPIKeyConfigured: true,
 			TimezoneOffsetMinutes: value.TimezoneOffsetMinutes,
