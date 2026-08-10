@@ -2,7 +2,7 @@
 
 [English](README.md) · [한국어](README_KR.md)
 
-Cyber Dashboard turns daily cybersecurity news into a local threat-intelligence workspace. It collects enabled news feeds, reads article content, enriches mentioned CVEs with NVD data, classifies the stories through your own OpenAI-compatible LLM endpoint, and produces daily, weekly, and monthly summaries.
+Cyber Dashboard turns daily cybersecurity news into an organized, locally managed security overview. It collects enabled news feeds, reads article content, enriches mentioned CVEs with NVD data, analyzes and classifies stories through your own OpenAI-compatible LLM endpoint, and produces daily, weekly, and monthly summaries.
 
 It runs locally, stores its data in SQLite, and is available as a single executable with the frontend embedded.
 
