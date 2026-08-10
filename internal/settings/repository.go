@@ -16,6 +16,8 @@ type Repository struct {
 	secrets *secretBox
 }
 
+var ErrSourceNotFound = errors.New("settings source not found")
+
 func NewRepository(db *gorm.DB, keyPath string) (*Repository, error) {
 	secrets, err := openSecretBox(keyPath)
 	if err != nil {
@@ -47,6 +49,10 @@ func (r *Repository) Get(ctx context.Context) (api.Settings, error) {
 }
 
 func (r *Repository) Save(ctx context.Context, value api.Settings) error {
+	return r.SaveWithSources(ctx, value, nil)
+}
+
+func (r *Repository) SaveWithSources(ctx context.Context, value api.Settings, states []api.SourceState) error {
 	llmSecret, replaceLLM, err := r.sealReplacement(value.LLMAPIKey)
 	if err != nil {
 		return fmt.Errorf("seal LLM API key: %w", err)
@@ -64,10 +70,21 @@ func (r *Repository) Save(ctx context.Context, value api.Settings) error {
 	if replaceNVD {
 		updates["nvd_api_key"] = nvdSecret
 	}
-	if err := r.db.WithContext(ctx).Model(&database.Setting{}).Where("id = 1").Updates(updates).Error; err != nil {
-		return fmt.Errorf("save settings: %w", err)
-	}
-	return nil
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		for _, state := range states {
+			result := tx.Model(&database.Source{}).Where("id = ?", state.ID).Update("enabled", state.Enabled)
+			if result.Error != nil {
+				return fmt.Errorf("update source %d: %w", state.ID, result.Error)
+			}
+			if result.RowsAffected == 0 {
+				return fmt.Errorf("source %d: %w", state.ID, ErrSourceNotFound)
+			}
+		}
+		if err := tx.Model(&database.Setting{}).Where("id = 1").Updates(updates).Error; err != nil {
+			return fmt.Errorf("save settings: %w", err)
+		}
+		return nil
+	})
 }
 
 func (r *Repository) ResolveSecrets(ctx context.Context, value api.Settings) (api.Settings, error) {

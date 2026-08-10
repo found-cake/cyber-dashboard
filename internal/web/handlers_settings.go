@@ -25,11 +25,7 @@ func (s *Server) saveSettings(c *echo.Context) error {
 	if err != nil {
 		return writeAPIError(c, err)
 	}
-	// Sources first: a rejected ID then leaves the stored settings untouched too.
-	if err := s.feeds.SetSourcesEnabled(c.Request().Context(), request.Sources); err != nil {
-		return writeAPIError(c, err)
-	}
-	if err := s.settings.Save(c.Request().Context(), resolved); err != nil {
+	if err := s.settings.SaveWithSources(c.Request().Context(), resolved, request.Sources); err != nil {
 		return writeAPIError(c, err)
 	}
 	return c.JSON(http.StatusOK, settingsResponse(resolved))

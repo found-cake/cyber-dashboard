@@ -86,3 +86,40 @@ func TestRepositoryPreservesSecrets_whenSavedValuesAreBlank(t *testing.T) {
 		t.Fatalf("timeout = %d, want 75", loaded.LLMTimeout)
 	}
 }
+
+func TestRepositorySaveWithSourcesRollsBackSource_whenSettingsUpdateFails(t *testing.T) {
+	// Given a source change and a database that rejects the settings update.
+	databasePath := filepath.Join(t.TempDir(), "dashboard.db")
+	db, err := database.Open(context.Background(), databasePath)
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	t.Cleanup(func() { _ = database.Close(db) })
+	repository, err := NewRepository(db, databasePath+".key")
+	if err != nil {
+		t.Fatalf("open repository: %v", err)
+	}
+	value, err := repository.Get(context.Background())
+	if err != nil {
+		t.Fatalf("load settings: %v", err)
+	}
+	value.LLMTimeout = 75
+	if err := db.Exec(`CREATE TRIGGER reject_settings_update BEFORE UPDATE ON settings BEGIN SELECT RAISE(FAIL, 'forced settings failure'); END`).Error; err != nil {
+		t.Fatalf("create failure trigger: %v", err)
+	}
+
+	// When settings and a source state are saved together.
+	err = repository.SaveWithSources(context.Background(), value, []api.SourceState{{ID: 6, Enabled: false}})
+
+	// Then the settings error rolls back the source state too.
+	if err == nil {
+		t.Fatal("save succeeded despite the settings failure")
+	}
+	var source database.Source
+	if err := db.First(&source, 6).Error; err != nil {
+		t.Fatalf("load source: %v", err)
+	}
+	if !source.Enabled {
+		t.Fatal("source state committed despite the settings failure")
+	}
+}

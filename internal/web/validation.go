@@ -127,7 +127,7 @@ func writeAPIError(c *echo.Context, err error) error {
 		return c.JSON(http.StatusPreconditionFailed, localizedError("nvd_key_invalid",
 			"NVD API 키가 유효하지 않습니다", "The NVD API key is invalid"))
 	}
-	if errors.Is(err, feed.ErrNotFound) || errors.Is(err, report.ErrNotFound) {
+	if errors.Is(err, feed.ErrNotFound) || errors.Is(err, report.ErrNotFound) || errors.Is(err, settings.ErrSourceNotFound) {
 		return c.JSON(http.StatusNotFound, localizedError("not_found", "요청한 항목을 찾을 수 없습니다", "The requested resource was not found"))
 	}
 	if errors.Is(err, settings.ErrPresetNotFound) {
