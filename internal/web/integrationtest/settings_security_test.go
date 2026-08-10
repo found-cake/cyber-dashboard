@@ -145,6 +145,96 @@ func TestLLMConnectionUsesStoredPresetAPIKey_whenDraftKeyIsBlank(t *testing.T) {
 	}
 }
 
+func TestLLMConnectionOmitsStoredAPIKey_whenEndpointIsUnknown(t *testing.T) {
+	// Given stored credentials and an endpoint that belongs to neither the settings nor a preset.
+	received := make(chan string, 1)
+	unknown := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		select {
+		case received <- request.Header.Get("Authorization"):
+		default:
+		}
+		http.Error(writer, "unauthorized", http.StatusUnauthorized)
+	}))
+	t.Cleanup(unknown.Close)
+	server, _, repository := newTestServer(t, &stubFetcher{})
+	configureLLM(t, repository, "https://api.openai.com")
+	draft, err := repository.Get(context.Background())
+	if err != nil {
+		t.Fatalf("load settings: %v", err)
+	}
+	draft.LLMBaseURL = unknown.URL + "/v1"
+	draft.LLMModel = "unknown-model"
+	draft.LLMAPIKey = ""
+	body, err := json.Marshal(draft)
+	if err != nil {
+		t.Fatalf("encode settings: %v", err)
+	}
+
+	// When a connection test targets that endpoint without supplying a key.
+	request := httptest.NewRequest(http.MethodPost, "/api/llm/test", strings.NewReader(string(body)))
+	request.Header.Set("Content-Type", "application/json")
+	recorder := httptest.NewRecorder()
+	server.ServeHTTP(recorder, request)
+
+	// Then the stored key is never forwarded to it.
+	select {
+	case authorization := <-received:
+		if strings.Contains(authorization, "test-key") {
+			t.Fatalf("unknown endpoint received %q, want no stored credential", authorization)
+		}
+	default:
+		t.Fatalf("unknown endpoint was never contacted")
+	}
+}
+
+func TestLLMConnectionOmitsActiveAPIKey_whenMatchingPresetKeyIsBlank(t *testing.T) {
+	// Given active credentials for one endpoint and a matching keyless preset for another.
+	received := make(chan string, 1)
+	keyless := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		received <- request.Header.Get("Authorization")
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{"id":"test","object":"chat.completion","created":1,"model":"keyless-model","choices":[{"index":0,"message":{"role":"assistant","content":"{\"ok\":true}"},"finish_reason":"stop"}]}`))
+	}))
+	t.Cleanup(keyless.Close)
+	server, _, repository := newTestServer(t, &stubFetcher{})
+	configureLLM(t, repository, "https://credentialed.example")
+	if _, err := repository.CreatePreset(context.Background(), api.CreateLLMPresetRequest{
+		BaseURL: keyless.URL + "/v1", Model: "keyless-model", APIKey: "",
+	}); err != nil {
+		t.Fatalf("create keyless preset: %v", err)
+	}
+	draft, err := repository.Get(context.Background())
+	if err != nil {
+		t.Fatalf("load settings: %v", err)
+	}
+	draft.LLMBaseURL = keyless.URL + "/v1"
+	draft.LLMModel = "keyless-model"
+	draft.LLMAPIKey = ""
+	body, err := json.Marshal(draft)
+	if err != nil {
+		t.Fatalf("encode settings: %v", err)
+	}
+
+	// When the keyless preset is tested through the HTTP API.
+	request := httptest.NewRequest(http.MethodPost, "/api/llm/test", strings.NewReader(string(body)))
+	request.Header.Set("Content-Type", "application/json")
+	recorder := httptest.NewRecorder()
+	server.ServeHTTP(recorder, request)
+
+	// Then the other endpoint's stored credential is not forwarded to it.
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
+	}
+	select {
+	case authorization := <-received:
+		if strings.Contains(authorization, "test-key") {
+			t.Fatalf("keyless preset received %q, want no active credential", authorization)
+		}
+	default:
+		t.Fatal("keyless preset endpoint was never contacted")
+	}
+}
+
 func TestSaveSettingsUsesStoredPresetAPIKey_whenSwitchingWithBlankKey(t *testing.T) {
 	// Given a saved preset selected by its endpoint and model.
 	server, _, repository := newTestServer(t, &stubFetcher{})

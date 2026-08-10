@@ -53,9 +53,20 @@ func (r *Repository) Save(ctx context.Context, value api.Settings) error {
 }
 
 func (r *Repository) SaveWithSources(ctx context.Context, value api.Settings, states []api.SourceState) error {
+	current, err := r.Get(ctx)
+	if err != nil {
+		return err
+	}
 	llmSecret, replaceLLM, err := r.sealReplacement(value.LLMAPIKey)
 	if err != nil {
 		return fmt.Errorf("seal LLM API key: %w", err)
+	}
+	if !replaceLLM && !sameLLMEndpoint(value, current) {
+		llmSecret, err = r.secrets.seal("")
+		if err != nil {
+			return fmt.Errorf("clear LLM API key: %w", err)
+		}
+		replaceLLM = true
 	}
 	nvdSecret, replaceNVD, err := r.sealReplacement(value.NVDAPIKey)
 	if err != nil {
@@ -103,9 +114,11 @@ func (r *Repository) ResolveSecrets(ctx context.Context, value api.Settings) (ap
 	}
 	var preset database.LLMPreset
 	err = r.db.WithContext(ctx).Where("base_url = ? AND model = ?",
-		strings.TrimRight(strings.TrimSpace(value.LLMBaseURL), "/"), strings.TrimSpace(value.LLMModel)).First(&preset).Error
+		normalizeBaseURL(value.LLMBaseURL), strings.TrimSpace(value.LLMModel)).First(&preset).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		value.LLMAPIKey = current.LLMAPIKey
+		if sameLLMEndpoint(value, current) {
+			value.LLMAPIKey = current.LLMAPIKey
+		}
 		return value, nil
 	}
 	if err != nil {
@@ -115,11 +128,20 @@ func (r *Repository) ResolveSecrets(ctx context.Context, value api.Settings) (ap
 	if err != nil {
 		return api.Settings{}, fmt.Errorf("open matching LLM preset API key: %w", err)
 	}
-	if strings.TrimSpace(presetKey) == "" {
+	if strings.TrimSpace(presetKey) == "" && sameLLMEndpoint(value, current) {
 		presetKey = current.LLMAPIKey
 	}
 	value.LLMAPIKey = presetKey
 	return value, nil
+}
+
+func sameLLMEndpoint(draft, current api.Settings) bool {
+	return normalizeBaseURL(draft.LLMBaseURL) == normalizeBaseURL(current.LLMBaseURL) &&
+		strings.TrimSpace(draft.LLMModel) == strings.TrimSpace(current.LLMModel)
+}
+
+func normalizeBaseURL(value string) string {
+	return strings.TrimRight(strings.TrimSpace(value), "/")
 }
 
 func (r *Repository) sealReplacement(value string) (string, bool, error) {
