@@ -67,7 +67,8 @@ type CollectionJob struct {
 	Error  string            `json:"error,omitempty"`
 }
 
-// ToggleSourceRequest is the request body for PATCH /api/sources/:id.
-type ToggleSourceRequest struct {
-	Enabled bool `json:"enabled"`
+// SourceState carries one source's enabled flag inside SaveSettingsRequest.
+type SourceState struct {
+	ID      int64 `json:"id"`
+	Enabled bool  `json:"enabled"`
 }

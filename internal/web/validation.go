@@ -62,6 +62,15 @@ func validateSettings(value api.Settings) error {
 	return nil
 }
 
+func validateSourceStates(states []api.SourceState) error {
+	for _, state := range states {
+		if state.ID < 1 {
+			return fmt.Errorf("invalid source id")
+		}
+	}
+	return nil
+}
+
 func validateLanguage(language string) error {
 	if language != "ko" && language != "en" {
 		return fmt.Errorf("language must be ko or en")

@@ -11,15 +11,22 @@ import (
 )
 
 func (s *Server) saveSettings(c *echo.Context) error {
-	var value api.Settings
-	if err := json.NewDecoder(c.Request().Body).Decode(&value); err != nil {
+	var request api.SaveSettingsRequest
+	if err := json.NewDecoder(c.Request().Body).Decode(&request); err != nil {
 		return writeBadRequest(c, "invalid JSON body")
 	}
-	if err := validateSettings(value); err != nil {
+	if err := validateSettings(request.Settings); err != nil {
 		return writeBadRequest(c, err.Error())
 	}
-	resolved, err := s.settings.ResolveSecrets(c.Request().Context(), value)
+	if err := validateSourceStates(request.Sources); err != nil {
+		return writeBadRequest(c, err.Error())
+	}
+	resolved, err := s.settings.ResolveSecrets(c.Request().Context(), request.Settings)
 	if err != nil {
+		return writeAPIError(c, err)
+	}
+	// Sources first: a rejected ID then leaves the stored settings untouched too.
+	if err := s.feeds.SetSourcesEnabled(c.Request().Context(), request.Sources); err != nil {
 		return writeAPIError(c, err)
 	}
 	if err := s.settings.Save(c.Request().Context(), resolved); err != nil {

@@ -12,6 +12,13 @@ type Settings struct {
 	TimezoneOffsetMinutes int    `json:"timezone_offset_minutes"`
 }
 
+// SaveSettingsRequest is the request body for PUT /api/settings. An absent
+// sources list leaves every source enabled flag untouched.
+type SaveSettingsRequest struct {
+	Settings
+	Sources []SourceState `json:"sources,omitempty"`
+}
+
 // SettingsResponse is returned by GET /api/bootstrap and PUT /api/settings.
 // Secret values are represented only by configured flags and never serialized.
 // Theme is deliberately absent: it is browser-local, kept only in localStorage.

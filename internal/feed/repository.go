@@ -36,15 +36,24 @@ func (r *Repository) Sources(ctx context.Context) ([]api.Source, error) {
 	return sources, nil
 }
 
-func (r *Repository) SetSourceEnabled(ctx context.Context, id int64, enabled bool) error {
-	result := r.db.WithContext(ctx).Model(&database.Source{}).Where("id = ?", id).Update("enabled", enabled)
-	if result.Error != nil {
-		return fmt.Errorf("update source %d: %w", id, result.Error)
+// SetSourcesEnabled applies every state in one transaction, so an unknown ID
+// leaves the other sources unchanged.
+func (r *Repository) SetSourcesEnabled(ctx context.Context, states []api.SourceState) error {
+	if len(states) == 0 {
+		return nil
 	}
-	if result.RowsAffected == 0 {
-		return fmt.Errorf("source %d: %w", id, ErrNotFound)
-	}
-	return nil
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		for _, state := range states {
+			result := tx.Model(&database.Source{}).Where("id = ?", state.ID).Update("enabled", state.Enabled)
+			if result.Error != nil {
+				return fmt.Errorf("update source %d: %w", state.ID, result.Error)
+			}
+			if result.RowsAffected == 0 {
+				return fmt.Errorf("source %d: %w", state.ID, ErrNotFound)
+			}
+		}
+		return nil
+	})
 }
 
 func (r *Repository) SaveArticle(ctx context.Context, source api.Source, article FeedArticle, day string) error {

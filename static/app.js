@@ -12,7 +12,7 @@
       noDataHint: "왼쪽 캘린더에서 최근 10일 이내 날짜를 선택해 첫\u00a0수집을 시작하세요.",
       noArticles: "이 날짜에 수집된 기사가 없습니다", collectNow: "수집을 시작하시겠습니까?",
       sourcesActive: "개의 활성 소스에서 메타데이터를 가져옵니다.", cancel: "취소", close: "닫기", start: "수집 시작",
-      collecting: "수집 중…", collectingHint: "닫아도 백그라운드에서 계속 수집합니다.", collectionCancelled: "수집을 취소했습니다.", collected: "수집을 완료했습니다.", sourceSettings: "수집 소스",
+      collecting: "수집 중…", collectingHint: "닫아도 백그라운드에서 계속 수집합니다.", collectionCancelled: "수집을 취소했습니다.", collected: "수집을 완료했습니다.", sourceSettings: "수집 소스", sourceOn: "활성", sourceOff: "비활성",
       language: "언어", languageHint: "대시보드와 AI 요약에 사용할 언어를 선택합니다.",
       nvdTitle: "NVD API 키", nvdHint: "수집을 시작하려면 NVD API 키를 먼저 등록해야 합니다.",
       llmTitle: "LLM 설정", llmHint: "OpenAI Chat Completions 호환 엔드포인트를 연결합니다.",
@@ -54,7 +54,7 @@
       noDataHint: "Pick a date within the last 10 days in the calendar to start your first collection.",
       noArticles: "No articles collected for this date", collectNow: "Start collection for this date?",
       sourcesActive: " active sources will provide metadata.", cancel: "Cancel", close: "Close", start: "Start",
-      collecting: "Collecting…", collectingHint: "You can close this dialog while collection continues in the background.", collectionCancelled: "Collection cancelled.", collected: "Collection finished.", sourceSettings: "Collection sources",
+      collecting: "Collecting…", collectingHint: "You can close this dialog while collection continues in the background.", collectionCancelled: "Collection cancelled.", collected: "Collection finished.", sourceSettings: "Collection sources", sourceOn: "Active", sourceOff: "Off",
       language: "Language", languageHint: "Choose the language used by the dashboard and AI summaries.",
       nvdTitle: "NVD API key", nvdHint: "Register an NVD API key before starting collection.",
       llmTitle: "LLM settings", llmHint: "Connect any OpenAI Chat Completions compatible endpoint.",
@@ -117,6 +117,7 @@
     reportMonth: null,
     reportWeekStart: null,
     dailySource: "all",
+    sourceDraft: null,
     dashboardScroll: 0
   };
   let modalLastFocus = null;
@@ -660,6 +661,8 @@
   }
 
   function renderSettings() {
+    // Arriving from another view discards a source draft the user never saved.
+    if (state.view !== "settings") state.sourceDraft = null;
     state.view = "settings";
     state.currentReport = null;
     clearCVEHash();
@@ -668,7 +671,11 @@
     const settings = state.bootstrap.settings;
     const presets = state.bootstrap.llm_presets || [];
     const languageOptions = [["ko", "한국어"], ["en", "English"]].map(([code, label]) => `<option value="${code}"${code === settings.language ? " selected" : ""}>${label}</option>`).join("");
-    const sources = state.bootstrap.sources.map(source => `<div class="source-row"><span class="status-dot${source.enabled ? " is-on" : ""}" aria-hidden="true"></span><span><strong>${esc(source.name)}</strong><small>${esc(source.host)} · RSS feed</small></span><button type="button" class="toggle" role="switch" aria-label="${esc(source.name)}" aria-checked="${source.enabled}" data-source-id="${source.id}"></button><span class="badge ${source.enabled ? "badge-success" : ""}">${source.enabled ? "Active" : "Off"}</span></div>`).join("");
+    const draftSources = sourceDraft();
+    const sources = state.bootstrap.sources.map(source => {
+      const enabled = draftSources[source.id];
+      return `<div class="source-row" data-source-row="${source.id}"><span class="status-dot${enabled ? " is-on" : ""}" aria-hidden="true"></span><span><strong>${esc(source.name)}</strong><small>${esc(source.host)} · RSS feed</small></span><button type="button" class="toggle" role="switch" aria-label="${esc(source.name)}" aria-checked="${enabled}" data-source-id="${source.id}"></button><span class="badge ${enabled ? "badge-success" : ""}">${esc(t(enabled ? "sourceOn" : "sourceOff"))}</span></div>`;
+    }).join("");
     const preview = `POST ${(settings.llm_base_url || "<base-url>").replace(/\/$/, "")}/chat/completions\nAuthorization: Bearer ${llmKeyIsConfigured(settings) ? "••••••••" : "<api-key>"}\n\n{ "model": "${settings.llm_model || "<model>"}",\n  "temperature": 0.2,\n  "messages": [ … ] }`;
     const schema = state.lang === "ko"
       ? `{ "attack_method": "APT | 랜섬웨어 | 공급망 | …",\n  "threat_actor": "Lazarus Group | SideCopy | TeamPCP | 미확인",\n  "actor_country": "DPRK | Pakistan | null",\n  "target_sector": "금융 | 정부 | 통신 | …",\n  "severity": "Critical | High | Medium",\n  "cve": ["CVE-YYYY-NNNN", …]   // 정규식 추출, LLM 응답 아님\n}`
@@ -695,6 +702,23 @@
     applyViewScroll("settings");
     refreshSettingsFormState();
     closeDrawer();
+  }
+
+  function sourceDraft() {
+    if (!state.sourceDraft) state.sourceDraft = Object.fromEntries(state.bootstrap.sources.map(source => [source.id, source.enabled]));
+    return state.sourceDraft;
+  }
+
+  function sameSources() {
+    const draft = sourceDraft();
+    return state.bootstrap.sources.every(source => draft[source.id] === source.enabled);
+  }
+
+  function paintSourceRow(id, enabled) {
+    const $row = $(`[data-source-row="${id}"]`);
+    $row.find(".status-dot").toggleClass("is-on", enabled);
+    $row.find(".toggle").attr("aria-checked", String(enabled));
+    $row.find(".badge").toggleClass("badge-success", enabled).text(t(enabled ? "sourceOn" : "sourceOff"));
   }
 
   function settingsFormValue() {
@@ -732,11 +756,12 @@
     const preview = `POST ${(settings.llm_base_url || "<base-url>").replace(/\/$/, "")}/chat/completions\nAuthorization: Bearer ${configured ? "••••••••" : "<api-key>"}\n\n{ "model": "${settings.llm_model || "<model>"}",\n  "temperature": 0.2,\n  "messages": [ … ] }`;
     $("#request-preview").text(preview);
     $("#llm-api-key").attr("placeholder", configured ? t("keyStoredPlaceholder") : "");
-    $("#settings-save-bar").prop("hidden", sameSettings(settings, state.bootstrap.settings));
+    $("#settings-save-bar").prop("hidden", sameSettings(settings, state.bootstrap.settings) && sameSources());
   }
 
   function revertSettings() {
     const settings = state.bootstrap.settings;
+    state.sourceDraft = null;
     adoptLanguage(settings.language);
     applyChrome();
     renderSettings();
@@ -785,18 +810,30 @@
     }).fail(showRequestError);
   }
 
+  function changedSourceStates() {
+    const draft = sourceDraft();
+    return state.bootstrap.sources.filter(source => draft[source.id] !== source.enabled)
+      .map(source => ({ id: source.id, enabled: draft[source.id] }));
+  }
+
   function saveSettings() {
     const settings = settingsFormValue();
+    const sources = changedSourceStates();
     const preset = (state.bootstrap.llm_presets || []).find(item => matchesPreset(item, settings.llm_base_url, settings.llm_model));
     $("#save-settings,#revert-settings").prop("disabled", true);
-    api("PUT", "/api/settings", settings).then(saved => {
+    api("PUT", "/api/settings", { ...settings, sources }).then(saved => {
       state.bootstrap.settings = saved;
+      sources.forEach(changed => {
+        const source = state.bootstrap.sources.find(item => item.id === changed.id);
+        if (source) source.enabled = changed.enabled;
+      });
       if (!preset || !String(settings.llm_api_key || "").trim()) return saved;
       return api("PUT", `/api/llm/presets/${preset.id}`, { api_key: settings.llm_api_key }).then(() => {
         preset.api_key_configured = true;
         return saved;
       });
     }).done(() => {
+      state.sourceDraft = null;
       adoptLanguage(state.bootstrap.settings.language);
       applyChrome();
       toast(t("saved"));
@@ -1057,9 +1094,12 @@
     $(document).on("click", "#recollect-day", () => openCollectModal(state.selectedDay, true));
     $(document).on("change", "#source-filter", function () { state.dailySource = $(this).val(); renderDaily(); });
     $(document).on("click", ".toggle[data-source-id]", function () {
-      const source = state.bootstrap.sources.find(item => item.id === Number($(this).data("source-id")));
-      if (!source) return;
-      api("PATCH", `/api/sources/${source.id}`, { enabled: !source.enabled }).done(() => { source.enabled = !source.enabled; renderSettings(); }).fail(showRequestError);
+      const id = Number($(this).data("source-id"));
+      const draft = sourceDraft();
+      if (!(id in draft)) return;
+      draft[id] = !draft[id];
+      paintSourceRow(id, draft[id]);
+      refreshSettingsFormState();
     });
     $(document).on("click", "#save-settings", saveSettings);
     $(document).on("click", "#revert-settings", revertSettings);

@@ -10,7 +10,7 @@ import (
 	"github.com/found-cake/cyber-dashboard/internal/database"
 )
 
-func TestSetSourceEnabledUpdatesSelectedSource_whenSourceExists(t *testing.T) {
+func TestSetSourcesEnabledUpdatesSelectedSources_whenSourcesExist(t *testing.T) {
 	// Given a repository with the seeded enabled sources.
 	db, err := database.Open(context.Background(), filepath.Join(t.TempDir(), "dashboard.db"))
 	if err != nil {
@@ -19,35 +19,43 @@ func TestSetSourceEnabledUpdatesSelectedSource_whenSourceExists(t *testing.T) {
 	t.Cleanup(func() { _ = database.Close(db) })
 	repository := NewRepository(db)
 
-	// When the first source is disabled.
-	if err := repository.SetSourceEnabled(context.Background(), 1, false); err != nil {
-		t.Fatalf("disable source: %v", err)
+	// When one source is enabled and another disabled in the same call.
+	if err := repository.SetSourcesEnabled(context.Background(), []api.SourceState{{ID: 1, Enabled: true}, {ID: 2, Enabled: false}}); err != nil {
+		t.Fatalf("update sources: %v", err)
 	}
 	sources, err := repository.Sources(context.Background())
 
-	// Then only the selected source reflects the new value.
+	// Then only the selected sources reflect the new values.
 	if err != nil {
 		t.Fatalf("list sources: %v", err)
 	}
-	if len(sources) < 2 || sources[0].Enabled || !sources[1].Enabled {
+	if len(sources) < 3 || !sources[0].Enabled || sources[1].Enabled || !sources[2].Enabled {
 		t.Fatalf("sources = %+v", sources)
 	}
 }
 
-func TestSetSourceEnabledReturnsNotFound_whenSourceDoesNotExist(t *testing.T) {
+func TestSetSourcesEnabledRollsBack_whenOneSourceDoesNotExist(t *testing.T) {
 	// Given a repository without the requested source ID.
 	db, err := database.Open(context.Background(), filepath.Join(t.TempDir(), "dashboard.db"))
 	if err != nil {
 		t.Fatalf("open database: %v", err)
 	}
 	t.Cleanup(func() { _ = database.Close(db) })
+	repository := NewRepository(db)
 
-	// When an unknown source is updated.
-	err = NewRepository(db).SetSourceEnabled(context.Background(), 999, false)
+	// When a valid change is submitted alongside an unknown source.
+	err = repository.SetSourcesEnabled(context.Background(), []api.SourceState{{ID: 2, Enabled: false}, {ID: 999, Enabled: false}})
 
-	// Then callers receive the stable not-found error.
+	// Then callers receive the stable not-found error and the valid change is discarded.
 	if !errors.Is(err, ErrNotFound) {
 		t.Fatalf("update error = %v, want ErrNotFound", err)
+	}
+	sources, err := repository.Sources(context.Background())
+	if err != nil {
+		t.Fatalf("list sources: %v", err)
+	}
+	if len(sources) < 2 || !sources[1].Enabled {
+		t.Fatalf("sources = %+v, want the second source still enabled", sources)
 	}
 }
 

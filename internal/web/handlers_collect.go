@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"strconv"
 	"strings"
 
 	"github.com/found-cake/cyber-dashboard/api"
@@ -142,19 +141,4 @@ func (s *Server) summaryForDay(ctx context.Context, day string, warnings *[]stri
 		slog.WarnContext(ctx, "daily summary failed", slog.String("response_body", err.Error()))
 		*warnings = append(*warnings, bilingualMessage("일간 요약 저장에 실패했습니다", "Daily summary save failed"))
 	}
-}
-
-func (s *Server) toggleSource(c *echo.Context) error {
-	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err != nil || id < 1 {
-		return writeBadRequest(c, "invalid source id")
-	}
-	var request api.ToggleSourceRequest
-	if err := json.NewDecoder(c.Request().Body).Decode(&request); err != nil {
-		return writeBadRequest(c, "invalid JSON body")
-	}
-	if err := s.feeds.SetSourceEnabled(c.Request().Context(), id, request.Enabled); err != nil {
-		return writeAPIError(c, err)
-	}
-	return c.NoContent(http.StatusNoContent)
 }
