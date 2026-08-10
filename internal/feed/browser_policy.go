@@ -2,11 +2,13 @@ package feed
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"slices"
 	"sync/atomic"
 
+	"github.com/chromedp/cdproto"
 	"github.com/chromedp/cdproto/cdp"
 	"github.com/chromedp/cdproto/fetch"
 	"github.com/chromedp/cdproto/network"
@@ -112,9 +114,14 @@ func (g *chromiumDocumentGuard) resolveRequest(paused *fetch.EventRequestPaused)
 			return
 		}
 	}
-	if err := fetch.ContinueRequest(paused.RequestID).Do(ctx); err != nil {
+	if err := fetch.ContinueRequest(paused.RequestID).Do(ctx); err != nil && !isSettledInterception(err) {
 		g.recordViolation(fmt.Errorf("continue Chromium document navigation: %w", err))
 	}
+}
+
+func isSettledInterception(err error) bool {
+	var protocolError *cdproto.Error
+	return errors.As(err, &protocolError) && protocolError.Code == -32602 && protocolError.Message == "Invalid InterceptionId."
 }
 
 func (g *chromiumDocumentGuard) rejectRequest(ctx context.Context, requestID fetch.RequestID, violation error) {
