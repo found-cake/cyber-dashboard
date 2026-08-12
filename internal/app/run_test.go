@@ -74,6 +74,19 @@ func TestServeBindsBeforeLoggingReadiness(t *testing.T) {
 	}
 }
 
+func TestConfiguredAddressUsesDefaultPort_whenEnvironmentIsUnset(t *testing.T) {
+	// Given no explicit listen address.
+	t.Setenv("CYBER_DASHBOARD_ADDR", "")
+
+	// When the application resolves its listen address.
+	address := configuredAddress()
+
+	// Then the dashboard uses the documented loopback port.
+	if address != "127.0.0.1:13370" {
+		t.Fatalf("configuredAddress() = %q, want %q", address, "127.0.0.1:13370")
+	}
+}
+
 func TestTrustedHostsIncludeAddressAndExplicitEnvironmentHost(t *testing.T) {
 	// Given a concrete bind address and a separate reverse-proxy hostname.
 	t.Setenv("CYBER_DASHBOARD_ADDR", "192.0.2.10:8080")

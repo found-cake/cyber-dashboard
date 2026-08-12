@@ -130,7 +130,7 @@ func configuredAddress() string {
 	if configured := os.Getenv("CYBER_DASHBOARD_ADDR"); configured != "" {
 		return configured
 	}
-	return "127.0.0.1:8080"
+	return "127.0.0.1:13370"
 }
 
 func trustedHostsFromEnvironment() ([]string, error) {

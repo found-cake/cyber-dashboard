@@ -66,7 +66,7 @@ chmod +x cyber-dashboard-full
 
 Windows에서는 다운로드한 `.exe` 파일을 실행합니다.
 
-브라우저에서 <http://127.0.0.1:8080>을 엽니다. 서버는 기본적으로 로컬 루프백 주소에서만 연결을 받습니다.
+브라우저에서 <http://127.0.0.1:13370>을 엽니다. 서버는 기본적으로 로컬 루프백 주소에서만 연결을 받습니다.
 
 ### 2. 대시보드 설정
 
@@ -180,7 +180,7 @@ CYBER_DASHBOARD_STATIC_DIR=/path/to/static ./cyber-dashboard-server-only
 
 ## 환경변수
 
-- **`CYBER_DASHBOARD_ADDR`** — HTTP 수신 주소입니다. 기본값은 `127.0.0.1:8080`입니다.
+- **`CYBER_DASHBOARD_ADDR`** — HTTP 수신 주소입니다. 기본값은 `127.0.0.1:13370`입니다.
 - **`CYBER_DASHBOARD_TRUSTED_HOST`** — 특수한 비루프백 접속 상황에서 Host 및 Origin 검사에 추가로 허용할 호스트 이름 또는 IP 주소 하나입니다.
 - **`CYBER_DASHBOARD_DATA_DIR`** — 데이터베이스와 암호화 키가 저장되는 디렉터리입니다. 기본값은 운영체제의 사용자 설정 디렉터리입니다.
 - **`CYBER_DASHBOARD_STATIC_DIR`** — 서버 전용 실행 파일이 사용하는 프론트엔드 디렉터리입니다. 기본값은 `static`입니다.
@@ -206,10 +206,10 @@ CYBER_DASHBOARD_STATIC_DIR=static go run ./cmd/cyber-dashboard-server-only
 
 ### `address already in use`
 
-다른 프로세스가 8080 포트를 사용하고 있습니다. 해당 프로세스를 종료하거나 다른 로컬 포트로 실행하세요.
+다른 프로세스가 13370 포트를 사용하고 있습니다. 해당 프로세스를 종료하거나 다른 로컬 포트로 실행하세요.
 
 ```sh
-CYBER_DASHBOARD_ADDR=127.0.0.1:8081 ./cyber-dashboard-full
+CYBER_DASHBOARD_ADDR=127.0.0.1:13371 ./cyber-dashboard-full
 ```
 
 ### `AI API를 확인하세요 / Check the AI API`
