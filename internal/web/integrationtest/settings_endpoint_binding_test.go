@@ -9,6 +9,29 @@ import (
 	"testing"
 )
 
+func TestUpdateLanguagePersistsEnglish_whenUserSelectsEnglish(t *testing.T) {
+	// Given a new server whose persisted language is Korean.
+	server, _, appSettings := newTestServer(t, &stubFetcher{})
+
+	// When the user selects English through the language preference API.
+	request := httptest.NewRequest(http.MethodPatch, "/api/settings/language", strings.NewReader(`{"language":"en"}`))
+	request.Header.Set("Content-Type", "application/json")
+	recorder := httptest.NewRecorder()
+	server.ServeHTTP(recorder, request)
+
+	// Then English is persisted for background summary generation.
+	if recorder.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
+	}
+	value, err := appSettings.Get(context.Background())
+	if err != nil {
+		t.Fatalf("load settings: %v", err)
+	}
+	if value.Language != "en" {
+		t.Fatalf("language = %q, want en", value.Language)
+	}
+}
+
 func TestSaveSettingsClearsActiveAPIKey_whenEndpointChangesWithoutReplacement(t *testing.T) {
 	// Given active credentials for one endpoint and a different keyless endpoint.
 	received := make(chan string, 1)

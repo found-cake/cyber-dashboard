@@ -19,10 +19,69 @@ func (f *blockingFetcher) Fetch(context.Context, api.Source) (collector.Document
 	return collector.Document{}, nil
 }
 
+func TestCollectDayDeduplicatesFeedArticles_whenRepeated(t *testing.T) {
+	// Given an enabled feed that returns one article for the requested day.
+	day := recentCollectionDay()
+	server, feeds, _ := newTestServer(t, &stubFetcher{document: collector.Document{Articles: []collector.FeedArticle{{
+		ID: "sha256:stable-id", URL: "https://example.com/article",
+		Title: "CVE-2026-1547 exploited in the wild", PublishedAt: day + "T01:00:00Z",
+		Description: "Attackers exploit CVE-2026-1547 against public servers.",
+		Categories:  []string{"Vulnerability"},
+	}}}})
+	body := `{"date":"` + day + `"}`
+
+	// When the same collection request runs twice.
+	for range 2 {
+		completed := collectAndWait(t, server, body)
+		if completed.Status != api.CollectionCompleted {
+			t.Fatalf("job = %+v, want completed", completed)
+		}
+	}
+
+	// Then feed_uid remains the deduplication key and CVEs are regex-derived.
+	daily, err := feeds.Daily(context.Background(), day)
+	if err != nil {
+		t.Fatalf("load daily: %v", err)
+	}
+	if len(daily.Articles) != 1 {
+		t.Fatalf("article count = %d, want 1", len(daily.Articles))
+	}
+	if len(daily.Articles[0].CVEs) != 1 || daily.Articles[0].CVEs[0] != "CVE-2026-1547" {
+		t.Fatalf("CVEs = %v, want CVE-2026-1547", daily.Articles[0].CVEs)
+	}
+}
+
+func TestCollectGeneratesDailySummary_whenLLMIsConfigured(t *testing.T) {
+	// Given a configured compatible LLM and one article for the requested day.
+	day := recentCollectionDay()
+	upstream := compatibleLLM(t, "일간 보안 요약")
+	server, feeds, appSettings := newTestServer(t, &stubFetcher{document: collector.Document{Articles: []collector.FeedArticle{{
+		ID: "sha256:daily-summary", URL: "https://example.com/daily",
+		Title: "Daily threat", PublishedAt: day + "T02:00:00Z", Description: "Threat detail",
+	}}}})
+	configureLLM(t, appSettings, upstream.URL)
+
+	// When collection completes.
+	completed := collectAndWait(t, server, `{"date":"`+day+`"}`)
+
+	// Then the SDK result is persisted as the daily summary.
+	if completed.Status != api.CollectionCompleted {
+		t.Fatalf("job = %+v, want completed", completed)
+	}
+	daily, err := feeds.Daily(context.Background(), day)
+	if err != nil {
+		t.Fatalf("load daily: %v", err)
+	}
+	if daily.Summary != "일간 보안 요약" {
+		t.Fatalf("summary = %q, want 일간 보안 요약", daily.Summary)
+	}
+}
+
 func TestCollectRejectsRequest_whenNVDAPIKeyIsMissing(t *testing.T) {
 	server, _, _ := newTestServerWithNVD(t, &stubFetcher{}, "")
+	day := recentCollectionDay()
 
-	request := httptest.NewRequest(http.MethodPost, "/api/collect", strings.NewReader(`{"date":"2026-08-03"}`))
+	request := httptest.NewRequest(http.MethodPost, "/api/collect", strings.NewReader(`{"date":"`+day+`"}`))
 	request.Header.Set("Content-Type", "application/json")
 	recorder := httptest.NewRecorder()
 	server.ServeHTTP(recorder, request)
@@ -43,12 +102,13 @@ func TestCollectRejectsRequest_whenNVDAPIKeyIsMissing(t *testing.T) {
 }
 
 func TestCollectWarnsUser_whenAIAPIIsUnavailable(t *testing.T) {
+	day := recentCollectionDay()
 	server, _, _ := newTestServer(t, &stubFetcher{document: collector.Document{Articles: []collector.FeedArticle{{
 		ID: "sha256:ai-warning", URL: "https://example.com/ai-warning", Title: "Threat",
-		PublishedAt: "2026-08-03T02:00:00Z", Description: "Threat detail",
+		PublishedAt: day + "T02:00:00Z", Description: "Threat detail",
 	}}}})
 
-	request := httptest.NewRequest(http.MethodPost, "/api/collect", strings.NewReader(`{"date":"2026-08-03"}`))
+	request := httptest.NewRequest(http.MethodPost, "/api/collect", strings.NewReader(`{"date":"`+day+`"}`))
 	request.Header.Set("Content-Type", "application/json")
 	recorder := httptest.NewRecorder()
 	server.ServeHTTP(recorder, request)
@@ -119,7 +179,7 @@ func TestCollectReturnsImmediately_beforeLongRunningWorkCompletes(t *testing.T) 
 	server, _, _ := newTestServer(t, &blockingFetcher{release: release})
 	t.Cleanup(func() { close(release) })
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodPost, "/api/collect", strings.NewReader(`{"date":"2026-08-03"}`))
+	request := httptest.NewRequest(http.MethodPost, "/api/collect", strings.NewReader(`{"date":"`+recentCollectionDay()+`"}`))
 	request.Header.Set("Content-Type", "application/json")
 
 	// When collection starts.
