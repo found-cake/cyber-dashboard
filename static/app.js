@@ -431,8 +431,8 @@
       if (day === state.selectedDay) classes.push("is-selected");
       if (dataDays.has(day)) classes.push("has-data");
       if (expired) classes.push("is-expired");
-      const hint = future ? t("futureDate") : expired ? t("outsideRetention") : formatDisplayDate(day);
-      const disabled = future || expired;
+      const hint = future ? t("futureDate") : expired ? `${formatDisplayDate(day)} — ${t("outsideRetention")}` : formatDisplayDate(day);
+      const disabled = future;
       return `<button class="${classes.join(" ")}" type="button"${disabled ? " disabled" : ` data-day="${day}"`} title="${esc(hint)}" aria-label="${esc(hint)}" aria-pressed="${day === state.selectedDay}"${day === formatDay(today) ? ' aria-current="date"' : ""}>${cell.value}</button>`;
     }).join("");
     $("#calendar-grid").html(html);
@@ -590,7 +590,6 @@
     const date = parseDay(day);
     const { today, oldest } = retentionWindow();
     if (date > today) return toast(t("futureDate"), true);
-    if (date < oldest && !(state.bootstrap.collected_days || []).includes(day)) return toast(t("outsideRetention"), true);
     state.selectedDay = day;
     state.dailySource = "all";
     renderCalendar();
@@ -598,7 +597,7 @@
     api("GET", `/api/daily/${encodeURIComponent(day)}`).done(data => {
       state.daily = data;
       renderDaily();
-      if (!data.articles.length && !(state.bootstrap.collected_days || []).includes(day)) openCollectModal(day);
+      if (date >= oldest && !data.articles.length && !(state.bootstrap.collected_days || []).includes(day)) openCollectModal(day);
     }).fail(showRequestError);
   }
 
@@ -694,7 +693,10 @@
   function refreshCollectionControls() {
     const activeDay = collectionTask.activeDay();
     const active = activeDay !== null;
-    $("#recollect-day").prop("disabled", active).attr("aria-busy", String(active)).text(active ? t("collecting") : t("recollect"));
+    const { today, oldest } = retentionWindow();
+    const selectedDate = state.selectedDay ? parseDay(state.selectedDay) : today;
+    const collectionAvailable = selectedDate >= oldest && selectedDate <= today;
+    $("#recollect-day").prop("disabled", active || !collectionAvailable).attr("aria-busy", String(active)).attr("title", collectionAvailable ? null : t("outsideRetention")).text(active ? t("collecting") : t("recollect"));
     $("#cancel-active-collection").prop("hidden", !active);
     const modalDay = $("[data-collect-day]").data("collect-day");
     const modalActive = active && modalDay === activeDay;
