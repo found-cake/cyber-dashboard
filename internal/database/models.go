@@ -86,6 +86,12 @@ type Setting struct {
 	TimezoneOffsetMinutes *int
 }
 
+type AdminCredential struct {
+	ID           int64  `gorm:"primaryKey;check:id = 1"`
+	PasswordHash string `gorm:"not null"`
+	TokenVersion uint64 `gorm:"not null;default:1"`
+}
+
 type LLMPreset struct {
 	ID      int64  `gorm:"primaryKey;autoIncrement"`
 	Label   string `gorm:"not null"`
