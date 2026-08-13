@@ -22,6 +22,7 @@ It runs locally, stores its data in SQLite, and is available as a single executa
 - Explore every collected CVE ranked by `CVSS + mentions × 0.2`.
 - Review threat-category and threat-actor distributions across the dashboard period.
 - Generate and keep weekly or monthly reports in English or Korean.
+- Save reports and daily summaries through an A4 PDF print view.
 - Connect cloud-hosted or local models through an OpenAI Chat Completions-compatible API.
 - Save multiple LLM presets when different servers use different endpoints or API keys.
 - Select collection sources, report timezone, language, and light or dark appearance.
