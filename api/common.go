@@ -2,6 +2,7 @@ package api
 
 // Bootstrap is returned by GET /api/bootstrap.
 type Bootstrap struct {
+	Auth          AuthState           `json:"auth"`
 	Sources       []Source            `json:"sources"`
 	Reports       []Report            `json:"reports"`
 	Settings      SettingsResponse    `json:"settings"`
@@ -9,6 +10,20 @@ type Bootstrap struct {
 	CollectedDays []string            `json:"collected_days"`
 	Collection    *CollectionJob      `json:"collection,omitempty"`
 	CVERefresh    *CVERefreshJob      `json:"cve_refresh,omitempty"`
+}
+
+type AuthState struct {
+	Enabled       bool `json:"enabled"`
+	Authenticated bool `json:"authenticated"`
+}
+
+type LoginRequest struct {
+	Password string `json:"password"`
+}
+
+type ChangePasswordRequest struct {
+	CurrentPassword string `json:"current_password"`
+	NewPassword     string `json:"new_password"`
 }
 
 // HealthResponse is returned by GET /healthz.
