@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/found-cake/cyber-dashboard/internal/auth"
 	"github.com/found-cake/cyber-dashboard/internal/dashboard"
 	"github.com/found-cake/cyber-dashboard/internal/database"
 	feedbody "github.com/found-cake/cyber-dashboard/internal/feed/body"
@@ -48,6 +49,30 @@ func Run(ctx context.Context, assets fs.FS) (runErr error) {
 	if err != nil {
 		return err
 	}
+	signingKey, err := auth.LoadOrCreateSigningKey(databasePath + ".jwt.key")
+	if err != nil {
+		return err
+	}
+	sessionStore, err := auth.OpenSessionStore(ctx, filepath.Join(dataDir, "dashboard.sessions.db"), nil)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		runErr = errors.Join(runErr, sessionStore.Close())
+	}()
+	authManager, err := auth.NewManager(db, sessionStore, signingKey)
+	if err != nil {
+		return err
+	}
+	initialPassword, generated, err := authManager.EnsurePassword(ctx)
+	if err != nil {
+		return err
+	}
+	if generated {
+		slog.Warn("generated initial dashboard password",
+			slog.String("password", initialPassword),
+			slog.String("action", "log in and change it in Settings"))
+	}
 	trustedHosts, err := trustedHostsFromEnvironment()
 	if err != nil {
 		return err
@@ -75,6 +100,7 @@ func Run(ctx context.Context, assets fs.FS) (runErr error) {
 		Articles:        enrichment.NewArticleEnrichmentService(feedRepository, summaryService),
 		Vulnerabilities: vulnerabilityService,
 		TrustedHosts:    trustedHosts,
+		Auth:            authManager,
 	})
 	return serve(ctx, handler)
 }
