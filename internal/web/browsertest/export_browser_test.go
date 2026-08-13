@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/chromedp"
 	"github.com/found-cake/cyber-dashboard/api"
 )
@@ -24,10 +25,18 @@ const reportSummaryFixture = `Overview line.
 ■ Supply chain
 - Another complete sentence.`
 
-const (
-	exportFixtureDay        = "2026-08-13"
-	exportFixtureDisplayDay = "Thursday, August 13, 2026"
-)
+var exportFixtureDay, exportFixtureDisplayDay, exportFixtureNowMillis = newExportFixture(time.Now().UTC())
+
+func newExportFixture(now time.Time) (string, string, int64) {
+	return now.Format(time.DateOnly), now.Format("Monday, January 2, 2006"), now.UnixMilli()
+}
+
+func TestExportFixture_tracksRuntimeDateBeyondAugust2026(t *testing.T) {
+	day, displayDay, nowMillis := newExportFixture(time.Date(2027, time.January, 2, 12, 0, 0, 0, time.UTC))
+	if day != "2027-01-02" || displayDay != "Saturday, January 2, 2027" || nowMillis != 1798891200000 {
+		t.Fatalf("export fixture = %q, %q, %d; want the supplied runtime date", day, displayDay, nowMillis)
+	}
+}
 
 func TestPDFExportActions_openAndClosePrintWindows_fromReportAndDailyViews(t *testing.T) {
 	server := newExportBrowserServer(t)
@@ -197,6 +206,14 @@ func newExportBrowser(t *testing.T) (context.Context, context.CancelFunc) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	browserContext, browserCancel := chromedp.NewContext(ctx)
+	if err := chromedp.Run(browserContext, chromedp.ActionFunc(func(ctx context.Context) error {
+		_, err := page.AddScriptToEvaluateOnNewDocument(fmt.Sprintf("Date.now = () => %d", exportFixtureNowMillis)).Do(ctx)
+		return err
+	})); err != nil {
+		browserCancel()
+		cancel()
+		t.Fatalf("set export browser date: %v", err)
+	}
 	return browserContext, func() {
 		browserCancel()
 		cancel()
