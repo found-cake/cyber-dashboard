@@ -36,7 +36,7 @@
       outsideRetention: "피드 보존 기간(10일)을 벗어난 날짜입니다.", futureDate: "미래 날짜는 선택할 수 없습니다.",
       emptyReport: "선택한 기간에 수집된 기사가 없습니다.",
       noReports: "생성된 보고서가 없습니다", feedSubtitle: "위협 인텔리전스 피드", dailySummary: "일간 요약",
-      settingsSub: "언어 · 소스 · NVD 키 · LLM 엔드포인트", testing: "확인 중…", unknownActor: "미확인",
+      settingsSub: "보안 · 언어 · 소스 · API 설정", testing: "확인 중…", unknownActor: "미확인",
       cveRefreshDone: (updated, removed) => `CVE ${updated}개를 갱신하고 ${removed}개를 제거했습니다.`,
       cveRefreshWarned: "일부 항목을 확인하세요.", deleteReport: "보고서 삭제", deleteReportTitle: "보고서 삭제",
       deleteReportConfirm: "정말로 삭제하시겠습니까?", deleteReportHint: "삭제한 보고서는 복구할 수 없습니다.",
@@ -45,7 +45,12 @@
       viewLicenses: "라이선스 확인", licenseDialogTitle: "라이선스 및 오픈소스 고지",
       licenseDialogHint: "본 프로그램과 서드파티 구성요소의 라이선스 원문입니다.",
       programLicense: "본 프로그램", thirdPartyLicenses: "서드파티",
-      loadingLicenses: "라이선스를 불러오는 중…", licenseLoadFailed: "라이선스를 불러오지 못했습니다."
+      loadingLicenses: "라이선스를 불러오는 중…", licenseLoadFailed: "라이선스를 불러오지 못했습니다.",
+      login: "로그인", logout: "로그아웃", loginTitle: "관리자 로그인", loginHint: "관리 기능을 사용하려면 비밀번호를 입력하세요.",
+      password: "비밀번호", signingIn: "로그인 중…", securityTitle: "비밀번호 변경", securityHint: "변경하면 다른 브라우저의 로그인도 만료됩니다.",
+      currentPassword: "현재 비밀번호", newPassword: "새 비밀번호", confirmPassword: "새 비밀번호 확인", changePassword: "비밀번호 변경",
+      passwordRule: "12바이트 이상 128바이트 이하", passwordMismatch: "새 비밀번호가 일치하지 않습니다.", passwordChanged: "비밀번호를 변경했습니다.",
+      changingPassword: "변경 중…", requestFailed: "요청을 처리하지 못했습니다."
     },
     en: {
       dashboard: "Dashboard", reports: "Reports", settings: "Settings", newReport: "New",
@@ -81,7 +86,7 @@
       outsideRetention: "This date is outside the 10-day feed retention window.", futureDate: "Future dates cannot be selected.",
       emptyReport: "No articles were collected in this period.",
       noReports: "No reports yet", feedSubtitle: "Threat intelligence feed", dailySummary: "Daily summary",
-      settingsSub: "Language · Sources · NVD key · LLM endpoint", testing: "Testing…", unknownActor: "Unknown",
+      settingsSub: "Security · Language · Sources · API settings", testing: "Testing…", unknownActor: "Unknown",
       cveRefreshDone: (updated, removed) => `Updated ${updated} CVEs and removed ${removed}.`,
       cveRefreshWarned: "Review the warnings for some entries.", deleteReport: "Delete report", deleteReportTitle: "Delete report",
       deleteReportConfirm: "Are you sure you want to delete this report?", deleteReportHint: "Deleted reports cannot be recovered.",
@@ -90,7 +95,12 @@
       viewLicenses: "View licenses", licenseDialogTitle: "Licenses and open-source notices",
       licenseDialogHint: "License terms for this program and its third-party components.",
       programLicense: "This program", thirdPartyLicenses: "Third party",
-      loadingLicenses: "Loading license…", licenseLoadFailed: "The license could not be loaded."
+      loadingLicenses: "Loading license…", licenseLoadFailed: "The license could not be loaded.",
+      login: "Log in", logout: "Log out", loginTitle: "Administrator login", loginHint: "Enter the password to use administrative features.",
+      password: "Password", signingIn: "Logging in…", securityTitle: "Change password", securityHint: "Changing it expires logins in other browsers.",
+      currentPassword: "Current password", newPassword: "New password", confirmPassword: "Confirm new password", changePassword: "Change password",
+      passwordRule: "12 to 128 bytes", passwordMismatch: "The new passwords do not match.", passwordChanged: "Password changed.",
+      changingPassword: "Changing…", requestFailed: "The request could not be completed."
     }
   };
 
@@ -114,7 +124,7 @@
     // Placeholders until /api/bootstrap supplies the configured offset; start() re-derives both.
     month: null,
     selectedDay: null,
-    bootstrap: { sources: [], reports: [], settings: {}, llm_presets: [], collected_days: [] },
+    bootstrap: { auth: { enabled: false, authenticated: true }, sources: [], reports: [], settings: {}, llm_presets: [], collected_days: [] },
     dashboard: null,
     daily: null,
     currentReport: null,
@@ -129,6 +139,7 @@
   let modalLastFocus = null;
   let renderedScrollKey = null;
   let mainResizeObserver = null;
+  let pendingLogin = null;
   const licenseDocuments = { program: "/legal/LICENSE.txt", thirdParty: "/legal/THIRD_PARTY_NOTICES.txt" };
   const licenseDocumentCache = {};
   const collectionTask = window.createCollectionTask(serverCollection);
@@ -247,13 +258,153 @@
     }).format(parsed) + " UTC";
   }
 
-  function api(method, path, data) {
+  function request(method, path, data) {
     return $.ajax({
       method,
       url: path,
       contentType: data ? "application/json" : undefined,
       data: data ? JSON.stringify(data) : undefined,
       dataType: "json"
+    });
+  }
+
+  // Only these three must never retry through a refresh; every other /api/auth route is an
+  // ordinary admin call that should recover like the rest.
+  const refreshExemptPaths = ["/api/auth/login", "/api/auth/refresh", "/api/auth/logout"];
+  let pendingRefresh = null;
+
+  function issueRefresh() {
+    const send = () => Promise.resolve(request("POST", "/api/auth/refresh"));
+    const operation = navigator.locks && typeof navigator.locks.request === "function"
+      ? navigator.locks.request("cyber-dashboard-refresh", send)
+      : send();
+    const deferred = $.Deferred();
+    operation.then(deferred.resolve, deferred.reject);
+    return deferred.promise();
+  }
+
+  function refreshSession() {
+    if (pendingRefresh) return pendingRefresh;
+    // A tab shares one request locally; the origin lock prevents another tab from presenting the
+    // same one-time refresh token concurrently. Browsers without Web Locks keep the local guard.
+    pendingRefresh = issueRefresh();
+    pendingRefresh.always(() => { pendingRefresh = null; });
+    return pendingRefresh;
+  }
+
+  function api(method, path, data) {
+    return request(method, path, data).then(null, error => {
+      const canRefresh = error.status === 401 && !refreshExemptPaths.includes(path) && isAuthenticated();
+      if (!canRefresh) return $.Deferred().reject(error).promise();
+      const retry = () => request(method, path, data);
+      return refreshSession().then(retry, () => resumeAfterLogin(retry, error));
+    });
+  }
+
+  // A refresh that fails mid-request means the session expired under the user. The view stays on
+  // screen so nothing they were editing is discarded, and the request waits on the login modal
+  // rather than failing outright — logging back in completes it.
+  function resumeAfterLogin(retry, error) {
+    state.bootstrap.auth.authenticated = false;
+    renderAuthAction();
+    const deferred = $.Deferred();
+    // A second request can expire while the first is already waiting; both have to settle.
+    const displaced = pendingLogin;
+    pendingLogin = {
+      expired: true,
+      resume: () => { retry().then(deferred.resolve, deferred.reject); if (displaced) displaced.resume(); },
+      cancel: () => { deferred.reject(error); if (displaced && displaced.cancel) displaced.cancel(); }
+    };
+    openLoginModal();
+    return deferred.promise();
+  }
+
+  function isAuthenticated() {
+    const auth = state.bootstrap.auth;
+    return !auth || !auth.enabled || Boolean(auth.authenticated);
+  }
+
+  function renderAuthAction() {
+    const enabled = Boolean(state.bootstrap.auth && state.bootstrap.auth.enabled);
+    const authenticated = isAuthenticated();
+    const loginSlot = enabled && !authenticated;
+    $("#auth-action").prop("hidden", !enabled || !authenticated);
+    $("#open-report-modal").prop("hidden", !authenticated);
+    // The button's own label names it; only the landmark needs a separate one.
+    $("#settings-navigation").attr("aria-label", t(loginSlot ? "login" : "settings"));
+    $("#settings-action").prop("hidden", false);
+    $("#settings-action .nav-symbol").text(loginSlot ? "L" : "S");
+    $("#settings-action .settings-action-label").text(t(loginSlot ? "login" : "settings"));
+  }
+
+  function requireAdmin(action) {
+    if (isAuthenticated()) return true;
+    pendingLogin = action ? { expired: false, resume: action, cancel: null } : null;
+    openLoginModal();
+    return false;
+  }
+
+  // Password managers need a username to attach a saved entry to; the account is fixed, so the
+  // field exists for them alone.
+  function adminUsernameField() {
+    return `<input type="text" name="username" value="admin" autocomplete="username" readonly tabindex="-1" hidden>`;
+  }
+
+  function openLoginModal() {
+    closeDrawer();
+    openModal(`<form class="modal modal-small" id="login-form" role="dialog" aria-modal="true" aria-labelledby="login-title">
+      <div class="modal-header"><div><h2 id="login-title">${esc(t("loginTitle"))}</h2><p>${esc(t("loginHint"))}</p></div><button class="icon-button modal-dismiss" type="button" aria-label="${esc(t("close"))}">×</button></div>
+      <div class="modal-body">${adminUsernameField()}<div class="field"><label for="login-password">${esc(t("password"))}</label><input id="login-password" type="password" autocomplete="current-password" required><small class="field-message" role="alert" hidden></small></div></div>
+      <div class="modal-footer"><button class="secondary-button modal-close" type="button">${esc(t("cancel"))}</button><button class="primary-button" id="submit-login" type="submit">${esc(t("login"))}</button></div>
+    </form>`, "#login-password");
+  }
+
+  // .field-error is the sheet's validation style; the message lands in the field's own <small>, so
+  // a field whose <small> already carries rule text only needs recolouring.
+  function showFieldError(selector, message) {
+    const $field = $(selector).closest(".field").addClass("field-error");
+    if (message) $field.find(".field-message").text(message).prop("hidden", false);
+    $(selector).trigger("focus").trigger("select");
+  }
+
+  function clearFieldErrors(scope) {
+    $(scope).find(".field-error").removeClass("field-error");
+    $(scope).find(".field-message").text("").prop("hidden", true);
+  }
+
+  function loadBootstrap() {
+    return request("GET", "/api/bootstrap").then(data => {
+      state.bootstrap = data;
+      adoptLanguage(data.settings.language);
+      applyConfiguredToday();
+      applyChrome();
+      return data;
+    });
+  }
+
+  function submitLogin() {
+    const password = $("#login-password").val();
+    clearFieldErrors("#login-form");
+    const $button = $("#submit-login").prop("disabled", true).text(t("signingIn"));
+    request("POST", "/api/auth/login", { password }).then(loadBootstrap).done(() => {
+      const pending = pendingLogin;
+      pendingLogin = null;
+      closeModal();
+      if (pending) pending.resume();
+      else routeCurrentView();
+    }).fail(error => {
+      $button.prop("disabled", false).text(t("login"));
+      // The dialog is aria-modal, so a toast outside it is the one place the message must not go.
+      showFieldError("#login-password", errorMessage(error));
+    });
+  }
+
+  function logout() {
+    request("POST", "/api/auth/logout").always(() => {
+      loadBootstrap().done(() => {
+        if (state.view === "settings") renderDashboard();
+        else routeCurrentView();
+      }).fail(showRequestError);
     });
   }
 
@@ -399,6 +550,7 @@
     document.documentElement.dataset.theme = state.theme;
     $("#theme-toggle").attr("aria-pressed", String(state.theme === "light"));
     $("[data-i18n]").each(function () { $(this).text(t($(this).data("i18n"))); });
+    renderAuthAction();
     renderCalendar();
     renderReportList();
   }
@@ -539,7 +691,7 @@
       const cves = data.cves || [];
       const rows = cves.map((cve, index) => `<tr data-href="https://nvd.nist.gov/vuln/detail/${encodeURIComponent(cve.id)}" tabindex="0"><td class="mono" data-label="${esc(t("rank"))}">${index + 1}</td><td class="mono cve-link" data-label="CVE ID">${esc(cve.id)}</td><td data-label="CVSS">${cvssBadgeHTML(cve.cvss)}</td><td data-label="${esc(t("mentions"))}">${cve.mentions}</td><td class="mono" data-label="${esc(t("riskScore"))}">${(Number(cve.cvss) + Number(cve.mentions) * 0.2).toFixed(1)}</td><td data-label="${esc(t("product"))}">${esc(cve.affected_product)}</td><td class="mono" data-label="${esc(t("firstSeen"))}">${esc(cve.first_seen)}</td></tr>`).join("");
       $("#main-content").html(`<div class="content stack">
-        <section class="card cve-page-summary"><div><span class="badge badge-info">${cves.length} ${esc(t("entries"))}</span><p class="card-subtitle">${esc(t("cveExplorerHint"))}</p></div><div class="cluster"><button class="secondary-button" id="refresh-cves" type="button">${esc(t("refreshCVEs"))}</button><a class="secondary-button cve-back-link" href="#">${esc(t("backToDashboard"))}</a></div></section>
+        <section class="card cve-page-summary"><div><span class="badge badge-info">${cves.length} ${esc(t("entries"))}</span><p class="card-subtitle">${esc(t("cveExplorerHint"))}</p></div><div class="cluster">${isAuthenticated() ? `<button class="secondary-button" id="refresh-cves" type="button">${esc(t("refreshCVEs"))}</button>` : ""}<a class="secondary-button cve-back-link" href="#">${esc(t("backToDashboard"))}</a></div></section>
         <section class="card"><div class="table-region cve-page-table" role="region" aria-label="${esc(t("allCVEs"))}" tabindex="0"><p class="cve-scroll-hint">${esc(t("cveScrollHint"))}</p><table class="data-table"><thead><tr><th>${esc(t("rank"))}</th><th>CVE ID</th><th>CVSS</th><th>${esc(t("mentions"))}</th><th>${esc(t("riskScore"))}</th><th>${esc(t("product"))}</th><th>${esc(t("firstSeen"))}</th></tr></thead><tbody>${rows || `<tr><td colspan="7">${esc(t("noData"))}</td></tr>`}</tbody></table></div></section>
       </div>`);
       applyViewScroll("cves");
@@ -555,6 +707,7 @@
   }
 
   function refreshCVEs() {
+    if (!requireAdmin(refreshCVEs)) return;
     runCVERefresh();
   }
 
@@ -597,7 +750,7 @@
     api("GET", `/api/daily/${encodeURIComponent(day)}`).done(data => {
       state.daily = data;
       renderDaily();
-      if (date >= oldest && !data.articles.length && !(state.bootstrap.collected_days || []).includes(day)) openCollectModal(day);
+      if (isAuthenticated() && date >= oldest && !data.articles.length && !(state.bootstrap.collected_days || []).includes(day)) openCollectModal(day);
     }).fail(showRequestError);
   }
 
@@ -652,9 +805,10 @@
     </a>`).join("");
     const dailySummary = daily.summary ? `<section class="card brief-card"><div class="card-header"><div><h2>${esc(t("dailySummary"))}</h2><p class="card-subtitle">${esc(t("aiGenerated"))}</p></div><div class="daily-summary-actions"><span class="badge badge-info">${daily.articles.length} ${esc(articleCountLabel(daily.articles.length))}</span>${pdfDownloadHTML("daily")}</div></div><div class="brief-body">${esc(daily.summary)}</div></section>` : "";
     const dailyPDFAction = daily.summary ? "" : pdfDownloadHTML("daily");
+    const collectionActions = isAuthenticated() ? `<div class="cluster collection-actions"><button class="secondary-button" id="recollect-day" type="button">${esc(t("recollect"))}</button><button class="secondary-button cancel-collection" id="cancel-active-collection" type="button" hidden>${esc(t("cancel"))}</button></div>` : "";
     $("#main-content").html(`<div class="content stack">
       ${dailySummary}
-      <div class="daily-toolbar"><div class="field daily-filter"><label for="source-filter">${esc(t("sourceFilter"))}</label><select id="source-filter"><option value="all">${esc(t("allSources"))}</option>${sources.map(source => `<option value="${esc(source)}"${source === state.dailySource ? " selected" : ""}>${esc(source)}</option>`).join("")}</select></div><div class="cluster daily-actions">${dailyPDFAction}<div class="cluster collection-actions"><button class="secondary-button" id="recollect-day" type="button">${esc(t("recollect"))}</button><button class="secondary-button cancel-collection" id="cancel-active-collection" type="button" hidden>${esc(t("cancel"))}</button></div></div></div>
+      <div class="daily-toolbar"><div class="field daily-filter"><label for="source-filter">${esc(t("sourceFilter"))}</label><select id="source-filter"><option value="all">${esc(t("allSources"))}</option>${sources.map(source => `<option value="${esc(source)}"${source === state.dailySource ? " selected" : ""}>${esc(source)}</option>`).join("")}</select></div><div class="cluster daily-actions">${dailyPDFAction}${collectionActions}</div></div>
       <section class="article-list">${articles || `<div class="empty-state"><span class="empty-mark">00</span><h2>${esc(t("noArticles"))}</h2></div>`}</section>
     </div>`);
     applyViewScroll(`daily:${state.selectedDay}`);
@@ -663,6 +817,7 @@
   }
 
   function openCollectModal(day, recollect = false) {
+    if (!requireAdmin(() => openCollectModal(day, recollect))) return;
     const active = state.bootstrap.sources.filter(source => source.enabled).length;
     openModal(`<div class="modal modal-small" role="dialog" aria-modal="true" aria-labelledby="collect-title" data-collect-day="${day}">
       <div class="modal-header"><div><h2 id="collect-title">${esc(t(recollect ? "recollectConfirm" : "collectNow"))}</h2><p>${esc(formatDisplayDate(day))}</p></div><button class="icon-button modal-dismiss" type="button" aria-label="${esc(t("close"))}">×</button></div>
@@ -707,8 +862,10 @@
   }
 
   function renderSettings() {
+    if (!requireAdmin(renderSettings)) return;
     // Arriving from another view discards a source draft the user never saved.
     if (state.view !== "settings") state.sourceDraft = null;
+    const passwords = state.view === "settings" ? passwordFormValue() : null;
     state.view = "settings";
     state.currentReport = null;
     clearCVEHash();
@@ -731,7 +888,9 @@
       return `<span class="preset-item"><button class="preset-chip${active ? " is-active" : ""}" type="button" data-preset-id="${preset.id}" aria-pressed="${active}" title="${esc(preset.base_url)} · ${esc(preset.model)}"><span class="preset-dot" aria-hidden="true"></span><span><strong>${esc(preset.label)}</strong><small>${esc(preset.model)}${preset.api_key_configured ? ` · ${esc(t("keySaved"))}` : ""}</small></span></button>${preset.builtin ? "" : `<button class="preset-remove" type="button" data-remove-preset-id="${preset.id}" aria-label="${esc(t("presetRemove"))}: ${esc(preset.label)}" title="${esc(t("presetRemove"))}">×</button>`}</span>`;
     }).join("");
     const addDisabled = !canAddPreset(settings.llm_base_url, settings.llm_model);
+    const securityCard = state.bootstrap.auth && state.bootstrap.auth.enabled ? `<section class="card"><div class="card-header"><div><h2>${esc(t("securityTitle"))}</h2><p class="card-subtitle">${esc(t("securityHint"))}</p></div></div><form class="field-grid password-change-grid" id="password-form">${adminUsernameField()}<div class="field"><label for="current-password">${esc(t("currentPassword"))}</label><input id="current-password" type="password" autocomplete="current-password"><small class="field-message" role="alert" hidden></small></div><div class="field"><label for="new-password">${esc(t("newPassword"))}</label><input id="new-password" type="password" autocomplete="new-password"><small>${esc(t("passwordRule"))}</small></div><div class="field"><label for="confirm-password">${esc(t("confirmPassword"))}</label><input id="confirm-password" type="password" autocomplete="new-password"><small class="field-message" role="alert" hidden></small></div><div class="full-span cluster"><button class="secondary-button" id="change-password" type="submit">${esc(t("changePassword"))}</button></div></form></section>` : "";
     $("#main-content").html(`<div class="content settings-stack">
+      ${securityCard}
       <section class="card"><div class="card-header"><div><h2>${esc(t("language"))}</h2><p class="card-subtitle">${esc(t("languageHint"))}</p></div></div><div class="field"><label for="setting-language">${esc(t("language"))}</label><select id="setting-language">${languageOptions}</select></div></section>
       <section class="card"><div class="card-header"><h2>${esc(t("sourceSettings"))}</h2></div><div class="source-list">${sources}</div></section>
       <section class="card"><div class="card-header"><div><h2>${esc(t("nvdTitle"))}</h2><p class="card-subtitle">${esc(t("nvdHint"))}</p></div><a href="https://nvd.nist.gov/developers/request-an-api-key" target="_blank" rel="noopener noreferrer">NVD ↗</a></div><div class="field"><label for="nvd-api-key">${esc(t("apiKey"))}</label><input id="nvd-api-key" type="password" autocomplete="off" value="" placeholder="${settings.nvd_api_key_configured ? esc(t("keyStoredPlaceholder")) : ""}"><small>${esc(t("keyInputHint"))} · <span class="rate-limit">50 requests / 30s</span></small></div></section>
@@ -745,9 +904,22 @@
       <section class="card"><div class="card-header"><h2>${esc(t("schema"))}</h2></div><pre class="schema-preview">${esc(schema)}</pre></section>
       <section class="card settings-legal-card"><div><h2>${esc(t("licenseTitle"))}</h2><p class="card-subtitle">${esc(t("licenseHint"))}</p></div><button class="secondary-button" id="open-license-modal" type="button">${esc(t("viewLicenses"))}</button></section>
     </div><div class="settings-save-bar" id="settings-save-bar" role="status" aria-live="polite" hidden><strong>${esc(t("unsavedSettings"))}</strong><div class="cluster"><button class="secondary-button" id="revert-settings" type="button">${esc(t("revert"))}</button><button class="primary-button" id="save-settings" type="button">${esc(t("save"))}</button></div></div>`);
+    if (passwords) restorePasswordForm(passwords);
     applyViewScroll("settings");
     refreshSettingsFormState();
     closeDrawer();
+  }
+
+  // Saving or reverting settings re-renders the page, but the password form is a separate submit
+  // path, so a half-typed change has to survive the round trip.
+  const passwordFieldIDs = ["#current-password", "#new-password", "#confirm-password"];
+
+  function passwordFormValue() {
+    return passwordFieldIDs.map(selector => $(selector).val() || "");
+  }
+
+  function restorePasswordForm(values) {
+    passwordFieldIDs.forEach((selector, index) => { if (values[index]) $(selector).val(values[index]); });
   }
 
   function sourceDraft() {
@@ -895,7 +1067,29 @@
     api("POST", "/api/llm/test", settingsFormValue()).done(() => toast(t("connectionOK"))).fail(() => toast(t("connectionFail"), true)).always(() => $button.prop("disabled", false).text(t("test")));
   }
 
+  function changePassword() {
+    clearFieldErrors("#password-form");
+    const currentPassword = $("#current-password").val();
+    const newPassword = $("#new-password").val();
+    // The rule is checked before the match so a password that is too short says so on the first
+    // attempt, instead of after the user has fixed a mismatch it was never going to accept.
+    const byteLength = new TextEncoder().encode(newPassword).length;
+    if (byteLength < 12 || byteLength > 128) return showFieldError("#new-password", null);
+    if (newPassword !== $("#confirm-password").val()) return showFieldError("#confirm-password", t("passwordMismatch"));
+    const $button = $("#change-password").prop("disabled", true).text(t("changingPassword"));
+    api("PUT", "/api/auth/password", { current_password: currentPassword, new_password: newPassword }).done(() => {
+      $(passwordFieldIDs.join(",")).val("");
+      toast(t("passwordChanged"));
+    }).fail(error => {
+      const code = error.responseJSON && error.responseJSON.code;
+      if (code === "invalid_credentials") showFieldError("#current-password", errorMessage(error));
+      else if (code === "weak_password") showFieldError("#new-password", null);
+      else showRequestError(error);
+    }).always(() => $button.prop("disabled", false).text(t("changePassword")));
+  }
+
   function openReportModal() {
+    if (!requireAdmin(openReportModal)) return;
     state.reportType = "weekly";
     closeDrawer();
     const today = configuredToday();
@@ -972,8 +1166,9 @@
     renderReportList();
     setHeader(report.type === "weekly" ? t("weekly") : t("monthly"), `${report.period_start} – ${report.period_end}`);
     const actors = report.actors.map(actor => esc(actor)).join(" · ") || esc(t("unknownActor"));
+    const deleteAction = isAuthenticated() ? `<button class="danger-button" id="delete-report" type="button">${esc(t("deleteReport"))}</button>` : "";
     $("#main-content").html(`<div class="content"><article class="report-sheet">
-      <header class="report-sheet-header"><div><h2>${esc(report.type === "weekly" ? t("weekly") : t("monthly"))}</h2><p>${esc(report.period_start)} – ${esc(report.period_end)}</p></div><div class="cluster report-sheet-actions">${pdfDownloadHTML("report")}<button class="danger-button" id="delete-report" type="button">${esc(t("deleteReport"))}</button></div></header>
+      <header class="report-sheet-header"><div><h2>${esc(report.type === "weekly" ? t("weekly") : t("monthly"))}</h2><p>${esc(report.period_start)} – ${esc(report.period_end)}</p></div><div class="cluster report-sheet-actions">${pdfDownloadHTML("report")}${deleteAction}</div></header>
       <div class="report-metrics"><div><strong class="tone-info">${report.total}</strong><span>${esc(t("total"))}</span></div><div><strong class="tone-danger">${report.critical}</strong><span>${esc(t("critical"))}</span></div><div><strong class="tone-warning">${report.high}</strong><span>${esc(t("high"))}</span></div><div><strong>${report.medium}</strong><span>${esc(t("medium"))}</span></div></div>
       <section class="report-section"><h3>${esc(t("topThreat"))}</h3><p>${esc(report.top_threat)}</p></section>
       <section class="report-section"><h3>${esc(t("keyActors"))}</h3><p>${actors}</p></section>
@@ -985,6 +1180,7 @@
   }
 
   function openDeleteReportModal(report) {
+    if (!requireAdmin(() => openDeleteReportModal(report))) return;
     openModal(`<div class="modal modal-small" role="dialog" aria-modal="true" aria-labelledby="delete-report-title" aria-describedby="delete-report-description">
       <div class="modal-header"><div><h2 id="delete-report-title">${esc(t("deleteReportTitle"))}</h2><p>${esc(report.period_start)} – ${esc(report.period_end)}</p></div></div>
       <div class="modal-body"><p class="prose" id="delete-report-description">${esc(t("deleteReportConfirm"))}</p><p class="card-subtitle">${esc(t("deleteReportHint"))}</p></div>
@@ -1041,22 +1237,35 @@
     });
   }
 
-  function openModal(content) {
+  // Focus defaults to the first control, which is the header dismiss button; forms that open for
+  // the sake of one input name it instead.
+  function openModal(content, focus) {
     modalLastFocus = document.activeElement;
     $("#modal-root").html(`<div class="modal-backdrop">${content}</div>`);
-    $("#modal-root").find("button, input, select").first().trigger("focus");
+    const $focus = focus ? $("#modal-root").find(focus) : $();
+    ($focus.length ? $focus : $("#modal-root").find("button, input, select")).first().trigger("focus");
   }
 
   function closeModal() {
     if (!$("#modal-root").children().length) return;
+    // Dismissing the login modal abandons whatever was waiting on it.
+    const abandoned = $("#login-form").length ? pendingLogin : null;
+    if (abandoned) pendingLogin = null;
     $("#modal-root").empty();
     if (modalLastFocus && document.contains(modalLastFocus)) modalLastFocus.focus();
     modalLastFocus = null;
+    if (!abandoned) return;
+    if (abandoned.cancel) abandoned.cancel();
+    // Only an expired session leaves admin chrome on screen that no longer matches the session.
+    if (abandoned.expired) {
+      if (state.view === "settings") renderDashboard();
+      else routeCurrentView();
+    }
   }
 
   function trapModalFocus(event) {
     if (event.key !== "Tab") return;
-    const focusable = $("#modal-root").find("button:not(:disabled), input:not(:disabled), select:not(:disabled), [href], [tabindex]:not([tabindex='-1'])").get();
+    const focusable = $("#modal-root").find("button:not(:disabled), input:not(:disabled):not([hidden]), select:not(:disabled), [href], [tabindex]:not([tabindex='-1'])").get();
     if (!focusable.length) return;
     const first = focusable[0];
     const last = focusable[focusable.length - 1];
@@ -1105,14 +1314,30 @@
     $(`[data-view="${view}"]`).addClass("is-active").attr("aria-current", "page");
   }
 
+  // Errors carry both languages plus a joined fallback; the dashboard shows only the one in use.
+  function errorMessage(error) {
+    const body = error.responseJSON;
+    if (!body) return t("requestFailed");
+    return (state.lang === "ko" ? body.message_ko : body.message_en) || body.message || t("requestFailed");
+  }
+
   function showRequestError(error) {
-    const message = error.responseJSON && error.responseJSON.message ? error.responseJSON.message : "Request failed";
-    toast(message, true);
+    toast(errorMessage(error), true);
   }
 
   function bindEvents() {
     $(document).on("click", "[data-view='dashboard']", () => renderDashboard());
-    $(document).on("click", "[data-view='settings']", renderSettings);
+    $(document).on("click", "#settings-action", () => {
+      if (isAuthenticated()) renderSettings();
+      else {
+        pendingLogin = null;
+        openLoginModal();
+      }
+    });
+    $(document).on("submit", "#login-form", event => { event.preventDefault(); submitLogin(); });
+    $(document).on("submit", "#password-form", event => { event.preventDefault(); changePassword(); });
+    $(document).on("input", "#login-password", () => clearFieldErrors("#login-form"));
+    $(document).on("input", "#password-form input", () => clearFieldErrors("#password-form"));
     $(document).on("click", "#open-cve-explorer", () => { state.dashboardScroll = $("#main-content").scrollTop(); });
     $(document).on("click", "#refresh-cves", refreshCVEs);
     $(document).on("click", ".calendar-day[data-day]", function () { if (!this.disabled) selectDay($(this).data("day")); });
@@ -1138,7 +1363,9 @@
     $(document).on("click", ".modal-dismiss", closeModal);
     $(document).on("click", ".modal-backdrop", function (event) { if (event.target === this) closeModal(); });
     $(document).on("click", "#confirm-collect", function () { runCollection($(this).data("day")); });
-    $(document).on("click", ".cancel-collection", () => collectionTask.cancel());
+    $(document).on("click", ".cancel-collection", () => {
+      if (requireAdmin(() => collectionTask.cancel())) collectionTask.cancel();
+    });
     $(document).on("click", "#recollect-day", () => openCollectModal(state.selectedDay, true));
     $(document).on("change", "#source-filter", function () { state.dailySource = $(this).val(); renderDaily(); });
     $(document).on("click", ".toggle[data-source-id]", function () {
@@ -1160,6 +1387,7 @@
     $(document).on("change", "#report-year,#report-month", function () { state.reportYear = Number($("#report-year").val()); state.reportMonth = Number($("#report-month").val()); state.reportWeekStart = null; renderReportPeriodPicker(); });
     $(document).on("click", "[data-report-week]", function () { state.reportWeekStart = $(this).data("report-week"); renderReportPeriodPicker(); });
     $(document).on("click", "#generate-report", generateReport);
+    $("#auth-action").on("click", logout);
     $("#open-report-modal").on("click", openReportModal);
     $("#calendar-prev").on("click", () => { state.month = new Date(state.month.getFullYear(), state.month.getMonth() - 1, 1); renderCalendar(); });
     $("#calendar-next").on("click", () => { state.month = new Date(state.month.getFullYear(), state.month.getMonth() + 1, 1); renderCalendar(); });
@@ -1205,11 +1433,7 @@
     cveRefreshTask.subscribe(refreshCVEControls);
     closeDrawer();
     setLoading();
-    api("GET", "/api/bootstrap").done(data => {
-      state.bootstrap = data;
-      adoptLanguage(data.settings.language);
-      applyConfiguredToday();
-      applyChrome();
+    refreshSession().always(() => loadBootstrap().done(data => {
       if (window.location.hash === "#cves") renderCVEExplorer();
       else renderDashboard();
       if (data.collection && data.collection.status === "running") {
@@ -1218,7 +1442,7 @@
       if (data.cve_refresh && data.cve_refresh.status === "running") {
         runCVERefresh(data.cve_refresh);
       }
-    }).fail(showRequestError);
+    }).fail(showRequestError));
   }
 
   $(start);
