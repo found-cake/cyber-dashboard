@@ -22,6 +22,7 @@ Cyber Dashboard는 매일 수집되는 보안 뉴스를 체계적으로 정리�
 - 전체 CVE를 `CVSS + 언급 횟수 × 0.2` 점수순으로 탐색합니다.
 - 대시보드 집계 기간의 위협 유형과 위협 행위자 분포를 확인합니다.
 - 한국어 또는 영어로 주간·월간 보고서를 생성하고 보관합니다.
+- 보고서와 일간 요약을 PDF 저장용 A4 인쇄 화면으로 엽니다.
 - OpenAI Chat Completions 호환 API를 통해 클라우드 또는 로컬 모델을 연결합니다.
 - 서버마다 엔드포인트와 API 키가 다른 경우 여러 LLM 프리셋을 저장합니다.
 - 수집 출처, 보고서 시간대, 언어, 라이트·다크 테마를 선택합니다.
@@ -66,7 +67,7 @@ chmod +x cyber-dashboard-full
 
 Windows에서는 다운로드한 `.exe` 파일을 실행합니다.
 
-브라우저에서 <http://127.0.0.1:8080>을 엽니다. 서버는 기본적으로 로컬 루프백 주소에서만 연결을 받습니다.
+브라우저에서 <http://127.0.0.1:13370>을 엽니다. 서버는 기본적으로 로컬 루프백 주소에서만 연결을 받습니다.
 
 ### 2. 대시보드 설정
 
@@ -180,7 +181,7 @@ CYBER_DASHBOARD_STATIC_DIR=/path/to/static ./cyber-dashboard-server-only
 
 ## 환경변수
 
-- **`CYBER_DASHBOARD_ADDR`** — HTTP 수신 주소입니다. 기본값은 `127.0.0.1:8080`입니다.
+- **`CYBER_DASHBOARD_ADDR`** — HTTP 수신 주소입니다. 기본값은 `127.0.0.1:13370`입니다.
 - **`CYBER_DASHBOARD_TRUSTED_HOST`** — 특수한 비루프백 접속 상황에서 Host 및 Origin 검사에 추가로 허용할 호스트 이름 또는 IP 주소 하나입니다.
 - **`CYBER_DASHBOARD_DATA_DIR`** — 데이터베이스와 암호화 키가 저장되는 디렉터리입니다. 기본값은 운영체제의 사용자 설정 디렉터리입니다.
 - **`CYBER_DASHBOARD_STATIC_DIR`** — 서버 전용 실행 파일이 사용하는 프론트엔드 디렉터리입니다. 기본값은 `static`입니다.
@@ -206,10 +207,10 @@ CYBER_DASHBOARD_STATIC_DIR=static go run ./cmd/cyber-dashboard-server-only
 
 ### `address already in use`
 
-다른 프로세스가 8080 포트를 사용하고 있습니다. 해당 프로세스를 종료하거나 다른 로컬 포트로 실행하세요.
+다른 프로세스가 13370 포트를 사용하고 있습니다. 해당 프로세스를 종료하거나 다른 로컬 포트로 실행하세요.
 
 ```sh
-CYBER_DASHBOARD_ADDR=127.0.0.1:8081 ./cyber-dashboard-full
+CYBER_DASHBOARD_ADDR=127.0.0.1:13371 ./cyber-dashboard-full
 ```
 
 ### `AI API를 확인하세요 / Check the AI API`

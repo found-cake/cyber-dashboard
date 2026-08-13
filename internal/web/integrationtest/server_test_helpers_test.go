@@ -32,6 +32,10 @@ func newTestServerWithNVD(t *testing.T, fetcher collector.Fetcher, nvdAPIKey str
 	return newTestServerWithConfig(t, testServerConfig{fetcher: fetcher, nvdAPIKey: nvdAPIKey})
 }
 
+func recentCollectionDay() string {
+	return time.Now().AddDate(0, 0, -3).Format(time.DateOnly)
+}
+
 type testServerConfig struct {
 	fetcher         collector.Fetcher
 	nvdAPIKey       string

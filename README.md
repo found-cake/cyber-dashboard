@@ -22,6 +22,7 @@ It runs locally, stores its data in SQLite, and is available as a single executa
 - Explore every collected CVE ranked by `CVSS + mentions × 0.2`.
 - Review threat-category and threat-actor distributions across the dashboard period.
 - Generate and keep weekly or monthly reports in English or Korean.
+- Save reports and daily summaries through an A4 PDF print view.
 - Connect cloud-hosted or local models through an OpenAI Chat Completions-compatible API.
 - Save multiple LLM presets when different servers use different endpoints or API keys.
 - Select collection sources, report timezone, language, and light or dark appearance.
@@ -66,7 +67,7 @@ chmod +x cyber-dashboard-full
 
 On Windows, run the downloaded `.exe` file.
 
-Open <http://127.0.0.1:8080> in your browser. The server listens only on the local loopback address by default.
+Open <http://127.0.0.1:13370> in your browser. The server listens only on the local loopback address by default.
 
 ### 2. Configure the dashboard
 
@@ -180,7 +181,7 @@ CYBER_DASHBOARD_STATIC_DIR=/path/to/static ./cyber-dashboard-server-only
 
 ## Environment variables
 
-- **`CYBER_DASHBOARD_ADDR`** — HTTP listen address. Default: `127.0.0.1:8080`.
+- **`CYBER_DASHBOARD_ADDR`** — HTTP listen address. Default: `127.0.0.1:13370`.
 - **`CYBER_DASHBOARD_TRUSTED_HOST`** — one additional hostname or IP address accepted by the Host and Origin guard for exceptional non-loopback access.
 - **`CYBER_DASHBOARD_DATA_DIR`** — directory containing the database and encryption key. Default: the operating system's user configuration directory.
 - **`CYBER_DASHBOARD_STATIC_DIR`** — frontend directory used only by the server-only executable. Default: `static`.
@@ -206,10 +207,10 @@ CYBER_DASHBOARD_STATIC_DIR=static go run ./cmd/cyber-dashboard-server-only
 
 ### `address already in use`
 
-Another process is using port 8080. Stop that process, or start on another loopback port:
+Another process is using port 13370. Stop that process, or start on another loopback port:
 
 ```sh
-CYBER_DASHBOARD_ADDR=127.0.0.1:8081 ./cyber-dashboard-full
+CYBER_DASHBOARD_ADDR=127.0.0.1:13371 ./cyber-dashboard-full
 ```
 
 ### `Check the AI API`
