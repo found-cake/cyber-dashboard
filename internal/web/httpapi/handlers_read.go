@@ -10,7 +10,10 @@ import (
 
 func (s *Server) bootstrap(c *echo.Context) error {
 	ctx := c.Request().Context()
-	authenticated := s.auth == nil || s.authenticated(c)
+	authenticated, err := s.authenticated(c)
+	if err != nil {
+		return writeAPIError(c, err)
+	}
 	sources := []api.Source{}
 	presets := []api.LLMPresetResponse{}
 	reports, err := s.reports.List(ctx)

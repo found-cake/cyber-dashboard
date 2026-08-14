@@ -163,7 +163,10 @@ func (m *Manager) credential(ctx context.Context) (database.AdminCredential, err
 
 func (m *Manager) verifyVersion(ctx context.Context, version uint64) error {
 	credential, err := m.credential(ctx)
-	if err != nil || credential.TokenVersion != version {
+	if err != nil {
+		return err
+	}
+	if credential.TokenVersion != version {
 		return ErrInvalidToken
 	}
 	return nil

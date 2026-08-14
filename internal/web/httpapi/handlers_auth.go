@@ -20,19 +20,33 @@ const (
 
 func (s *Server) requireAuth(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c *echo.Context) error {
-		if s.auth == nil || s.authenticated(c) {
+		authenticated, err := s.authenticated(c)
+		if err != nil {
+			return writeAPIError(c, err)
+		}
+		if authenticated {
 			return next(c)
 		}
 		return writeAuthenticationRequired(c)
 	}
 }
 
-func (s *Server) authenticated(c *echo.Context) bool {
+func (s *Server) authenticated(c *echo.Context) (bool, error) {
 	if s.auth == nil {
-		return true
+		return true, nil
 	}
 	cookie, err := c.Request().Cookie(accessCookieName)
-	return err == nil && s.auth.VerifyAccess(c.Request().Context(), cookie.Value) == nil
+	if err != nil {
+		return false, nil
+	}
+	err = s.auth.VerifyAccess(c.Request().Context(), cookie.Value)
+	if errors.Is(err, auth.ErrInvalidToken) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func (s *Server) login(c *echo.Context) error {
@@ -79,9 +93,12 @@ func (s *Server) refreshSession(c *echo.Context) error {
 		return writeAuthenticationRequired(c)
 	}
 	pair, err := s.auth.Refresh(c.Request().Context(), cookie.Value)
-	if err != nil {
+	if errors.Is(err, auth.ErrInvalidToken) {
 		s.clearAuthCookies(c)
 		return writeAuthenticationRequired(c)
+	}
+	if err != nil {
+		return writeAPIError(c, err)
 	}
 	s.setAuthCookies(c, pair)
 	return c.JSON(http.StatusOK, api.AuthState{Enabled: true, Authenticated: true})
