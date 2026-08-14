@@ -182,11 +182,11 @@ CYBER_DASHBOARD_STATIC_DIR=/path/to/static ./cyber-dashboard-server-only
 ## Environment variables
 
 - **`CYBER_DASHBOARD_ADDR`** — HTTP listen address. Default: `127.0.0.1:13370`.
-- **`CYBER_DASHBOARD_TRUSTED_HOST`** — one additional hostname or IP address accepted by the Host and Origin guard for exceptional non-loopback access.
+- **`CYBER_DASHBOARD_TRUSTED_HOST`** — one additional hostname or IP address accepted by the Host and Origin guard for exceptional non-loopback access. Set it to `none` only when you explicitly accept weaker Host protection and do not want to configure a trusted hostname.
 - **`CYBER_DASHBOARD_DATA_DIR`** — directory containing the database and encryption key. Default: the operating system's user configuration directory.
 - **`CYBER_DASHBOARD_STATIC_DIR`** — frontend directory used only by the server-only executable. Default: `static`.
 
-If you only need another port, keep the loopback address and change the port, for example `127.0.0.1:8081`. Setting `CYBER_DASHBOARD_ADDR=0.0.0.0:<port>` listens on every network interface and can make the application reachable from other devices. For exceptional access through a hostname, set that single hostname in `CYBER_DASHBOARD_TRUSTED_HOST` before startup. `localhost` and loopback IP addresses are always accepted. Cyber Dashboard does not provide user authentication, so avoid `0.0.0.0` unless it is necessary and never expose the application directly to the public internet.
+If you only need another port, keep the loopback address and change the port, for example `127.0.0.1:8081`. Setting `CYBER_DASHBOARD_ADDR=0.0.0.0:<port>` listens on every network interface and can make the application reachable from other devices. For exceptional access through a hostname, set that single hostname in `CYBER_DASHBOARD_TRUSTED_HOST` before startup. If you set `CYBER_DASHBOARD_TRUSTED_HOST=none`, the application starts in an explicitly unsafe convenience mode: the trusted-host allowlist and DNS-rebinding protection are reduced, and startup logs a warning. Authentication still protects administrative actions, but public read endpoints and network exposure remain your responsibility. `localhost` and loopback IP addresses are always accepted. Never expose this mode directly to the public internet.
 
 ## Build from source
 

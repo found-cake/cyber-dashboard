@@ -38,12 +38,13 @@ func recentCollectionDay() string {
 }
 
 type testServerConfig struct {
-	fetcher         collector.Fetcher
-	nvdAPIKey       string
-	vulnerabilities web.VulnerabilityEnricher
-	now             func() time.Time
-	enableAuth      bool
-	password        *string
+	fetcher             collector.Fetcher
+	nvdAPIKey           string
+	vulnerabilities     web.VulnerabilityEnricher
+	now                 func() time.Time
+	enableAuth          bool
+	password            *string
+	allowUntrustedHosts bool
 }
 
 func newTestServerWithConfig(t *testing.T, config testServerConfig) (*web.Server, *feedstore.Repository, *settings.Repository) {
@@ -91,10 +92,11 @@ func newTestServerWithConfig(t *testing.T, config testServerConfig) (*web.Server
 		Dashboard: dashboard.NewRepository(db), Settings: settingsRepository,
 		Reports: reportRepository, ReportService: report.NewService(reportRepository, summaryService),
 		Summaries: summaryService, Articles: enrichment.NewArticleEnrichmentService(feedRepository, summaryService),
-		Vulnerabilities: config.vulnerabilities,
-		Now:             config.now,
-		TrustedHosts:    []string{"example.com"},
-		Auth:            authManager,
+		Vulnerabilities:     config.vulnerabilities,
+		Now:                 config.now,
+		TrustedHosts:        []string{"example.com"},
+		AllowUntrustedHosts: config.allowUntrustedHosts,
+		Auth:                authManager,
 	})
 	return server, feedRepository, settingsRepository
 }

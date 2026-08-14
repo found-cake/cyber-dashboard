@@ -20,19 +20,20 @@ import (
 )
 
 type Dependencies struct {
-	Assets          fs.FS
-	Feeds           *feedstore.Repository
-	Collector       *collector.Collector
-	Dashboard       *dashboard.Repository
-	Settings        *settings.Repository
-	Reports         *report.Repository
-	ReportService   *report.Service
-	Summaries       *summary.Service
-	Articles        ArticleEnricher
-	Vulnerabilities VulnerabilityEnricher
-	Now             func() time.Time
-	TrustedHosts    []string
-	Auth            *auth.Manager
+	Assets              fs.FS
+	Feeds               *feedstore.Repository
+	Collector           *collector.Collector
+	Dashboard           *dashboard.Repository
+	Settings            *settings.Repository
+	Reports             *report.Repository
+	ReportService       *report.Service
+	Summaries           *summary.Service
+	Articles            ArticleEnricher
+	Vulnerabilities     VulnerabilityEnricher
+	Now                 func() time.Time
+	TrustedHosts        []string
+	AllowUntrustedHosts bool
+	Auth                *auth.Manager
 }
 
 type ArticleEnricher interface {
@@ -64,7 +65,7 @@ type Server struct {
 
 func NewServer(dependencies Dependencies) *Server {
 	e := echo.New()
-	hostGuard := newHostGuard(dependencies.TrustedHosts)
+	hostGuard := newHostGuard(dependencies.TrustedHosts, dependencies.AllowUntrustedHosts)
 	e.Pre(hostGuard.middleware)
 	now := dependencies.Now
 	if now == nil {
