@@ -55,6 +55,9 @@ button:active{transform:translateY(1px)}
 .topbar{position:relative;display:flex;align-items:center;justify-content:space-between;min-width:0;padding:0 var(--space-6);background:var(--card);border-block-end:1px solid var(--cb);z-index:20}
 .topbar-title-row{display:flex;align-items:center;gap:var(--space-3);min-width:0}.topbar-title-row>div{min-width:0}.topbar h1{margin:0;font-size:16px;line-height:1.2;word-break:keep-all}.topbar p{margin:4px 0 0;color:var(--t2);font-size:12px;word-break:keep-all}.topbar-actions{display:flex;align-items:center;flex:none;gap:var(--space-2)}
 .auth-action{min-height:36px;padding-inline:12px;white-space:nowrap}
+/* Sits where the subtitle would; it replaces that line rather than adding one. */
+.topbar-select{max-width:100%;height:40px;padding:0 6px;border:1px solid var(--cb);border-radius:6px;background:var(--fieldbg);color:var(--t2);font-size:12px}
+.topbar-select[hidden]{display:none}
 .menu-button{display:none}.segmented{display:flex;padding:2px;border:1px solid var(--cb);border-radius:9px;background:var(--card)}.segmented button{min-width:40px;height:40px;border:0;border-radius:6px;background:transparent;color:var(--t2);font-size:11px;cursor:pointer}.segmented button.is-selected{background:var(--acc-bg);color:var(--acc-text);font-weight:700}
 .theme-glyph{width:14px;height:14px;border:2px solid currentColor;border-radius:50%;background:linear-gradient(90deg,currentColor 50%,transparent 50%)}[data-theme="light"] .theme-glyph{transform:rotate(180deg)}
 .main-scroll{min-height:0;overflow:auto;padding:var(--space-5) var(--space-6) var(--space-8);background:var(--bg)}
@@ -62,6 +65,17 @@ button:active{transform:translateY(1px)}
 .stats-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.stat-card,.card{border:1px solid var(--cb);border-radius:var(--radius-card);background:var(--card)}
 .stat-card{min-height:84px;padding:14px 16px}.stat-card span{display:block;margin-block-end:7px;color:var(--t2);font-size:11px}.stat-card strong{font-size:24px;line-height:1}.tone-info{color:var(--info)}.tone-danger{color:var(--bad)}.tone-warning{color:var(--warn)}
 .dashboard-grid{display:grid;grid-template-columns:1fr 1fr;gap:var(--space-3)}.card{padding:var(--space-5)}.card-header{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--space-3);margin-block-end:var(--space-4)}
+/* Zero height keeps the 40px+ switch target from making this header taller than the sibling
+   card's, which would knock the two bar charts out of alignment; the control overflows
+   symmetrically into the header's own margin instead. */
+.card-switch{display:flex;align-self:center;align-items:center;flex:none;gap:var(--space-2);height:0;color:var(--t2);font-size:11px;white-space:nowrap}
+/* A switch beside a chart carries its state by knob position alone: the success fill this
+   primitive uses elsewhere would sit at chart saturation and read as another series. The
+   outline keeps the track legible now that both states share one color. */
+.card-switch .toggle::before,.card-switch .toggle[aria-checked="true"]::before{background:var(--divider);box-shadow:inset 0 0 0 1px var(--cb)}
+/* The white knob this primitive uses elsewhere rides on a filled track; against the neutral
+   one it would drop under the 3:1 non-text contrast floor in light mode. */
+.card-switch .toggle::after{background:var(--t2)}
 .card h2{margin:0;color:var(--t1);font-size:14px}.card-subtitle{margin:5px 0 0;color:var(--t2);font-size:11px}.bar-list{display:grid;gap:11px}.bar-row{display:grid;grid-template-columns:minmax(90px,140px) minmax(80px,1fr) 42px;align-items:center;gap:10px;color:var(--t2);font-size:12px}
 .bar-row{position:relative}
 /* LLM labels are unbounded; keep rows single-line and reveal measured overflow. */
@@ -72,6 +86,8 @@ button:active{transform:translateY(1px)}
 .bar-row.is-clipped:hover .bar-reveal,.bar-row.is-clipped:focus-within .bar-reveal{opacity:1;visibility:visible;transition:opacity 160ms ease-out,visibility 0s}
 /* Exclude the ellipsised duplicate from clipboard selection. */
 .bar-row.is-clipped .bar-label{user-select:none}
+/* Dim only the blocks a pending refresh will repaint; the rest of the view stays authoritative. */
+[aria-busy="true"] .stats-grid,[aria-busy="true"] .bar-list{opacity:.55;transition:opacity 160ms ease-out}
 .bar-track{height:7px;overflow:hidden;border-radius:999px;background:var(--divider)}.bar-fill{display:block;height:100%;min-width:0;border-radius:inherit;background:var(--chart-1)}.bar-value{text-align:end;color:var(--t1);font-size:11px;font-weight:700}
 .table-region{max-width:100%;overflow:auto}.data-table{width:100%;border-collapse:collapse;min-width:640px}.data-table th,.data-table td{padding:12px;border-block-end:1px solid var(--divider);text-align:start}.data-table th{color:var(--t2);font-size:10px;letter-spacing:.05em;text-transform:uppercase}.data-table td{font-size:12px}.data-table tbody tr[data-href]{cursor:pointer}.data-table tbody tr[data-href]:hover{background:var(--divider)}
 .mono{font-family:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace}.cve-link{color:var(--acc-text)}.badge{display:inline-flex;align-items:center;min-height:21px;padding:2px 8px;border-radius:5px;background:var(--divider);color:var(--t2);font-size:10px;font-weight:700}.badge-danger{background:var(--bad-bg);color:var(--bad)}.badge-warning{background:var(--warn-bg);color:var(--warn)}.badge-success{background:var(--ok-bg);color:var(--ok)}.badge-info{background:var(--info-bg);color:var(--info)}
