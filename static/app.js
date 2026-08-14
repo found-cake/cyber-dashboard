@@ -732,11 +732,23 @@
       : cveRefreshTask.start();
     if (!request) return;
     request
-      .then(result => api("GET", "/api/dashboard").then(data => ({ data, result })))
-      .done(({ data, result }) => {
-        state.dashboard = data;
-        if (state.view === "cves") renderCVEExplorer();
-        else if (state.view === "dashboard") renderDashboard();
+      .then(result => {
+        const dashboardRequestID = beginDashboardRequest();
+        return api("GET", dashboardPath()).then(
+          data => ({ data, result, dashboardRequestID }),
+          error => ({ error, result, dashboardRequestID })
+        );
+      })
+      .done(({ data, error, result, dashboardRequestID }) => {
+        if (error) {
+          if (dashboardRequestID === dashboardRequest) showRequestError(error);
+          return;
+        }
+        if (dashboardRequestID === dashboardRequest) {
+          state.dashboard = data;
+          if (state.view === "cves") renderCVEExplorer();
+          else if (state.view === "dashboard") renderDashboard();
+        }
         const message = t("cveRefreshDone")(result.updated, result.removed);
         toast(result.warnings?.length ? `${message} ${t("cveRefreshWarned")}` : message, Boolean(result.warnings?.length));
       })
