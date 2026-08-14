@@ -70,8 +70,10 @@ func Run(ctx context.Context, assets fs.FS) (runErr error) {
 		return err
 	}
 	if generated {
+		if _, err := fmt.Fprintf(os.Stderr, "Initial dashboard password: %s\n", initialPassword); err != nil {
+			return fmt.Errorf("print initial dashboard password: %w", err)
+		}
 		slog.Warn("generated initial dashboard password",
-			slog.String("password", initialPassword),
 			slog.String("action", "log in and change it in Settings"))
 	}
 	trustedHosts, allowUntrustedHosts, err := trustedHostsFromEnvironment()
