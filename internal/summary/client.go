@@ -29,8 +29,8 @@ type Request struct {
 	Language string   `json:"language"`
 	Kind     string   `json:"kind"`
 	Facts    []string `json:"facts"`
-	// section marks one slice of a batched summary that a merge pass rewrites afterwards.
-	// It stays unexported so it never reaches the model as part of the fact payload.
+
+	// section selects batch-summary prompting and stays outside the serialized model payload.
 	section bool
 }
 
@@ -55,12 +55,9 @@ type ArticleAnalysis struct {
 	ActorCountry string `json:"actor_country"`
 	TargetSector string `json:"target_sector"`
 	VictimCount  int    `json:"victim_count"`
-	// DamageUSD is the financial damage the article states for the incident, in whole US
-	// dollars, and 0 when it states none. Severity reads it alongside the victim count.
+	// DamageUSD is stated incident damage in whole US dollars, or 0 when absent.
 	DamageUSD int64 `json:"damage_usd"`
-	// PatchAvailable is "yes", "no", or "" when the article does not say. It stays a
-	// three-state value because an unfixed flaw and an article that never mentions a fix
-	// have to pull severity in different directions.
+	// PatchAvailable is "yes", "no", or "" when unspecified; severity distinguishes all three.
 	PatchAvailable string `json:"patch_available"`
 	ZeroDay        bool   `json:"zero_day"`
 }
@@ -208,10 +205,8 @@ func (m attackMethods) String() string {
 	return strings.Join(values, ", ")
 }
 
-// UnmarshalJSON keeps patch_available to the three states severity understands. A field
-// named like a boolean invites one, so a bare true is read as a released fix — but a bare
-// false is read as nothing stated, because a model answering false about an article that
-// never mentioned a fix must not be taken as "there is no fix", which raises severity.
+// UnmarshalJSON normalizes patch_available to yes, no, or unspecified. Bare false means
+// unspecified because absence of a claim is not evidence that no patch exists.
 func (p *patchState) UnmarshalJSON(data []byte) error {
 	var flag bool
 	if err := json.Unmarshal(data, &flag); err == nil {
@@ -237,8 +232,7 @@ func (p *patchState) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// damageScales are the magnitude words models write instead of zeros, longest first so
-// "billion" is matched before the "b" that starts it.
+// damageScales are longest-first so abbreviations cannot preempt full magnitude words.
 var damageScales = []struct {
 	suffix string
 	factor float64
@@ -247,9 +241,7 @@ var damageScales = []struct {
 	{"tn", 1e12}, {"bn", 1e9}, {"t", 1e12}, {"b", 1e9}, {"m", 1e6}, {"k", 1e3},
 }
 
-// UnmarshalJSON accepts the shapes models use for money: a plain number, a float, or prose
-// such as "$1.5 million". Text holding no figure at all, such as "unknown" or "N/A", reads
-// as no stated damage, because one unusable field is not worth discarding the analysis.
+// UnmarshalJSON accepts numeric or prose money values; text without a figure means no stated damage.
 func (d *damageAmount) UnmarshalJSON(data []byte) error {
 	trimmed := strings.TrimSpace(string(data))
 	if trimmed == "null" {

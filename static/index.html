@@ -7,7 +7,7 @@
   <meta name="theme-color" content="#0d1117">
   <title>Cyber Dashboard</title>
   <link rel="icon" href="data:,">
-  <!-- app.js is deferred, so resolve the theme here or light users get a dark flash. Mirrors resolveTheme(). -->
+  <!-- Mirror resolveTheme() before deferred scripts run to prevent a theme flash. -->
   <script>
     (() => {
       const stored = localStorage.getItem("cyber-theme");
@@ -18,6 +18,8 @@
   </script>
   <link rel="stylesheet" href="/styles.css">
   <script defer src="/jquery-4.0.0.min.js"></script>
+  <script defer src="/auth-utils.js"></script>
+  <script defer src="/task-utils.js"></script>
   <script defer src="/collection-task.js"></script>
   <script defer src="/cve-refresh-task.js"></script>
   <script defer src="/export.js"></script>

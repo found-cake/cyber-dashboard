@@ -56,8 +56,7 @@ func recalculateArticleSeverity(ctx context.Context, tx *gorm.DB, articleID int6
 		Sector         string
 		SourceSlug     string
 	}
-	// The vector comes from the CVE holding the highest score, so the adjustment is applied
-	// to the same flaw the score was taken from rather than to whichever CVE sorts first.
+	// Use the vector from the highest-scoring CVE so both values describe the same flaw.
 	err := tx.WithContext(ctx).Raw(`SELECT COALESCE(MAX(c.cvss_score), 0) AS score,
 		COALESCE((SELECT c2.cvss_vector FROM article_cves ac2 JOIN cves c2 ON c2.cve_id = ac2.cve_id
 			WHERE ac2.article_id = a.id ORDER BY c2.cvss_score DESC LIMIT 1), '') AS vector,
@@ -77,11 +76,8 @@ func recalculateArticleSeverity(ctx context.Context, tx *gorm.DB, articleID int6
 	}
 	level := severity.Max(sourceFloor, severity.FromVulnerability(values.Score, values.Vector, values.PatchAvailable),
 		severity.FromContext(values.VictimCount, values.ZeroDay), severity.FromDamage(values.DamageUSD))
-	// What the article reports decides how its measurements are read. An advisory borrows
-	// its whole severity from a CVSS score for a flaw nobody has used yet, which is how a
-	// patch notice ends up ranked beside an encrypted hospital; a real intrusion that named
-	// no number is not therefore harmless. So a non-incident is held below the top band, and
-	// an incident keeps a floor even when the article counts nothing.
+	// Incidents keep a floor and may gain a sector adjustment; non-incidents are capped because
+	// their CVSS score describes potential rather than realized impact.
 	if summary.IsIncidentMethod(values.AttackMethod) {
 		level = severity.Max(level, severity.Medium)
 		if summary.IsHighImpactSector(values.Sector) {

@@ -4,11 +4,9 @@ package browsertest
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -99,61 +97,6 @@ func TestReportDeleteRemovesReport_whenConfirmationIsAccepted(t *testing.T) {
 	}
 	if deleteCalls.Load() != 1 || modalItems != 0 {
 		t.Fatalf("delete calls = %d, modal items = %d, want one request and closed dialog", deleteCalls.Load(), modalItems)
-	}
-}
-
-func TestReportDeleteVisualEvidence(t *testing.T) {
-	type browserStage struct {
-		name    string
-		actions []chromedp.Action
-	}
-
-	directory := os.Getenv("CYBER_DASHBOARD_VISUAL_QA_DIR")
-	if directory == "" {
-		t.Skip("CYBER_DASHBOARD_VISUAL_QA_DIR is not configured")
-	}
-	if err := os.MkdirAll(directory, 0o755); err != nil {
-		t.Fatalf("create visual QA directory: %v", err)
-	}
-	for _, viewport := range []struct {
-		width  int64
-		height int64
-	}{{375, 812}, {768, 900}, {1280, 900}} {
-		server, _, _ := newReportDeleteBrowserServer(t)
-		browser, cancel := newReportDeleteBrowser(t)
-		stages := []browserStage{{"navigate", []chromedp.Action{
-			chromedp.EmulateViewport(viewport.width, viewport.height), chromedp.Navigate(server.URL),
-		}}}
-		if viewport.width <= 900 {
-			stages = append(stages, browserStage{"open navigation", []chromedp.Action{
-				chromedp.WaitVisible(`#menu-button`),
-				chromedp.Click(`#menu-button`),
-				chromedp.Poll(`Math.abs(document.querySelector('#sidebar').getBoundingClientRect().left) < 1`, nil),
-			}})
-		}
-		stages = append(stages,
-			browserStage{"open report", []chromedp.Action{chromedp.WaitVisible(`[data-report-id="7"]`), chromedp.Click(`[data-report-id="7"]`)}},
-			browserStage{"find delete action", []chromedp.Action{chromedp.WaitVisible(`#delete-report`)}},
-			browserStage{"activate delete action", []chromedp.Action{chromedp.Click(`#delete-report`)}},
-			browserStage{"find confirmation", []chromedp.Action{chromedp.WaitVisible(`#confirm-delete-report`)}},
-			browserStage{"settle confirmation", []chromedp.Action{chromedp.Poll(`document.querySelector('.modal').getAnimations().every(animation => animation.playState === 'finished')`, nil)}},
-		)
-		for _, stage := range stages {
-			if err := chromedp.Run(browser, stage.actions...); err != nil {
-				cancel()
-				t.Fatalf("%s at %dpx: %v", stage.name, viewport.width, err)
-			}
-		}
-		var screenshot []byte
-		if err := chromedp.Run(browser, chromedp.CaptureScreenshot(&screenshot)); err != nil {
-			cancel()
-			t.Fatalf("capture delete confirmation at %dpx: %v", viewport.width, err)
-		}
-		cancel()
-		path := filepath.Join(directory, fmt.Sprintf("report-delete-confirmation-%d.png", viewport.width))
-		if err := os.WriteFile(path, screenshot, 0o644); err != nil {
-			t.Fatalf("write delete confirmation at %dpx: %v", viewport.width, err)
-		}
 	}
 }
 

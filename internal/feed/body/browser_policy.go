@@ -16,14 +16,8 @@ import (
 	"github.com/chromedp/chromedp"
 )
 
-// discardedResourceTypes never contribute to the extracted article text, so they are
-// failed at the request stage instead of downloaded. Stylesheets and scripts are kept:
-// CSS decides what innerText sees, and many articles render their body with JS.
-//
-// This blocks at the network layer rather than through Blink settings on purpose. Turning
-// images off in the renderer is a measurable deviation from a real browser and would work
-// against the user-agent and webdriver masking the loader already does; a failed request
-// looks like an ad blocker or a flaky network instead.
+// Block non-text resources at the request stage, but retain CSS and scripts for innerText
+// visibility and client rendering. Network failures also preserve normal browser behavior.
 var discardedResourceTypes = []network.ResourceType{
 	network.ResourceTypeImage,
 	network.ResourceTypeMedia,
@@ -37,8 +31,7 @@ type chromiumDocumentGuard struct {
 	mainFrameID cdp.FrameID
 	violations  chan error
 	enabled     bool
-	// discarded counts requests dropped by discardedResourceTypes, so tests can assert the
-	// bytes were never fetched rather than inferring it from timing.
+	// discarded lets tests verify that blocked resources were never fetched.
 	discarded atomic.Int64
 }
 
@@ -96,8 +89,7 @@ func (g *chromiumDocumentGuard) handleEvent(event any) {
 func (g *chromiumDocumentGuard) resolveRequest(paused *fetch.EventRequestPaused) {
 	ctx := cdp.WithExecutor(g.context, g.executor)
 	if isDiscardedResourceType(paused.ResourceType) {
-		// Not a policy violation: the article simply does not need these bytes, so the
-		// request is dropped without failing the load.
+		// Discarded resources are expected, not policy violations.
 		if err := fetch.FailRequest(paused.RequestID, network.ErrorReasonBlockedByClient).Do(ctx); err == nil {
 			g.discarded.Add(1)
 		}

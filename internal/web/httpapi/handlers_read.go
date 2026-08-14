@@ -51,9 +51,7 @@ func (s *Server) bootstrap(c *echo.Context) error {
 	})
 }
 
-// configuredTime is the current time shifted onto the configured UTC offset, so its
-// calendar date is the "today" the whole application agrees on. Formatting it with
-// time.DateOnly yields that date because the returned time carries the UTC location.
+// configuredTime shifts UTC so DateOnly formatting yields the application's configured today.
 func (s *Server) configuredTime(offsetMinutes int) time.Time {
 	return s.now().UTC().Add(time.Duration(offsetMinutes) * time.Minute)
 }
@@ -63,8 +61,7 @@ func (s *Server) dashboardData(c *echo.Context) error {
 	if err != nil {
 		return writeAPIError(c, err)
 	}
-	// The 30-day window is computed here rather than with SQLite's date('now'), which is
-	// always UTC and would drift a day away from the configured timezone.
+	// Compute the 30-day window here because SQLite date('now') always uses UTC.
 	since := s.configuredTime(appSettings.TimezoneOffsetMinutes).AddDate(0, 0, -29).Format(time.DateOnly)
 	value, err := s.dashboard.Dashboard(c.Request().Context(), since)
 	if err != nil {

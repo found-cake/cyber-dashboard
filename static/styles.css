@@ -64,19 +64,13 @@ button:active{transform:translateY(1px)}
 .dashboard-grid{display:grid;grid-template-columns:1fr 1fr;gap:var(--space-3)}.card{padding:var(--space-5)}.card-header{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--space-3);margin-block-end:var(--space-4)}
 .card h2{margin:0;color:var(--t1);font-size:14px}.card-subtitle{margin:5px 0 0;color:var(--t2);font-size:11px}.bar-list{display:grid;gap:11px}.bar-row{display:grid;grid-template-columns:minmax(90px,140px) minmax(80px,1fr) 42px;align-items:center;gap:10px;color:var(--t2);font-size:12px}
 .bar-row{position:relative}
-/* Attack-method and threat-actor labels come from LLM output, so their length is open
-   ended — one row can be a whole sentence. Rows stay one line tall to keep the chart
-   scannable; whatever does not fit is read from the hover reveal below. */
+/* LLM labels are unbounded; keep rows single-line and reveal measured overflow. */
 .bar-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-/* Only rows JS measured as still clipped get the reveal, so rows that already show their
-   full label do not sprout a redundant tooltip. */
+/* Reveal only labels that JS measured as clipped. */
 .bar-reveal{position:absolute;inset-inline-start:0;inset-block-start:50%;transform:translateY(-50%);z-index:5;width:max-content;max-width:min(420px,100%);padding:6px 9px;border:1px solid var(--acc);border-radius:var(--radius-control);background:var(--card);color:var(--t1);font-size:11px;line-height:1.45;white-space:normal;overflow-wrap:anywhere;opacity:0;visibility:hidden;transition:opacity 160ms ease-out,visibility 0s linear 160ms}
-/* visibility, not opacity alone: a fully transparent reveal is still laid out, so a drag would
-   select the hidden duplicate of every unhovered row. It also keeps pointer events, so the
-   pointer can travel onto the reveal to drag across it without the row losing :hover. */
+/* visibility prevents hidden duplicate selection while preserving pointer travel. */
 .bar-row.is-clipped:hover .bar-reveal,.bar-row.is-clipped:focus-within .bar-reveal{opacity:1;visibility:visible;transition:opacity 160ms ease-out,visibility 0s}
-/* The clipped label holds the same text ellipsised, and both sit inside the row, so leaving it
-   selectable would put a truncated copy in the clipboard ahead of the full one. */
+/* Exclude the ellipsised duplicate from clipboard selection. */
 .bar-row.is-clipped .bar-label{user-select:none}
 .bar-track{height:7px;overflow:hidden;border-radius:999px;background:var(--divider)}.bar-fill{display:block;height:100%;min-width:0;border-radius:inherit;background:var(--chart-1)}.bar-value{text-align:end;color:var(--t1);font-size:11px;font-weight:700}
 .table-region{max-width:100%;overflow:auto}.data-table{width:100%;border-collapse:collapse;min-width:640px}.data-table th,.data-table td{padding:12px;border-block-end:1px solid var(--divider);text-align:start}.data-table th{color:var(--t2);font-size:10px;letter-spacing:.05em;text-transform:uppercase}.data-table td{font-size:12px}.data-table tbody tr[data-href]{cursor:pointer}.data-table tbody tr[data-href]:hover{background:var(--divider)}

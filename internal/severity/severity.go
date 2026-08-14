@@ -27,16 +27,8 @@ func FromCVSS(score float64) Level {
 	}
 }
 
-// FromVulnerability grades a linked CVE from more than its base score. The score says how
-// bad the flaw is once it is reached; the vector and the patch state say how likely reaching
-// it is, and the score alone blurs both — a flaw needing physical access is scored like a
-// remote one, and a flaw with no fix to install like one already patched. Neither adjustment
-// can produce a level on its own: with no scored CVE there is nothing to adjust.
-//
-// An available fix does not lower the result. It once did, and on real collections that ran
-// in one direction only: security writing reports the fix far more often than its absence,
-// so nearly every scored article lost a step and the CRITICAL band emptied out while CVSS 9
-// flaws sat in HIGH.
+// FromVulnerability adjusts a CVSS severity for required footholds and explicitly unavailable
+// patches. Available or unspecified patches do not lower it, and an unknown score stays unknown.
 func FromVulnerability(score float64, vector, patchAvailable string) Level {
 	level := FromCVSS(score)
 	if level == Unknown {
@@ -51,16 +43,13 @@ func FromVulnerability(score float64, vector, patchAvailable string) Level {
 	return level
 }
 
-// Patch states an article can report about the flaw it describes. Only PatchUnavailable
-// moves severity: an article that never mentions a fix is not evidence that none exists.
+// Patch states reported by an article; only an explicitly unavailable patch changes severity.
 const (
 	PatchAvailable   = "yes"
 	PatchUnavailable = "no"
 )
 
-// requiresFoothold reports whether the vector says the attacker must already be somewhere
-// before the flaw is usable: at the machine, or holding administrative rights. CVSS v2
-// spells authentication as Au, so both spellings are read.
+// requiresFoothold detects local, physical, or privileged access, including CVSS v2 Au metrics.
 func requiresFoothold(vector string) bool {
 	for _, metric := range strings.Split(strings.ToUpper(strings.TrimSpace(vector)), "/") {
 		switch strings.TrimSpace(metric) {
@@ -71,8 +60,6 @@ func requiresFoothold(vector string) bool {
 	return false
 }
 
-// shift moves a level by steps without leaving the graded range: an adjustment refines a
-// scored CVE, so it never erases it back to Unknown or past Critical.
 func shift(level Level, steps int) Level {
 	return fromRank(min(max(rank(level)+steps, rank(Low)), rank(Critical)))
 }
@@ -90,10 +77,7 @@ func FromContext(victimCount int, zeroDay bool) Level {
 	}
 }
 
-// FromDamage grades the financial damage an article states for an incident, in US dollars.
-// It is a signal of its own because a theft or an outage cost can be the only measure of an
-// incident an article gives: a drained bridge or a wire-fraud loss often names no victim
-// count and carries no CVE, and would otherwise be graded as if nothing had happened.
+// FromDamage grades stated incident damage in US dollars as an independent severity signal.
 func FromDamage(damageUSD int64) Level {
 	switch {
 	case damageUSD >= 100_000_000:
@@ -109,8 +93,7 @@ func FromDamage(damageUSD int64) Level {
 	}
 }
 
-// Cap holds a level at a ceiling. It exists for articles that report no attack: their CVSS
-// signal describes a flaw someone might exploit, not damage anyone has taken.
+// Cap limits hypothetical CVSS severity for articles that report no actual attack.
 func Cap(level, ceiling Level) Level {
 	if rank(level) > rank(ceiling) {
 		return ceiling
@@ -118,8 +101,7 @@ func Cap(level, ceiling Level) Level {
 	return level
 }
 
-// Raise moves a graded level up one step, for a signal that sharpens an article already
-// carrying severity rather than one that could grade it alone. Unknown stays Unknown.
+// Raise increases a graded severity by one step and leaves Unknown unchanged.
 func Raise(level Level) Level {
 	if level == Unknown {
 		return Unknown

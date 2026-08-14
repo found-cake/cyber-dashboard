@@ -152,9 +152,7 @@
     state.lang = TEXT[language] ? language : state.lang;
     localStorage.setItem("cyber-lang", state.lang);
   }
-  // Escapes for both text and quoted-attribute contexts: interpolated values reach
-  // attributes (title, aria-label, value), and LLM-derived labels or a saved base URL
-  // may contain quotes that would otherwise close the attribute.
+  // Escape text and quoted attributes because LLM and user values may contain quotes.
   const esc = value => String(value == null ? "" : value)
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
@@ -208,17 +206,13 @@
     return new Date(year, month - 1, date);
   }
 
-  // Every "today" in the UI — calendar highlight, retention window, report periods — comes
-  // from the configured UTC offset rather than the device clock, so the app agrees with
-  // itself on which day it is regardless of where the browser runs.
+  // Derive every UI "today" from the configured UTC offset, not the device clock.
   function configuredToday() {
     const offset = Number(state.bootstrap.settings.timezone_offset_minutes) || 0;
     const shifted = new Date(Date.now() + offset * 60000);
     return new Date(shifted.getUTCFullYear(), shifted.getUTCMonth(), shifted.getUTCDate());
   }
 
-  // Anchors the calendar on the configured today. Called once at bootstrap and again
-  // whenever the offset is saved, so a timezone change moves the highlight immediately.
   function applyConfiguredToday() {
     const today = configuredToday();
     if (!state.selectedDay) state.selectedDay = formatDay(today);
@@ -258,48 +252,9 @@
     }).format(parsed) + " UTC";
   }
 
-  function request(method, path, data) {
-    return $.ajax({
-      method,
-      url: path,
-      contentType: data ? "application/json" : undefined,
-      data: data ? JSON.stringify(data) : undefined,
-      dataType: "json"
-    });
-  }
-
-  // Only these three must never retry through a refresh; every other /api/auth route is an
-  // ordinary admin call that should recover like the rest.
-  const refreshExemptPaths = ["/api/auth/login", "/api/auth/refresh", "/api/auth/logout"];
-  let pendingRefresh = null;
-
-  function issueRefresh() {
-    const send = () => Promise.resolve(request("POST", "/api/auth/refresh"));
-    const operation = navigator.locks && typeof navigator.locks.request === "function"
-      ? navigator.locks.request("cyber-dashboard-refresh", send)
-      : send();
-    const deferred = $.Deferred();
-    operation.then(deferred.resolve, deferred.reject);
-    return deferred.promise();
-  }
-
-  function refreshSession() {
-    if (pendingRefresh) return pendingRefresh;
-    // A tab shares one request locally; the origin lock prevents another tab from presenting the
-    // same one-time refresh token concurrently. Browsers without Web Locks keep the local guard.
-    pendingRefresh = issueRefresh();
-    pendingRefresh.always(() => { pendingRefresh = null; });
-    return pendingRefresh;
-  }
-
-  function api(method, path, data) {
-    return request(method, path, data).then(null, error => {
-      const canRefresh = error.status === 401 && !refreshExemptPaths.includes(path) && isAuthenticated();
-      if (!canRefresh) return $.Deferred().reject(error).promise();
-      const retry = () => request(method, path, data);
-      return refreshSession().then(retry, () => resumeAfterLogin(retry, error));
-    });
-  }
+  const { request, api, refreshSession } = window.createAuthTransport({
+    $, locks: navigator.locks, isAuthenticated, onSessionExpired: resumeAfterLogin
+  });
 
   // A refresh that fails mid-request means the session expired under the user. The view stays on
   // screen so nothing they were editing is discarded, and the request waits on the login modal
@@ -515,16 +470,11 @@
     document.title = `${title} · Cyber Dashboard`;
   }
 
-  // The CVE explorer is the only hash-routed view. Leaving it for any other view has to
-  // drop the stale #cves fragment, or a reload routes back to it and the dashboard nav
-  // hands off to a hashchange that no longer has anything to do.
   function clearCVEHash() {
     if (window.location.hash !== "#cves") return;
     window.history.replaceState(null, "", window.location.pathname + window.location.search);
   }
 
-  // Scroll resets when the view identity changes, not on every re-render, so a language
-  // switch or a source-filter change leaves the reader where they were.
   function applyViewScroll(key, offset = 0) {
     if (renderedScrollKey !== key) $("#main-content").scrollTop(offset);
     renderedScrollKey = key;
@@ -536,8 +486,6 @@
     </div>`);
   }
 
-  // Collection emits one toast per warning, so they stack instead of replacing each other;
-  // the oldest are dropped past three to keep the region bounded.
   function toast(message, error = false) {
     const $toast = $("<div>", { class: `toast${error ? " is-error" : ""}`, text: message });
     const $region = $("#toast-region").append($toast);
@@ -613,22 +561,14 @@
     return `<div class="bar-list">${rows.map((row, index) => {
       const width = Math.max(3, Math.round(row.value / max * 100));
       const value = percent ? `${Math.round(row.value / Math.max(total, 1) * 100)}%` : row.value;
-      // The label element keeps the full text so assistive technology reads it whether or not
-      // the visual box clips. bar-reveal carries the copy the hover reveal shows: it is a real
-      // element because generated content cannot be selected or copied, and it is hidden from
-      // assistive technology so the label is not announced twice.
+      // Keep the full label accessible; the selectable visual reveal is aria-hidden to avoid
+      // duplicate announcements.
       return `<div class="bar-row"><span class="bar-label">${esc(row.label)}</span><span class="bar-track"><span class="bar-fill" style="width:${width}%;background:${chartColor(index)}"></span></span><span class="bar-value">${value}</span><span class="bar-reveal" aria-hidden="true">${esc(row.label)}</span></div>`;
     }).join("")}</div>`;
   }
 
-  // CSS cannot tell whether an ellipsised label actually overflowed, so the hover reveal is
-  // switched on per row by measurement — otherwise every row, including the ones already
-  // showing their label in full, would sprout a tooltip.
-  // scrollWidth and clientWidth are rounded to whole pixels, so a label overflowing by less than
-  // a pixel reads as not overflowing at all while its ellipsis is plainly on screen. Box widths
-  // land on fractions constantly once the display scales by a fraction such as 125%, where the
-  // layout grid is 0.8px, so that near miss stops being an edge case. Range rects keep the
-  // fraction, and comparing two rects measured the same way needs no tolerance beyond noise.
+  // Measure each label because CSS cannot report clipping; Range rects preserve fractional
+  // widths that scrollWidth and clientWidth round away.
   function markClippedBarLabels() {
     const range = document.createRange();
     $(".bar-row").each(function () {
@@ -671,9 +611,7 @@
         </section>
       </div>`);
       markClippedBarLabels();
-      // Text metrics can still change after this frame when a font further down the stack is
-      // still loading, and that resizes no box the observer below watches. Measuring again once
-      // the fonts settle costs one pass and keeps rows from being judged on fallback metrics.
+      // Re-measure after fonts load so fallback metrics do not determine clipping.
       if (document.fonts) document.fonts.ready.then(markClippedBarLabels);
       applyViewScroll("dashboard", restoreScroll);
     }).fail(showRequestError);
@@ -720,8 +658,6 @@
       .then(result => api("GET", "/api/dashboard").then(data => ({ data, result })))
       .done(({ data, result }) => {
         state.dashboard = data;
-        // A job resumed after a reload can settle on any view; only refresh what is on screen
-        // instead of dragging the user into the explorer.
         if (state.view === "cves") renderCVEExplorer();
         else if (state.view === "dashboard") renderDashboard();
         const message = t("cveRefreshDone")(result.updated, result.removed);
@@ -1194,8 +1130,7 @@
       state.bootstrap.reports = state.bootstrap.reports.filter(report => report.id !== id);
       state.currentReport = null;
       renderReportList();
-      // The button that opened this dialog lives in the report sheet that is about to be
-      // replaced, so restoring focus to it would strand keyboard users on a detached node.
+      // Do not restore focus to the report control that this deletion detaches.
       modalLastFocus = null;
       closeModal();
       toast(t("reportDeleted"));
@@ -1395,15 +1330,11 @@
     $("#theme-toggle").on("click", () => { state.theme = state.theme === "dark" ? "light" : "dark"; localStorage.setItem("cyber-theme", state.theme); document.documentElement.dataset.theme = state.theme; $("#theme-toggle").attr("aria-pressed", String(state.theme === "light")); });
     $("#menu-button").attr({ "aria-controls": "sidebar", "aria-expanded": "false" }).on("click", () => setDrawer(true));
     $("#drawer-close,#drawer-scrim").on("click", closeDrawer);
-    // Re-measured synchronously: reading scrollWidth flushes pending style and layout, so the
-    // values already reflect the breakpoint that just changed.
     $(window).on("resize", () => {
       closeDrawer();
       markClippedBarLabels();
     });
-    // The observer additionally catches width changes that are not window resizes, such as the
-    // scrollbar appearing. Held in a variable because an observer with no reference of its own
-    // can be collected while its target is still alive.
+    // Observe non-window width changes and retain the observer for its target's lifetime.
     if (typeof ResizeObserver === "function") {
       mainResizeObserver = new ResizeObserver(markClippedBarLabels);
       mainResizeObserver.observe(document.getElementById("main-content"));
