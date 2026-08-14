@@ -34,7 +34,7 @@ func TestDailyHistory_opensStoredDayOutsideCollectionWindow_withoutAllowingRecol
 			return err
 		}),
 		chromedp.Navigate(server.URL),
-		chromedp.WaitVisible(`#calendar-grid`),
+		chromedp.WaitVisible(`.calendar-day.has-data.is-expired`),
 		chromedp.Evaluate(`(() => {
 			const button = document.querySelector('.calendar-day.has-data.is-expired');
 			return { disabled: button?.disabled ?? true, day: button?.dataset.day ?? "" };
