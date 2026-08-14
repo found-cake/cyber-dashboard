@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/found-cake/cyber-dashboard/api"
+	"github.com/found-cake/cyber-dashboard/internal/auth"
 	"github.com/found-cake/cyber-dashboard/internal/dashboard"
 	"github.com/found-cake/cyber-dashboard/internal/database"
 	"github.com/found-cake/cyber-dashboard/internal/feed/collector"
@@ -37,10 +38,13 @@ func recentCollectionDay() string {
 }
 
 type testServerConfig struct {
-	fetcher         collector.Fetcher
-	nvdAPIKey       string
-	vulnerabilities web.VulnerabilityEnricher
-	now             func() time.Time
+	fetcher             collector.Fetcher
+	nvdAPIKey           string
+	vulnerabilities     web.VulnerabilityEnricher
+	now                 func() time.Time
+	enableAuth          bool
+	password            *string
+	allowUntrustedHosts bool
 }
 
 func newTestServerWithConfig(t *testing.T, config testServerConfig) (*web.Server, *feedstore.Repository, *settings.Repository) {
@@ -62,15 +66,37 @@ func newTestServerWithConfig(t *testing.T, config testServerConfig) (*web.Server
 	reportRepository := report.NewRepository(db)
 	summaryService := summary.NewService(settingsRepository)
 	assets := fs.FS(fstest.MapFS{"index.html": {Data: []byte("ok")}})
+	var authManager *auth.Manager
+	if config.enableAuth {
+		sessionStore, sessionErr := auth.OpenSessionStore(context.Background(),
+			filepath.Join(filepath.Dir(databasePath), "dashboard.sessions.db"), config.now)
+		if sessionErr != nil {
+			t.Fatalf("open refresh sessions: %v", sessionErr)
+		}
+		t.Cleanup(func() { _ = sessionStore.Close() })
+		authManager, err = auth.NewManager(db, sessionStore, []byte("0123456789abcdef0123456789abcdef"))
+		if err != nil {
+			t.Fatalf("open authentication: %v", err)
+		}
+		password, _, err := authManager.EnsurePassword(context.Background())
+		if err != nil {
+			t.Fatalf("initialize authentication: %v", err)
+		}
+		if config.password != nil {
+			*config.password = password
+		}
+	}
 	server := web.NewServer(web.Dependencies{
 		Assets: assets, Feeds: feedRepository,
 		Collector: collector.NewCollector(feedRepository, config.fetcher, &stubBodyLoader{}),
 		Dashboard: dashboard.NewRepository(db), Settings: settingsRepository,
 		Reports: reportRepository, ReportService: report.NewService(reportRepository, summaryService),
 		Summaries: summaryService, Articles: enrichment.NewArticleEnrichmentService(feedRepository, summaryService),
-		Vulnerabilities: config.vulnerabilities,
-		Now:             config.now,
-		TrustedHosts:    []string{"example.com"},
+		Vulnerabilities:     config.vulnerabilities,
+		Now:                 config.now,
+		TrustedHosts:        []string{"example.com"},
+		AllowUntrustedHosts: config.allowUntrustedHosts,
+		Auth:                authManager,
 	})
 	return server, feedRepository, settingsRepository
 }

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/found-cake/cyber-dashboard/api"
+	"github.com/found-cake/cyber-dashboard/internal/auth"
 	"github.com/found-cake/cyber-dashboard/internal/collection"
 	"github.com/found-cake/cyber-dashboard/internal/dashboard"
 	"github.com/found-cake/cyber-dashboard/internal/feed/collector"
@@ -19,18 +20,20 @@ import (
 )
 
 type Dependencies struct {
-	Assets          fs.FS
-	Feeds           *feedstore.Repository
-	Collector       *collector.Collector
-	Dashboard       *dashboard.Repository
-	Settings        *settings.Repository
-	Reports         *report.Repository
-	ReportService   *report.Service
-	Summaries       *summary.Service
-	Articles        ArticleEnricher
-	Vulnerabilities VulnerabilityEnricher
-	Now             func() time.Time
-	TrustedHosts    []string
+	Assets              fs.FS
+	Feeds               *feedstore.Repository
+	Collector           *collector.Collector
+	Dashboard           *dashboard.Repository
+	Settings            *settings.Repository
+	Reports             *report.Repository
+	ReportService       *report.Service
+	Summaries           *summary.Service
+	Articles            ArticleEnricher
+	Vulnerabilities     VulnerabilityEnricher
+	Now                 func() time.Time
+	TrustedHosts        []string
+	AllowUntrustedHosts bool
+	Auth                *auth.Manager
 }
 
 type ArticleEnricher interface {
@@ -55,12 +58,14 @@ type Server struct {
 	vulnerabilities VulnerabilityEnricher
 	collections     *collection.Service
 	cveRefreshes    *vulnerability.RefreshJobs
+	auth            *auth.Manager
+	loginLimiter    *loginLimiter
 	now             func() time.Time
 }
 
 func NewServer(dependencies Dependencies) *Server {
 	e := echo.New()
-	hostGuard := newHostGuard(dependencies.TrustedHosts)
+	hostGuard := newHostGuard(dependencies.TrustedHosts, dependencies.AllowUntrustedHosts)
 	e.Pre(hostGuard.middleware)
 	now := dependencies.Now
 	if now == nil {
@@ -74,8 +79,10 @@ func NewServer(dependencies Dependencies) *Server {
 		articles:        dependencies.Articles,
 		vulnerabilities: dependencies.Vulnerabilities,
 		now:             now,
+		auth:            dependencies.Auth,
 	}
 	server.collections = collection.NewService(server.runCollection)
+	server.loginLimiter = newLoginLimiter(now)
 	if dependencies.Vulnerabilities != nil {
 		server.cveRefreshes = vulnerability.NewRefreshJobs(dependencies.Vulnerabilities.RefreshAll)
 	}
@@ -84,22 +91,26 @@ func NewServer(dependencies Dependencies) *Server {
 	})
 	e.GET("/api/bootstrap", server.bootstrap)
 	e.GET("/api/dashboard", server.dashboardData)
-	e.POST("/api/cves/refresh", server.refreshCVEs)
 	e.GET("/api/cves/refresh/:id", server.cveRefreshStatus)
 	e.GET("/api/daily/:day", server.daily)
-	e.POST("/api/collect", server.collect)
 	e.GET("/api/collect/:id", server.collectionStatus)
-	e.DELETE("/api/collect/:id", server.cancelCollection)
-	e.PUT("/api/settings", server.saveSettings)
-	e.PATCH("/api/settings/language", server.updateLanguage)
 	e.GET("/api/reports", server.listReports)
-	e.POST("/api/reports", server.createReport)
-	e.DELETE("/api/reports/:id", server.deleteReport)
-	e.POST("/api/llm/test", server.testLLM)
-	e.GET("/api/llm/presets", server.listLLMPresets)
-	e.POST("/api/llm/presets", server.createLLMPreset)
-	e.PUT("/api/llm/presets/:id", server.updateLLMPreset)
-	e.DELETE("/api/llm/presets/:id", server.deleteLLMPreset)
+	e.POST("/api/auth/login", server.login)
+	e.POST("/api/auth/refresh", server.refreshSession)
+	e.POST("/api/auth/logout", server.logout)
+	e.POST("/api/cves/refresh", server.refreshCVEs, server.requireAuth)
+	e.POST("/api/collect", server.collect, server.requireAuth)
+	e.DELETE("/api/collect/:id", server.cancelCollection, server.requireAuth)
+	e.PUT("/api/settings", server.saveSettings, server.requireAuth)
+	e.PATCH("/api/settings/language", server.updateLanguage, server.requireAuth)
+	e.POST("/api/reports", server.createReport, server.requireAuth)
+	e.DELETE("/api/reports/:id", server.deleteReport, server.requireAuth)
+	e.POST("/api/llm/test", server.testLLM, server.requireAuth)
+	e.GET("/api/llm/presets", server.listLLMPresets, server.requireAuth)
+	e.POST("/api/llm/presets", server.createLLMPreset, server.requireAuth)
+	e.PUT("/api/llm/presets/:id", server.updateLLMPreset, server.requireAuth)
+	e.DELETE("/api/llm/presets/:id", server.deleteLLMPreset, server.requireAuth)
+	e.PUT("/api/auth/password", server.changePassword, server.requireAuth)
 	e.StaticFS("/", dependencies.Assets)
 	return server
 }

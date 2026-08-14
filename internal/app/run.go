@@ -10,8 +10,10 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
+	"github.com/found-cake/cyber-dashboard/internal/auth"
 	"github.com/found-cake/cyber-dashboard/internal/dashboard"
 	"github.com/found-cake/cyber-dashboard/internal/database"
 	feedbody "github.com/found-cake/cyber-dashboard/internal/feed/body"
@@ -48,11 +50,42 @@ func Run(ctx context.Context, assets fs.FS) (runErr error) {
 	if err != nil {
 		return err
 	}
-	trustedHosts, err := trustedHostsFromEnvironment()
+	signingKey, err := auth.LoadOrCreateSigningKey(databasePath + ".jwt.key")
 	if err != nil {
 		return err
 	}
-	if len(trustedHosts) == 0 {
+	sessionStore, err := auth.OpenSessionStore(ctx, filepath.Join(dataDir, "dashboard.sessions.db"), nil)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		runErr = errors.Join(runErr, sessionStore.Close())
+	}()
+	authManager, err := auth.NewManager(db, sessionStore, signingKey)
+	if err != nil {
+		return err
+	}
+	initialPassword, generated, err := authManager.EnsurePassword(ctx)
+	if err != nil {
+		return err
+	}
+	if generated {
+		if _, err := fmt.Fprintf(os.Stderr, "Initial dashboard password: %s\n", initialPassword); err != nil {
+			return fmt.Errorf("print initial dashboard password: %w", err)
+		}
+		slog.Warn("generated initial dashboard password",
+			slog.String("action", "log in and change it in Settings"))
+	}
+	trustedHosts, allowUntrustedHosts, err := trustedHostsFromEnvironment()
+	if err != nil {
+		return err
+	}
+	if allowUntrustedHosts {
+		slog.Warn("trusted host protection disabled",
+			slog.String("address", configuredAddress()),
+			slog.String("environment_variable", "CYBER_DASHBOARD_TRUSTED_HOST=none"),
+			slog.String("security_impact", "host allowlist and DNS rebinding protection are reduced"))
+	} else if len(trustedHosts) == 0 {
 		slog.Warn("dashboard is bound to all interfaces without a trusted host",
 			slog.String("address", configuredAddress()),
 			slog.String("set_environment_variable", "CYBER_DASHBOARD_TRUSTED_HOST"))
@@ -64,17 +97,19 @@ func Run(ctx context.Context, assets fs.FS) (runErr error) {
 	browserBodyLoader := feedbody.NewChromiumBodyLoader(ctx)
 	defer browserBodyLoader.Close()
 	handler := web.NewServer(web.Dependencies{
-		Assets:          assets,
-		Feeds:           feedRepository,
-		Collector:       collector.NewCollector(feedRepository, collector.NewHTTPFetcher(), feedbody.NewArticleBodyLoader(nil, browserBodyLoader)),
-		Dashboard:       dashboard.NewRepository(db),
-		Settings:        settingsRepository,
-		Reports:         reportRepository,
-		ReportService:   report.NewService(reportRepository, summaryService),
-		Summaries:       summaryService,
-		Articles:        enrichment.NewArticleEnrichmentService(feedRepository, summaryService),
-		Vulnerabilities: vulnerabilityService,
-		TrustedHosts:    trustedHosts,
+		Assets:              assets,
+		Feeds:               feedRepository,
+		Collector:           collector.NewCollector(feedRepository, collector.NewHTTPFetcher(), feedbody.NewArticleBodyLoader(nil, browserBodyLoader)),
+		Dashboard:           dashboard.NewRepository(db),
+		Settings:            settingsRepository,
+		Reports:             reportRepository,
+		ReportService:       report.NewService(reportRepository, summaryService),
+		Summaries:           summaryService,
+		Articles:            enrichment.NewArticleEnrichmentService(feedRepository, summaryService),
+		Vulnerabilities:     vulnerabilityService,
+		TrustedHosts:        trustedHosts,
+		AllowUntrustedHosts: allowUntrustedHosts,
+		Auth:                authManager,
 	})
 	return serve(ctx, handler)
 }
@@ -133,12 +168,17 @@ func configuredAddress() string {
 	return "127.0.0.1:13370"
 }
 
-func trustedHostsFromEnvironment() ([]string, error) {
+func trustedHostsFromEnvironment() ([]string, bool, error) {
 	addressHost, _, err := net.SplitHostPort(configuredAddress())
 	if err != nil {
-		return nil, fmt.Errorf("parse dashboard address: %w", err)
+		return nil, false, fmt.Errorf("parse dashboard address: %w", err)
 	}
-	values := []string{addressHost, os.Getenv("CYBER_DASHBOARD_TRUSTED_HOST")}
+	explicitTrustedHost := strings.TrimSpace(os.Getenv("CYBER_DASHBOARD_TRUSTED_HOST"))
+	allowUntrustedHosts := explicitTrustedHost == "none"
+	values := []string{addressHost}
+	if !allowUntrustedHosts {
+		values = append(values, explicitTrustedHost)
+	}
 	hosts := make([]string, 0, len(values))
 	for _, value := range values {
 		if value == "" {
@@ -146,12 +186,12 @@ func trustedHostsFromEnvironment() ([]string, error) {
 		}
 		host, err := web.NormalizeTrustedHost(value)
 		if err != nil {
-			return nil, fmt.Errorf("parse trusted host %q: %w", value, err)
+			return nil, false, fmt.Errorf("parse trusted host %q: %w", value, err)
 		}
 		if ip := net.ParseIP(host); ip != nil && ip.IsUnspecified() {
 			continue
 		}
 		hosts = append(hosts, host)
 	}
-	return hosts, nil
+	return hosts, allowUntrustedHosts, nil
 }

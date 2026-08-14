@@ -11,21 +11,22 @@ import (
 )
 
 type hostGuard struct {
-	trusted map[string]struct{}
+	trusted            map[string]struct{}
+	allowUntrustedHost bool
 }
 
-func newHostGuard(hosts []string) *hostGuard {
+func newHostGuard(hosts []string, allowUntrustedHost bool) *hostGuard {
 	trusted := make(map[string]struct{}, len(hosts))
 	for _, host := range hosts {
 		trusted[strings.ToLower(host)] = struct{}{}
 	}
-	return &hostGuard{trusted: trusted}
+	return &hostGuard{trusted: trusted, allowUntrustedHost: allowUntrustedHost}
 }
 
 func (g *hostGuard) middleware(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c *echo.Context) error {
 		requestHost, err := normalizeTrustedHost(c.Request().Host)
-		if err != nil || !g.allows(requestHost) {
+		if err != nil || requestHost == "" || (!g.allowUntrustedHost && !g.allows(requestHost)) {
 			return rejectUntrustedHost(c)
 		}
 		origin := c.Request().Header.Get("Origin")

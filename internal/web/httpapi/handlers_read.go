@@ -10,10 +10,12 @@ import (
 
 func (s *Server) bootstrap(c *echo.Context) error {
 	ctx := c.Request().Context()
-	sources, err := s.feeds.Sources(ctx)
+	authenticated, err := s.authenticated(c)
 	if err != nil {
 		return writeAPIError(c, err)
 	}
+	sources := []api.Source{}
+	presets := []api.LLMPresetResponse{}
 	reports, err := s.reports.List(ctx)
 	if err != nil {
 		return writeAPIError(c, err)
@@ -26,13 +28,26 @@ func (s *Server) bootstrap(c *echo.Context) error {
 	if err != nil {
 		return writeAPIError(c, err)
 	}
-	presets, err := s.settings.Presets(ctx)
-	if err != nil {
-		return writeAPIError(c, err)
+	settingsValue := api.SettingsResponse{
+		Language: appSettings.Language, Accent: appSettings.Accent,
+		TimezoneOffsetMinutes: appSettings.TimezoneOffsetMinutes,
+	}
+	if authenticated {
+		sources, err = s.feeds.Sources(ctx)
+		if err != nil {
+			return writeAPIError(c, err)
+		}
+		values, err := s.settings.Presets(ctx)
+		if err != nil {
+			return writeAPIError(c, err)
+		}
+		presets = llmPresetResponses(values)
+		settingsValue = settingsResponse(appSettings)
 	}
 	return c.JSON(http.StatusOK, api.Bootstrap{
-		Sources: sources, Reports: reports, Settings: settingsResponse(appSettings),
-		LLMPresets: llmPresetResponses(presets), CollectedDays: days, Collection: s.collections.Active(), CVERefresh: s.activeCVERefresh(),
+		Auth:    api.AuthState{Enabled: s.auth != nil, Authenticated: authenticated},
+		Sources: sources, Reports: reports, Settings: settingsValue,
+		LLMPresets: presets, CollectedDays: days, Collection: s.collections.Active(), CVERefresh: s.activeCVERefresh(),
 	})
 }
 

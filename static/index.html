@@ -49,13 +49,13 @@
       <section class="report-nav" aria-labelledby="report-nav-title">
         <div class="section-kicker-row">
           <span class="section-kicker" id="report-nav-title" data-i18n="reports">Reports</span>
-          <button class="small-button" id="open-report-modal" type="button"><span aria-hidden="true">＋</span> <span data-i18n="newReport">New report</span></button>
+          <button class="small-button" id="open-report-modal" type="button" hidden><span aria-hidden="true">＋</span> <span data-i18n="newReport">New report</span></button>
         </div>
         <div class="report-list" id="report-list"></div>
       </section>
-      <nav class="settings-nav" aria-label="Settings">
-        <button class="nav-item" data-view="settings" type="button">
-          <span class="nav-symbol" aria-hidden="true">S</span><span data-i18n="settings">Settings</span>
+      <nav class="settings-nav" id="settings-navigation" aria-label="Settings">
+        <button class="nav-item" id="settings-action" data-view="settings" type="button" hidden>
+          <span class="nav-symbol" aria-hidden="true">S</span><span class="settings-action-label">Settings</span>
         </button>
       </nav>
     </aside>
@@ -70,6 +70,7 @@
           </div>
         </div>
         <div class="topbar-actions">
+          <button class="secondary-button auth-action" id="auth-action" type="button" data-i18n="logout" hidden>Log out</button>
           <button class="icon-button theme-toggle" id="theme-toggle" type="button" aria-label="Toggle theme" aria-pressed="false">
             <span class="theme-glyph" aria-hidden="true"></span>
           </button>

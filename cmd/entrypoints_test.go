@@ -50,7 +50,7 @@ func TestDiskEntrypointServesFrontend_whenStaticDirectoryIsConfigured(t *testing
 	assertResponseContains(t, baseURL+"/legal/THIRD_PARTY_NOTICES.txt", "github.com/openai/openai-go/v3")
 }
 
-func TestEmbeddedEntrypointUsesGlobalDefaults_whenFreshProfileStarts(t *testing.T) {
+func TestEmbeddedEntrypointKeepsSettingsPrivate_whenFreshProfileStarts(t *testing.T) {
 	// Given the distribution command with a fresh data directory and no saved browser state.
 	baseURL := startEntrypoint(t, "./cmd/cyber-dashboard-full", nil)
 
@@ -66,19 +66,12 @@ func TestEmbeddedEntrypointUsesGlobalDefaults_whenFreshProfileStarts(t *testing.
 		t.Fatalf("decode bootstrap: %v", err)
 	}
 
-	// Then English and globally useful publishers are selected by default.
+	// Then the public display language is available without exposing administrator settings.
 	if response.StatusCode != http.StatusOK || bootstrap.Settings.Language != "en" {
 		t.Fatalf("bootstrap status/language = %d/%q, want 200/en", response.StatusCode, bootstrap.Settings.Language)
 	}
-	states := make(map[string]bool, len(bootstrap.Sources))
-	for _, source := range bootstrap.Sources {
-		states[source.Slug] = source.Enabled
-	}
-	if states["boannews"] {
-		t.Fatal("BoanNews is enabled, want disabled")
-	}
-	if !states["bleepingcomputer"] {
-		t.Fatal("BleepingComputer is disabled, want enabled")
+	if !bootstrap.Auth.Enabled || bootstrap.Auth.Authenticated || len(bootstrap.Sources) != 0 || len(bootstrap.LLMPresets) != 0 {
+		t.Fatalf("public bootstrap exposed administrator settings: %+v", bootstrap)
 	}
 }
 
