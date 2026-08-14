@@ -56,14 +56,22 @@ func (s *Server) configuredTime(offsetMinutes int) time.Time {
 	return s.now().UTC().Add(time.Duration(offsetMinutes) * time.Minute)
 }
 
+// dashboardWindows are the aggregation ranges the dashboard offers; an absent value keeps
+// the original 30-day default.
+var dashboardWindows = map[string]int{"": 30, "7": 7, "30": 30}
+
 func (s *Server) dashboardData(c *echo.Context) error {
+	days, allowed := dashboardWindows[c.QueryParam("days")]
+	if !allowed {
+		return writeBadRequest(c, "days must be 7 or 30")
+	}
 	appSettings, err := s.settings.Get(c.Request().Context())
 	if err != nil {
 		return writeAPIError(c, err)
 	}
-	// Compute the 30-day window here because SQLite date('now') always uses UTC.
-	since := s.configuredTime(appSettings.TimezoneOffsetMinutes).AddDate(0, 0, -29).Format(time.DateOnly)
-	value, err := s.dashboard.Dashboard(c.Request().Context(), since)
+	// Compute the window here because SQLite date('now') always uses UTC.
+	since := s.configuredTime(appSettings.TimezoneOffsetMinutes).AddDate(0, 0, -(days - 1)).Format(time.DateOnly)
+	value, err := s.dashboard.Dashboard(c.Request().Context(), since, c.QueryParam("hide_none") == "1")
 	if err != nil {
 		return writeAPIError(c, err)
 	}
