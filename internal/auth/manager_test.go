@@ -61,7 +61,7 @@ func TestManagerPasswordLifecycleAndJWTExpiry(t *testing.T) {
 		t.Fatalf("access token after manager restart: %v", err)
 	}
 	manager = restartedManager
-	now = now.Add(31 * time.Minute)
+	now = now.Add(15*time.Minute + time.Second)
 	if err := manager.VerifyAccess(ctx, pair.AccessToken); !errors.Is(err, ErrInvalidToken) {
 		t.Fatalf("expired access token error = %v", err)
 	}
@@ -83,8 +83,15 @@ func TestManagerPasswordLifecycleAndJWTExpiry(t *testing.T) {
 	if err := manager.VerifyAccess(ctx, refreshed.AccessToken); !errors.Is(err, ErrInvalidToken) {
 		t.Fatalf("old token after password change error = %v", err)
 	}
+	if _, err := manager.Refresh(ctx, refreshed.RefreshToken); !errors.Is(err, ErrInvalidToken) {
+		t.Fatalf("old refresh token after password change error = %v", err)
+	}
 	if err := manager.VerifyAccess(ctx, changed.AccessToken); err != nil {
 		t.Fatalf("new access token: %v", err)
+	}
+	changed, err = manager.Refresh(ctx, changed.RefreshToken)
+	if err != nil {
+		t.Fatalf("new refresh token: %v", err)
 	}
 	if _, err := manager.Login(ctx, password); !errors.Is(err, ErrInvalidCredentials) {
 		t.Fatalf("old password login error = %v", err)

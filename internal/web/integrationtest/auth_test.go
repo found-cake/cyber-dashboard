@@ -72,7 +72,7 @@ func TestAuthenticationBoundaryAndJWTCookies(t *testing.T) {
 		t.Fatalf("authenticated bootstrap is incomplete: %+v", bootstrap)
 	}
 
-	currentTime = currentTime.Add(31 * time.Minute)
+	currentTime = currentTime.Add(15*time.Minute + time.Second)
 	expired := performRequestWithCookies(t, server, http.MethodPost, "/api/cves/refresh", nil, cookies)
 	if expired.Code != http.StatusUnauthorized {
 		t.Fatalf("expired access status = %d", expired.Code)

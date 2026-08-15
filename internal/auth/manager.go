@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	AccessLifetime  = 30 * time.Minute
+	AccessLifetime  = 15 * time.Minute
 	RefreshLifetime = 3 * 24 * time.Hour
 	tokenIssuer     = "cyber-dashboard"
 	tokenAudience   = "cyber-dashboard-web"

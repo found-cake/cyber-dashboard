@@ -161,7 +161,7 @@ Cyber Dashboard is local-first:
 - Articles, CVEs, reports, presets, and settings are stored in a local SQLite database.
 - NVD and LLM API keys are encrypted at rest with AES-256-GCM using a locally generated key file.
 - Saved API keys are never returned to the settings page. Leave a key field blank to keep the existing value.
-- Administrator sessions use HttpOnly, SameSite cookies; access and refresh tokens are never stored in browser storage.
+- Administrator sessions use HttpOnly, SameSite cookies; access and refresh tokens are never stored in browser storage. Changing the administrator password invalidates all previously issued tokens.
 - Theme, dashboard-range, and threat-actor filter preferences stay only in browser `localStorage`; the theme initially follows the system setting.
 - The server binds to `127.0.0.1` unless you explicitly change the address.
 
