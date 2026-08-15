@@ -203,6 +203,35 @@ go run ./cmd/cyber-dashboard-full
 CYBER_DASHBOARD_STATIC_DIR=static go run ./cmd/cyber-dashboard-server-only
 ```
 
+### 개발 테스트
+
+Git에서 제외되는 테스트용 라이선스 파일을 생성한 뒤 저장소 루트에서 기본 Go 및 프론트엔드 테스트를 실행합니다.
+
+```sh
+go generate ./generator/license
+go test -race -shuffle=on -count=1 ./...
+node --test test_static/*.test.js
+```
+
+브라우저 테스트에는 Chrome 또는 Chromium이 필요하며 기본 Go 테스트에서는 제외됩니다. 프론트엔드를 변경했다면 대시보드 UI 테스트를 실행하세요.
+
+```sh
+go test -count=1 -tags=browser ./internal/web/browsertest
+```
+
+브라우저 기반 기사 로더 테스트까지 포함하려면 다음 명령을 사용합니다.
+
+```sh
+go test -race -shuffle=on -count=1 -tags=browser ./internal/feed/... ./internal/web/...
+```
+
+Chromedp는 일반적인 설치 위치에서 브라우저를 자동으로 찾습니다. 설치 위치가 다르면 대시보드 UI 테스트에는 `CYBER_DASHBOARD_BROWSER_PATH`를 지정하고, 전체 기사 로더 테스트를 실행할 때는 브라우저 디렉터리를 `PATH`에 추가하세요. 시각적 QA 결과물은 선택 사항입니다. PDF 증거 생성까지 포함하려면 `CYBER_DASHBOARD_VISUAL_QA_DIR`을 설정하고 `visualqa` 태그를 추가합니다.
+
+```sh
+CYBER_DASHBOARD_BROWSER_PATH=/path/to/chrome go test -count=1 -tags=browser ./internal/web/browsertest
+CYBER_DASHBOARD_VISUAL_QA_DIR=/path/to/output go test -count=1 -tags='browser visualqa' ./internal/web/browsertest
+```
+
 ## 문제 해결
 
 ### `address already in use`

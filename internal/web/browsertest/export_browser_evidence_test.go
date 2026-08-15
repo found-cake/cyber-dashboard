@@ -1,4 +1,4 @@
-//go:build browser
+//go:build browser && visualqa
 
 package browsertest
 
@@ -35,8 +35,7 @@ func writePDFEvidence(t *testing.T, markup, outputPath string) {
 		_, _ = writer.Write([]byte(markup))
 	}))
 	t.Cleanup(documentServer.Close)
-	browserContext, cancel := newExportBrowser(t)
-	defer cancel()
+	browserContext := newExportBrowser(t)
 
 	var document []byte
 	if err := chromedp.Run(browserContext,

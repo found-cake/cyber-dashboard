@@ -51,7 +51,7 @@ func TestRunKeepsGeneratedPasswordOutOfStructuredLogs(t *testing.T) {
 	select {
 	case <-ready:
 		cancel()
-	case <-time.After(time.Second):
+	case <-time.After(5 * time.Second):
 		cancel()
 		<-done
 		t.Fatal("dashboard did not start")

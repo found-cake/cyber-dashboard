@@ -19,10 +19,7 @@ const historicalDay = "2026-08-01"
 
 func TestDailyHistory_opensStoredDayOutsideCollectionWindow_withoutAllowingRecollection(t *testing.T) {
 	server := newDailyHistoryServer(t)
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	t.Cleanup(cancel)
-	browser, browserCancel := chromedp.NewContext(ctx)
-	t.Cleanup(browserCancel)
+	browser := newBrowserContext(t, 20*time.Second)
 
 	var calendarState struct {
 		Disabled bool   `json:"disabled"`
@@ -34,7 +31,7 @@ func TestDailyHistory_opensStoredDayOutsideCollectionWindow_withoutAllowingRecol
 			return err
 		}),
 		chromedp.Navigate(server.URL),
-		chromedp.WaitVisible(`#calendar-grid`),
+		chromedp.WaitVisible(`.calendar-day.has-data.is-expired`),
 		chromedp.Evaluate(`(() => {
 			const button = document.querySelector('.calendar-day.has-data.is-expired');
 			return { disabled: button?.disabled ?? true, day: button?.dataset.day ?? "" };
