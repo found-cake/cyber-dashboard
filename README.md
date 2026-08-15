@@ -9,8 +9,8 @@ It runs locally, stores its data in SQLite, and is available as a single executa
 [Download the latest release](https://github.com/found-cake/cyber-dashboard/releases/latest) · [Report an issue](https://github.com/found-cake/cyber-dashboard/issues) · [MIT License](LICENSE)
 
 <div align="center">
-  <img src="assets/dashboard_white.webp" alt="Cyber Dashboard in the light theme" width="49%">
-  <img src="assets/dashboard.webp" alt="Cyber Dashboard in the dark theme" width="49%">
+  <img src="assets/dashboard_white.webp" alt="Cyber Dashboard trends in the light theme" width="49%">
+  <img src="assets/dashboard.webp" alt="Cyber Dashboard trends in the dark theme" width="49%">
 </div>
 
 ## What you can do
@@ -20,9 +20,11 @@ It runs locally, stores its data in SQLite, and is available as a single executa
 - Filter a collected day by news source or recollect it when needed.
 - Track recently mentioned CVEs, CVSS scores, affected products, first-seen dates, and mention counts.
 - Explore every collected CVE ranked by `CVSS + mentions × 0.2`.
-- Review threat-category and threat-actor distributions across the dashboard period.
+- Compare collection, severity, and threat-attribution trends across selectable 7-day, 30-day, and 90-day dashboard periods.
+- Review threat-category and threat-actor distributions, with an option to exclude unattributed actors.
 - Generate and keep weekly or monthly reports in English or Korean.
 - Save reports and daily summaries through an A4 PDF print view.
+- Protect collection, settings, CVE refreshes, and report changes behind an administrator login while keeping read-only views public.
 - Connect cloud-hosted or local models through an OpenAI Chat Completions-compatible API.
 - Save multiple LLM presets when different servers use different endpoints or API keys.
 - Select collection sources, report timezone, language, and light or dark appearance.
@@ -69,7 +71,15 @@ On Windows, run the downloaded `.exe` file.
 
 Open <http://127.0.0.1:13370> in your browser. The server listens only on the local loopback address by default.
 
-### 2. Configure the dashboard
+On the first run, the terminal prints `Initial dashboard password: <generated password>`. Save it so you can sign in; the generated password is only displayed once.
+
+### 2. Log in and change the initial password
+
+The dashboard, daily briefings, CVEs, and saved reports remain readable while logged out. Select **Log in** to use administrative actions such as collection, CVE refresh, settings changes, and report creation or deletion. After signing in with the generated password, open **Settings** and replace it under **Change password**.
+
+![Administrator login](assets/login.webp)
+
+### 3. Configure the dashboard
 
 Open **Settings**, then:
 
@@ -96,7 +106,7 @@ Cyber Dashboard appends `/chat/completions` when it sends a request.
 
 ![OpenAI-compatible LLM and timezone settings](assets/setting_2.webp)
 
-### 3. Daily collection
+### 4. Daily collection
 
 Select a date in the calendar and start collection. The selectable feed window covers the most recent 10 days according to the configured timezone.
 
@@ -104,7 +114,7 @@ Collection may take several minutes because the application can load full articl
 
 ![Daily threat-intelligence feed with an AI-generated summary](assets/daily.webp)
 
-### 4. Generate reports
+### 5. Generate reports
 
 Select **New** beside Reports, choose a weekly or monthly period, and generate the report. Reports use the language and timezone saved in Settings at generation time. Deleting a report requires confirmation.
 
@@ -151,7 +161,8 @@ Cyber Dashboard is local-first:
 - Articles, CVEs, reports, presets, and settings are stored in a local SQLite database.
 - NVD and LLM API keys are encrypted at rest with AES-256-GCM using a locally generated key file.
 - Saved API keys are never returned to the settings page. Leave a key field blank to keep the existing value.
-- The theme preference stays only in browser `localStorage` and defaults to the system theme.
+- Administrator sessions use HttpOnly, SameSite cookies; access and refresh tokens are never stored in browser storage.
+- Theme, dashboard-range, and threat-actor filter preferences stay only in browser `localStorage`; the theme initially follows the system setting.
 - The server binds to `127.0.0.1` unless you explicitly change the address.
 
 The default data directory is the operating system's user configuration directory:
