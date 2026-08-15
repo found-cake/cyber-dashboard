@@ -6,6 +6,8 @@
   --warn:#e3b341;--warn-bg:rgba(227,179,65,.12);--info:#58a6ff;--info-bg:rgba(88,166,255,.12);
   --divider:rgba(255,255,255,.06);--fieldbg:#0d1117;--chart-1:#58a6ff;--chart-2:#f85149;
   --chart-3:#e3b341;--chart-4:#3fb950;--chart-5:#9da7b3;
+  /* A lighter step of the status hues; the text-grade ones read as heavy blocks at bar size. */
+  --fill-bad:#ff7b72;--fill-warn:#eac54f;--fill-ok:#56d364;--fill-info:#79c0ff;--fill-muted:#b1bac4;
   --space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:20px;--space-6:24px;--space-8:32px;
   --radius-card:12px;--radius-control:8px;--sidebar-width:280px;--header-height:68px;
 }
@@ -15,6 +17,8 @@
   --ok:#1a7f37;--ok-bg:rgba(26,127,55,.1);--bad:#a40e26;--bad-bg:rgba(209,36,47,.1);--bad-strong:#a40e26;
   --warn:#9a6700;--warn-bg:rgba(154,103,0,.1);--info:#0550ae;--info-bg:rgba(9,105,218,.1);
   --divider:#d0d7de;--fieldbg:#f6f8fa;--chart-1:#0969da;--chart-2:#d1242f;--chart-3:#9a6700;--chart-4:#1a7f37;--chart-5:#57606a;
+  /* Lightened only to 3:1 on the white card; a bar edge that fades into it is worse. */
+  --fill-bad:#e5534b;--fill-warn:#bf8700;--fill-ok:#2da44e;--fill-info:#218bff;--fill-muted:#8c959f;
 }
 html[data-theme="dark"]{color-scheme:dark}html[data-theme="light"]{color-scheme:light}
 *,*::before,*::after{box-sizing:border-box}
@@ -55,8 +59,12 @@ button:active{transform:translateY(1px)}
 .topbar{position:relative;display:flex;align-items:center;justify-content:space-between;min-width:0;padding:0 var(--space-6);background:var(--card);border-block-end:1px solid var(--cb);z-index:20}
 .topbar-title-row{display:flex;align-items:center;gap:var(--space-3);min-width:0}.topbar-title-row>div{min-width:0}.topbar h1{margin:0;font-size:16px;line-height:1.2;word-break:keep-all}.topbar p{margin:4px 0 0;color:var(--t2);font-size:12px;word-break:keep-all}.topbar-actions{display:flex;align-items:center;flex:none;gap:var(--space-2)}
 .auth-action{min-height:36px;padding-inline:12px;white-space:nowrap}
-/* Sits where the subtitle would; it replaces that line rather than adding one. */
-.topbar-select{max-width:100%;height:40px;padding:0 6px;border:1px solid var(--cb);border-radius:6px;background:var(--fieldbg);color:var(--t2);font-size:12px}
+/* Replaces the subtitle; the small box keeps the title's weight, the select its full target. */
+.topbar-range{display:inline-flex;align-items:center;min-width:0;max-width:100%;height:22px;margin-block-start:3px;border:1px solid var(--cb);border-radius:6px;background:var(--fieldbg)}
+.topbar-range:has(select[hidden]){display:none}
+.topbar-range:has(select:focus-visible){outline:2px solid var(--acc);outline-offset:2px}
+.topbar-select{min-width:0;max-width:100%;height:40px;margin-block:-9px;padding:0 7px;border:0;background:transparent;color:var(--t2);font-size:11px;text-overflow:ellipsis}
+.topbar-select:focus-visible{outline:0}
 .topbar-select[hidden]{display:none}
 .menu-button{display:none}.segmented{display:flex;padding:2px;border:1px solid var(--cb);border-radius:9px;background:var(--card)}.segmented button{min-width:40px;height:40px;border:0;border-radius:6px;background:transparent;color:var(--t2);font-size:11px;cursor:pointer}.segmented button.is-selected{background:var(--acc-bg);color:var(--acc-text);font-weight:700}
 .theme-glyph{width:14px;height:14px;border:2px solid currentColor;border-radius:50%;background:linear-gradient(90deg,currentColor 50%,transparent 50%)}[data-theme="light"] .theme-glyph{transform:rotate(180deg)}
@@ -65,16 +73,11 @@ button:active{transform:translateY(1px)}
 .stats-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.stat-card,.card{border:1px solid var(--cb);border-radius:var(--radius-card);background:var(--card)}
 .stat-card{min-height:84px;padding:14px 16px}.stat-card span{display:block;margin-block-end:7px;color:var(--t2);font-size:11px}.stat-card strong{font-size:24px;line-height:1}.tone-info{color:var(--info)}.tone-danger{color:var(--bad)}.tone-warning{color:var(--warn)}
 .dashboard-grid{display:grid;grid-template-columns:1fr 1fr;gap:var(--space-3)}.card{padding:var(--space-5)}.card-header{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--space-3);margin-block-end:var(--space-4)}
-/* Zero height keeps the 40px+ switch target from making this header taller than the sibling
-   card's, which would knock the two bar charts out of alignment; the control overflows
-   symmetrically into the header's own margin instead. */
+/* Zero height keeps the switch target from heightening this header past its sibling card's. */
 .card-switch{display:flex;align-self:center;align-items:center;flex:none;gap:var(--space-2);height:0;color:var(--t2);font-size:11px;white-space:nowrap}
-/* A switch beside a chart carries its state by knob position alone: the success fill this
-   primitive uses elsewhere would sit at chart saturation and read as another series. The
-   outline keeps the track legible now that both states share one color. */
+/* State by knob position alone; the usual success fill would read as another chart series. */
 .card-switch .toggle::before,.card-switch .toggle[aria-checked="true"]::before{background:var(--divider);box-shadow:inset 0 0 0 1px var(--cb)}
-/* The white knob this primitive uses elsewhere rides on a filled track; against the neutral
-   one it would drop under the 3:1 non-text contrast floor in light mode. */
+/* The usual white knob drops under 3:1 against a neutral track in light mode. */
 .card-switch .toggle::after{background:var(--t2)}
 .card h2{margin:0;color:var(--t1);font-size:14px}.card-subtitle{margin:5px 0 0;color:var(--t2);font-size:11px}.bar-list{display:grid;gap:11px}.bar-row{display:grid;grid-template-columns:minmax(90px,140px) minmax(80px,1fr) 42px;align-items:center;gap:10px;color:var(--t2);font-size:12px}
 .bar-row{position:relative}
@@ -87,7 +90,27 @@ button:active{transform:translateY(1px)}
 /* Exclude the ellipsised duplicate from clipboard selection. */
 .bar-row.is-clipped .bar-label{user-select:none}
 /* Dim only the blocks a pending refresh will repaint; the rest of the view stays authoritative. */
-[aria-busy="true"] .stats-grid,[aria-busy="true"] .bar-list{opacity:.55;transition:opacity 160ms ease-out}
+[aria-busy="true"] .stats-grid,[aria-busy="true"] .bar-list,[aria-busy="true"] .chart{opacity:.55;transition:opacity 160ms ease-out}
+.chart{position:relative;display:grid;gap:var(--space-3)}
+/* The viewBox scales with the card, so one drawing serves every breakpoint. */
+.chart svg{display:block;width:100%;height:auto;overflow:visible}
+.trend-grid line{stroke:var(--divider);stroke-width:1}
+.trend-axis{fill:var(--t3);font-size:13px;font-family:Inter,"Noto Sans KR",sans-serif}
+.trend-slot{fill:transparent}
+.trend-targets{position:absolute;inset-block-start:0;inset-inline-start:0;width:100%;aspect-ratio:360/172;pointer-events:none}
+.trend-bucket{position:absolute;padding:0;border:0;background:transparent;outline:0;cursor:default;pointer-events:auto}
+.trend-bucket:hover{outline:1px solid var(--divider);outline-offset:-1px}
+.trend-bucket:focus-visible{outline:2px solid var(--acc);outline-offset:-2px}
+/* Panel rather than a native title: it carries the exact figures without the OS tooltip delay. */
+.chart-tip{position:absolute;z-index:5;display:grid;gap:5px;min-width:132px;padding:8px 12px;border:1px solid var(--cb);border-radius:var(--radius-control);background:var(--fieldbg);color:var(--t1);font-size:11px;pointer-events:none}
+.chart-tip[hidden]{display:none}
+.chart-tip strong{color:var(--t3);font-size:11px;letter-spacing:.03em}
+.chart-tip span{display:flex;align-items:center;gap:7px;color:var(--t2)}
+.chart-tip b{margin-inline-start:auto;color:var(--t1);font-variant-numeric:tabular-nums}
+.chart-legend{display:flex;flex-wrap:wrap;gap:var(--space-2) var(--space-4);color:var(--t2);font-size:11px}
+.chart-legend span{display:inline-flex;align-items:center;gap:6px}
+.legend-swatch{width:9px;height:9px;border-radius:2px}
+.legend-line{width:13px;height:2px;border-radius:2px}
 .bar-track{height:7px;overflow:hidden;border-radius:999px;background:var(--divider)}.bar-fill{display:block;height:100%;min-width:0;border-radius:inherit;background:var(--chart-1)}.bar-value{text-align:end;color:var(--t1);font-size:11px;font-weight:700}
 .table-region{max-width:100%;overflow:auto}.data-table{width:100%;border-collapse:collapse;min-width:640px}.data-table th,.data-table td{padding:12px;border-block-end:1px solid var(--divider);text-align:start}.data-table th{color:var(--t2);font-size:10px;letter-spacing:.05em;text-transform:uppercase}.data-table td{font-size:12px}.data-table tbody tr[data-href]{cursor:pointer}.data-table tbody tr[data-href]:hover{background:var(--divider)}
 .mono{font-family:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace}.cve-link{color:var(--acc-text)}.badge{display:inline-flex;align-items:center;min-height:21px;padding:2px 8px;border-radius:5px;background:var(--divider);color:var(--t2);font-size:10px;font-weight:700}.badge-danger{background:var(--bad-bg);color:var(--bad)}.badge-warning{background:var(--warn-bg);color:var(--warn)}.badge-success{background:var(--ok-bg);color:var(--ok)}.badge-info{background:var(--info-bg);color:var(--info)}
@@ -114,6 +137,7 @@ button:active{transform:translateY(1px)}
 @keyframes skeleton{to{transform:translateX(100%)}}
 @media (max-width:900px){.app-shell{grid-template-columns:minmax(0,1fr)}.sidebar{position:fixed;inset-block:0;inset-inline-start:0;width:min(308px,86vw);transform:translateX(-100%);transition:transform 160ms ease-out}.app-shell.is-drawer-open .sidebar{transform:translateX(0)}.brand-row .drawer-close,.menu-button{display:grid}.drawer-scrim{position:fixed;inset:0;z-index:25;border:0;background:rgba(0,0,0,.55)}.app-shell.is-drawer-open .drawer-scrim{display:block}.topbar{padding-inline:var(--space-4)}.topbar .icon-button{width:44px;height:44px}.topbar .segmented button{min-width:44px;height:40px}.calendar-day{width:40px;height:40px}.settings-save-bar{inset-inline-start:50%;width:min(720px,calc(100vw - 32px))}.cve-scroll-hint{display:block}}
 @media (max-width:720px){.main-scroll{padding:var(--space-4)}.stats-grid,.report-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.dashboard-grid,.field-grid,.showcase-grid{grid-template-columns:1fr}.topbar p{max-width:32vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.bar-row{grid-template-columns:minmax(0,1fr) auto;row-gap:7px}.bar-label{grid-row:1;grid-column:1}.bar-value{grid-row:1;grid-column:2}.bar-track{grid-row:2;grid-column:1/-1}.source-row{grid-template-columns:8px minmax(0,1fr) auto auto}.source-row>.badge{min-width:48px;padding-inline:6px}.card{padding:var(--space-4)}.showcase-page{padding:var(--space-4)}.data-table{min-width:0}.data-table thead{display:none}.data-table,.data-table tbody,.data-table tr,.data-table td{display:block;width:100%}.data-table tbody{display:grid;gap:var(--space-2)}.data-table tbody tr{padding:10px 12px;border:1px solid var(--divider);border-radius:var(--radius-control)}.data-table tbody td{display:grid;grid-template-columns:100px minmax(0,1fr);gap:var(--space-2);padding:6px 0;border:0;overflow-wrap:anywhere}.data-table tbody td>.badge{justify-self:start}.data-table tbody td::before{content:attr(data-label);color:var(--t3);font-family:Inter,"Noto Sans KR",sans-serif;font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase}.card-header>a{white-space:nowrap}}
+@media (max-width:720px){.trend-label-skip .trend-axis{display:none}}
 @media (max-width:720px){.cve-scroll-hint{display:none}.cve-page-table .data-table{min-width:0}}
 @media (max-width:720px){.topbar-title-row{flex:1;min-width:0}.topbar-title-row>div{overflow:hidden}.topbar p{max-width:100%;overflow:hidden;text-overflow:ellipsis;font-size:10px;line-height:1.25;white-space:nowrap}.card-subtitle,.brief-body,.source-row small{word-break:keep-all}}
 @media (max-width:420px){.topbar-actions{gap:4px}.stats-grid{gap:var(--space-2)}.stat-card{padding:12px}.stat-card strong{font-size:20px}.daily-toolbar,.settings-save-bar,.cve-page-summary,.settings-legal-card,.report-sheet-header{align-items:stretch;flex-direction:column}.daily-actions{align-items:stretch;flex-direction:column}.report-sheet-actions{align-items:center;justify-content:space-between;flex-direction:row;width:100%}.daily-actions .collection-actions{width:100%}.daily-toolbar .secondary-button,.cve-back-link,.settings-legal-card .secondary-button{width:100%}.report-sheet-actions .danger-button{width:auto}.settings-save-bar .cluster{justify-content:flex-end}.article-meta{align-items:flex-start;flex-direction:column}.modal-header,.modal-body,.modal-footer{padding:var(--space-4)}}

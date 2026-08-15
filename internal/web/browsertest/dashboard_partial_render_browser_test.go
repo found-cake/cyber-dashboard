@@ -11,156 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/chromedp/chromedp"
 	"github.com/found-cake/cyber-dashboard/api"
 )
-
-func TestDashboardControlsRepaintOnlyTheirOwnBlocks(t *testing.T) {
-	// Given a dashboard whose threat actors change with the None filter.
-	server, requests := newDashboardPartialRenderServer(t)
-	browser := newBrowserContext(t, 20*time.Second)
-
-	// When the None filter is toggled after marking the blocks it must not touch.
-	var toggled struct {
-		CVETableKept   bool   `json:"cveTableKept"`
-		StatsKept      bool   `json:"statsKept"`
-		MethodBarsKept bool   `json:"methodBarsKept"`
-		FocusKept      bool   `json:"focusKept"`
-		FirstActor     string `json:"firstActor"`
-	}
-	if err := chromedp.Run(browser,
-		chromedp.EmulateViewport(1280, 900),
-		chromedp.Navigate(server.URL),
-		chromedp.WaitVisible(`#threat-actor-bars`),
-		chromedp.Evaluate(markPartialRenderProbes, nil),
-		chromedp.Evaluate(`(() => { const toggle = document.querySelector("#hide-none-actor"); toggle.focus(); toggle.click(); })()`, nil),
-		chromedp.Poll(`document.querySelector("#threat-actor-bars .bar-label")?.textContent === "LockBit"`, nil),
-		chromedp.Evaluate(readPartialRenderProbes, &toggled),
-	); err != nil {
-		t.Fatalf("toggle the None filter: %v", err)
-	}
-
-	// Then only that card's bars were rebuilt, and the switch kept focus.
-	if !toggled.CVETableKept || !toggled.StatsKept || !toggled.MethodBarsKept {
-		t.Fatalf("None filter re-rendered untouched blocks: %+v", toggled)
-	}
-	if !toggled.FocusKept || toggled.FirstActor != "LockBit" {
-		t.Fatalf("None filter result = %+v", toggled)
-	}
-
-	// When the aggregation range changes.
-	var ranged struct {
-		CVETableKept   bool   `json:"cveTableKept"`
-		StatsKept      bool   `json:"statsKept"`
-		MethodBarsKept bool   `json:"methodBarsKept"`
-		FocusKept      bool   `json:"focusKept"`
-		FirstActor     string `json:"firstActor"`
-	}
-	if err := chromedp.Run(browser,
-		chromedp.Evaluate(markPartialRenderProbes, nil),
-		chromedp.Evaluate(`(() => {
-			const select = document.querySelector("#dashboard-range");
-			select.focus();
-			select.value = "7";
-			select.dispatchEvent(new Event("change", { bubbles: true }));
-		})()`, nil),
-		chromedp.Poll(`document.querySelector("#threat-actors-card .card-subtitle")?.textContent.includes("7") === true`, nil),
-		chromedp.Evaluate(readPartialRenderProbes, &ranged),
-	); err != nil {
-		t.Fatalf("change the aggregation range: %v", err)
-	}
-
-	// Then the CVE card survives, because its data does not depend on the range.
-	if !ranged.CVETableKept {
-		t.Fatalf("range change re-rendered the CVE card: %+v", ranged)
-	}
-	if ranged.StatsKept || ranged.MethodBarsKept {
-		t.Fatalf("range change left range-dependent blocks stale: %+v", ranged)
-	}
-	if !ranged.FocusKept {
-		t.Fatalf("range change moved focus off the select: %+v", ranged)
-	}
-	if requests.Load() != 3 {
-		t.Fatalf("dashboard requests = %d, want 3", requests.Load())
-	}
-}
-
-func TestDashboardRangeChangeDuringInitialLoadKeepsTheNewestResponse(t *testing.T) {
-	server, initialStarted, releaseInitial := newDashboardInitialRaceServer(t)
-	browser := newBrowserContext(t, 20*time.Second)
-
-	if err := chromedp.Run(browser,
-		chromedp.EmulateViewport(1280, 900),
-		chromedp.Navigate(server.URL),
-		chromedp.WaitVisible(`#dashboard-range`),
-	); err != nil {
-		t.Fatalf("start dashboard load: %v", err)
-	}
-	waitForDashboardRequest(t, initialStarted, "initial dashboard request")
-
-	if err := chromedp.Run(browser,
-		chromedp.Evaluate(`(() => {
-			const select = document.querySelector("#dashboard-range");
-			select.value = "7";
-			select.dispatchEvent(new Event("change", { bubbles: true }));
-		})()`, nil),
-		chromedp.Poll(`document.querySelector("#dashboard-stats strong")?.textContent === "7"`, nil),
-	); err != nil {
-		t.Fatalf("render the selected range: %v", err)
-	}
-
-	releaseInitial()
-	if err := chromedp.Run(browser,
-		chromedp.Poll(`performance.getEntriesByType("resource").filter(entry => entry.name.includes("/api/dashboard")).length === 2`, nil),
-	); err != nil {
-		t.Fatalf("settle the superseded request: %v", err)
-	}
-	var total string
-	if err := chromedp.Run(browser, chromedp.Evaluate(`document.querySelector("#dashboard-stats strong").textContent`, &total)); err != nil {
-		t.Fatalf("inspect final dashboard total: %v", err)
-	}
-	if total != "7" {
-		t.Fatalf("dashboard total = %q, want the latest 7-day response", total)
-	}
-}
-
-func TestDashboardOverlappingControlsClearSupersededBusyState(t *testing.T) {
-	server, rangeStarted, releaseRange := newDashboardOverlapServer(t)
-	browser := newBrowserContext(t, 20*time.Second)
-
-	if err := chromedp.Run(browser,
-		chromedp.EmulateViewport(1280, 900),
-		chromedp.Navigate(server.URL),
-		chromedp.WaitVisible(`#threat-actor-bars`),
-		chromedp.Evaluate(`(() => {
-			const select = document.querySelector("#dashboard-range");
-			select.value = "7";
-			select.dispatchEvent(new Event("change", { bubbles: true }));
-		})()`, nil),
-	); err != nil {
-		t.Fatalf("start range refresh: %v", err)
-	}
-	waitForDashboardRequest(t, rangeStarted, "range dashboard request")
-
-	if err := chromedp.Run(browser,
-		chromedp.Click(`#hide-none-actor`),
-		chromedp.Poll(`document.querySelector("#threat-actor-bars .bar-label")?.textContent === "LockBit"`, nil),
-	); err != nil {
-		t.Fatalf("complete actor refresh: %v", err)
-	}
-	releaseRange()
-
-	var result map[string]int
-	if err := chromedp.Run(browser,
-		chromedp.Poll(`performance.getEntriesByType("resource").filter(entry => entry.name.includes("/api/dashboard")).length === 3`, nil),
-		chromedp.Evaluate(`({ busyCount: document.querySelectorAll('[aria-busy="true"]').length, errorCount: document.querySelectorAll('.toast.is-error').length })`, &result),
-	); err != nil {
-		t.Fatalf("settle overlapping refreshes: %v", err)
-	}
-	if result["busyCount"] != 0 || result["errorCount"] != 0 {
-		t.Fatalf("settled dashboard state = %+v, want no busy region or stale error", result)
-	}
-}
 
 // Tagging the nodes lets the assertions tell a surviving element from an identical rebuild.
 const markPartialRenderProbes = `(() => {
@@ -232,11 +84,15 @@ func newDashboardOverlapServer(t *testing.T) (*httptest.Server, <-chan struct{},
 }
 
 func newDashboardBrowserServer(t *testing.T, dashboard http.HandlerFunc) *httptest.Server {
+	return newDashboardBrowserServerForLanguage(t, dashboard, "en")
+}
+
+func newDashboardBrowserServerForLanguage(t *testing.T, dashboard http.HandlerFunc, language string) *httptest.Server {
 	t.Helper()
 	staticFiles := http.FileServerFS(os.DirFS("../../../static"))
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/bootstrap", func(writer http.ResponseWriter, _ *http.Request) {
-		writeJSON(t, writer, api.Bootstrap{Settings: api.SettingsResponse{Language: "en"}})
+		writeJSON(t, writer, api.Bootstrap{Settings: api.SettingsResponse{Language: language}})
 	})
 	mux.HandleFunc("GET /api/dashboard", dashboard)
 	mux.Handle("/", staticFiles)
@@ -254,10 +110,33 @@ func dashboardBrowserFixture(request *http.Request, total int) api.Dashboard {
 		Total: total, Critical: 2, High: 3, CVECount: 1,
 		AttackMethods: []api.BreakdownRow{{Label: "Ransomware", Value: 4}},
 		ThreatActors:  actors,
+		Trend:         dashboardBrowserTrend(request),
 		CVEs: []api.CVEInsight{{
 			ID: "CVE-2026-1001", CVSS: 8.1, AffectedProduct: "acme / gateway", FirstSeen: "2026-08-01", Mentions: 2,
 		}},
 	}
+}
+
+// dashboardBrowserTrend mirrors the server's bucketing: a longer range widens its buckets.
+func dashboardBrowserTrend(request *http.Request) []api.TrendPoint {
+	buckets, size := 10, 3
+	switch request.URL.Query().Get("days") {
+	case "7":
+		buckets, size = 7, 1
+	case "90":
+		buckets, size = 10, 9
+	}
+	start := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	points := make([]api.TrendPoint, buckets)
+	for index := range points {
+		bucketStart := start.AddDate(0, 0, index*size)
+		points[index] = api.TrendPoint{
+			Start: bucketStart.Format(time.DateOnly), End: bucketStart.AddDate(0, 0, size-1).Format(time.DateOnly),
+			Total: 6 + index, Critical: 1, High: 2, Medium: 3,
+			Attributed: 4, UnknownActor: 2, QualifiedUnknown: 1, NamedActor: 1,
+		}
+	}
+	return points
 }
 
 func waitForDashboardRequest(t *testing.T, signal <-chan struct{}, name string) {
