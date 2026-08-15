@@ -3,7 +3,6 @@
 package browsertest
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -23,17 +22,14 @@ type authExpiryCounts struct {
 }
 
 func TestExpiredSessionResumesProtectedRequestAfterLogin(t *testing.T) {
-	viewports := []struct{ width, height int64 }{{375, 812}, {768, 900}, {1280, 900}}
+	viewports := responsiveViewports
 	records := make([]authScreenshot, 0, len(viewports))
 
 	for _, viewport := range viewports {
 		t.Run(fmt.Sprintf("%dpx", viewport.width), func(t *testing.T) {
 			// Given an authenticated settings view whose next protected request expires.
 			server, counts := newAuthExpiryBrowserServer(t)
-			root, cancel := context.WithTimeout(context.Background(), 12*time.Second)
-			t.Cleanup(cancel)
-			browser, browserCancel := chromedp.NewContext(root)
-			t.Cleanup(browserCancel)
+			browser := newBrowserContext(t, 12*time.Second)
 			var exceptions browserRuntimeExceptions
 			chromedp.ListenTarget(browser, exceptions.listen)
 			evidence := authEvidence{os.Getenv("CYBER_DASHBOARD_VISUAL_QA_DIR"), viewport.width, viewport.height, &records}

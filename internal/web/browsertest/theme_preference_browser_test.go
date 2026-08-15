@@ -30,10 +30,7 @@ func TestThemeFollowsSystemPreference_whenNothingIsStored(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.scheme, func(t *testing.T) {
-			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-			t.Cleanup(cancel)
-			browser, browserCancel := chromedp.NewContext(ctx)
-			t.Cleanup(browserCancel)
+			browser := newBrowserContext(t, 20*time.Second)
 
 			// When a first-time visitor loads the dashboard under that system preference.
 			var applied, stored string
@@ -62,10 +59,7 @@ func TestThemeTogglePinsChoiceLocally_whenSystemPrefersTheOtherScheme(t *testing
 	// Given a dashboard loaded under a dark system preference.
 	savedRequests := make(chan map[string]json.RawMessage, 1)
 	server := newThemePreferenceBrowserServer(t, savedRequests)
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	t.Cleanup(cancel)
-	browser, browserCancel := chromedp.NewContext(ctx)
-	t.Cleanup(browserCancel)
+	browser := newBrowserContext(t, 30*time.Second)
 
 	// When the theme is toggled to light and the page is reloaded.
 	var toggled, saveBarHidden, reloaded, stored string
@@ -107,10 +101,7 @@ func TestSettingsSaveOmitsTheme_whenLanguageChanges(t *testing.T) {
 	// Given the settings page with a pending language change.
 	savedRequests := make(chan map[string]json.RawMessage, 1)
 	server := newThemePreferenceBrowserServer(t, savedRequests)
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	t.Cleanup(cancel)
-	browser, browserCancel := chromedp.NewContext(ctx)
-	t.Cleanup(browserCancel)
+	browser := newBrowserContext(t, 30*time.Second)
 
 	if err := chromedp.Run(browser,
 		chromedp.EmulateViewport(1280, 900),

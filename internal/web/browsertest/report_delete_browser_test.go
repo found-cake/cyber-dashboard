@@ -18,8 +18,7 @@ import (
 func TestReportDeleteRequiresConfirmation_whenDeleteIsActivated(t *testing.T) {
 	// Given a rendered report and a browser connected to its public API.
 	server, deleteCalls, _ := newReportDeleteBrowserServer(t)
-	browser, cancel := newReportDeleteBrowser(t)
-	defer cancel()
+	browser := newReportDeleteBrowser(t)
 	if err := chromedp.Run(browser,
 		chromedp.EmulateViewport(1280, 900),
 		chromedp.Navigate(server.URL),
@@ -57,8 +56,7 @@ func TestReportDeleteRequiresConfirmation_whenDeleteIsActivated(t *testing.T) {
 func TestReportDeleteRemovesReport_whenConfirmationIsAccepted(t *testing.T) {
 	// Given an open confirmation dialog for a stored report.
 	server, deleteCalls, deleteRequested := newReportDeleteBrowserServer(t)
-	browser, cancel := newReportDeleteBrowser(t)
-	defer cancel()
+	browser := newReportDeleteBrowser(t)
 	if err := chromedp.Run(browser,
 		chromedp.EmulateViewport(1280, 900),
 		chromedp.Navigate(server.URL),
@@ -100,14 +98,9 @@ func TestReportDeleteRemovesReport_whenConfirmationIsAccepted(t *testing.T) {
 	}
 }
 
-func newReportDeleteBrowser(t *testing.T) (context.Context, context.CancelFunc) {
+func newReportDeleteBrowser(t *testing.T) context.Context {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	browser, browserCancel := chromedp.NewContext(ctx)
-	return browser, func() {
-		browserCancel()
-		cancel()
-	}
+	return newBrowserContext(t, 20*time.Second)
 }
 
 func newReportDeleteBrowserServer(t *testing.T) (*httptest.Server, *atomic.Int32, <-chan struct{}) {

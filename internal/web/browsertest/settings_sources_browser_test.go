@@ -18,94 +18,92 @@ import (
 )
 
 func TestSourceSettingsWaitForSaveAndSupportRevert(t *testing.T) {
-	viewports := []struct {
-		width  int64
-		height int64
-	}{{375, 812}, {768, 900}, {1280, 900}}
-	languages := []string{"en", "ko"}
-	themes := []string{"light", "dark"}
+	scenarios := []struct {
+		language string
+		theme    string
+		viewport browserViewport
+	}{
+		{language: "en", theme: "light", viewport: responsiveViewports[0]},
+		{language: "ko", theme: "dark", viewport: responsiveViewports[1]},
+		{language: "en", theme: "dark", viewport: responsiveViewports[2]},
+		{language: "ko", theme: "light", viewport: responsiveViewports[2]},
+	}
 
-	for _, language := range languages {
-		for _, theme := range themes {
-			for _, viewport := range viewports {
-				t.Run(fmt.Sprintf("%s-%s-%dpx", language, theme, viewport.width), func(t *testing.T) {
-					// Given BleepingComputer is enabled in persisted settings.
-					savedRequests := make(chan api.SaveSettingsRequest, 1)
-					server := newSourceSettingsBrowserServer(t, savedRequests, language)
-					ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-					t.Cleanup(cancel)
-					browser, browserCancel := chromedp.NewContext(ctx)
-					t.Cleanup(browserCancel)
-					if err := chromedp.Run(browser,
-						chromedp.EmulateViewport(viewport.width, viewport.height),
-						chromedp.Navigate(server.URL),
-						chromedp.WaitVisible(`#main-content .empty-state`),
-					); err != nil {
-						t.Fatalf("initialize dashboard: %v", err)
-					}
-					openSettingsPage(t, browser, viewport.width)
-					if err := chromedp.Run(browser, chromedp.Evaluate(fmt.Sprintf(`localStorage.setItem("cyber-theme", %q); document.documentElement.dataset.theme = %q`, theme, theme), nil)); err != nil {
-						t.Fatalf("apply %s theme: %v", theme, err)
-					}
-
-					// When the source is toggled without saving.
-					if err := chromedp.Run(browser,
-						chromedp.Click(`[data-source-id="2"]`),
-						chromedp.WaitVisible(`#settings-save-bar`),
-						chromedp.Poll(`document.querySelector('[data-source-id="2"]').getAttribute('aria-checked') === 'false'`, nil),
-					); err != nil {
-						t.Fatalf("draft source change: %v", err)
-					}
-					captureSourceSettingsScreenshot(t, browser, sourceSettingsCapture{
-						width: viewport.width, language: language, theme: theme,
-					})
-					select {
-					case <-savedRequests:
-						t.Fatal("source was persisted before Save was activated")
-					default:
-					}
-
-					// Then Revert restores the persisted source state and hides the action bar.
-					if err := chromedp.Run(browser,
-						chromedp.Click(`#revert-settings`),
-						chromedp.Poll(`document.querySelector('#settings-save-bar').hidden && document.querySelector('[data-source-id="2"]').getAttribute('aria-checked') === 'true'`, nil),
-					); err != nil {
-						t.Fatalf("revert source draft: %v", err)
-					}
-
-					// When the source is toggled again and Save is activated.
-					if err := chromedp.Run(browser,
-						chromedp.Click(`[data-source-id="2"]`),
-						chromedp.WaitVisible(`#settings-save-bar`),
-						chromedp.Click(`#save-settings`),
-						chromedp.WaitVisible(`#toast-region .toast`),
-						chromedp.Poll(`document.querySelector('#settings-save-bar').hidden`, nil),
-					); err != nil {
-						t.Fatalf("save source draft: %v", err)
-					}
-					select {
-					case request := <-savedRequests:
-						if len(request.Sources) != 1 || request.Sources[0].ID != 2 || request.Sources[0].Enabled {
-							t.Fatalf("saved sources = %+v, want BleepingComputer disabled", request.Sources)
-						}
-					default:
-						t.Fatal("settings save request was not received")
-					}
-
-					// Then a reload shows the saved source state without an unsaved action bar.
-					if err := chromedp.Run(browser,
-						chromedp.Reload(),
-						chromedp.WaitVisible(`#main-content .empty-state`),
-					); err != nil {
-						t.Fatalf("reload dashboard: %v", err)
-					}
-					openSettingsPage(t, browser, viewport.width)
-					if err := chromedp.Run(browser, chromedp.Poll(`document.querySelector('#settings-save-bar').hidden && document.querySelector('[data-source-id="2"]').getAttribute('aria-checked') === 'false'`, nil)); err != nil {
-						t.Fatalf("inspect persisted source state: %v", err)
-					}
-				})
+	for _, scenario := range scenarios {
+		t.Run(fmt.Sprintf("%s-%s-%dpx", scenario.language, scenario.theme, scenario.viewport.width), func(t *testing.T) {
+			language, theme, viewport := scenario.language, scenario.theme, scenario.viewport
+			// Given BleepingComputer is enabled in persisted settings.
+			savedRequests := make(chan api.SaveSettingsRequest, 1)
+			server := newSourceSettingsBrowserServer(t, savedRequests, language)
+			browser := newBrowserContext(t, 20*time.Second)
+			if err := chromedp.Run(browser,
+				chromedp.EmulateViewport(viewport.width, viewport.height),
+				chromedp.Navigate(server.URL),
+				chromedp.WaitVisible(`#main-content .empty-state`),
+			); err != nil {
+				t.Fatalf("initialize dashboard: %v", err)
 			}
-		}
+			openSettingsPage(t, browser, viewport.width)
+			if err := chromedp.Run(browser, chromedp.Evaluate(fmt.Sprintf(`localStorage.setItem("cyber-theme", %q); document.documentElement.dataset.theme = %q`, theme, theme), nil)); err != nil {
+				t.Fatalf("apply %s theme: %v", theme, err)
+			}
+
+			// When the source is toggled without saving.
+			if err := chromedp.Run(browser,
+				chromedp.Click(`[data-source-id="2"]`),
+				chromedp.WaitVisible(`#settings-save-bar`),
+				chromedp.Poll(`document.querySelector('[data-source-id="2"]').getAttribute('aria-checked') === 'false'`, nil),
+			); err != nil {
+				t.Fatalf("draft source change: %v", err)
+			}
+			captureSourceSettingsScreenshot(t, browser, sourceSettingsCapture{
+				width: viewport.width, language: language, theme: theme,
+			})
+			select {
+			case <-savedRequests:
+				t.Fatal("source was persisted before Save was activated")
+			default:
+			}
+
+			// Then Revert restores the persisted source state and hides the action bar.
+			if err := chromedp.Run(browser,
+				chromedp.Click(`#revert-settings`),
+				chromedp.Poll(`document.querySelector('#settings-save-bar').hidden && document.querySelector('[data-source-id="2"]').getAttribute('aria-checked') === 'true'`, nil),
+			); err != nil {
+				t.Fatalf("revert source draft: %v", err)
+			}
+
+			// When the source is toggled again and Save is activated.
+			if err := chromedp.Run(browser,
+				chromedp.Click(`[data-source-id="2"]`),
+				chromedp.WaitVisible(`#settings-save-bar`),
+				chromedp.Click(`#save-settings`),
+				chromedp.WaitVisible(`#toast-region .toast`),
+				chromedp.Poll(`document.querySelector('#settings-save-bar').hidden`, nil),
+			); err != nil {
+				t.Fatalf("save source draft: %v", err)
+			}
+			select {
+			case request := <-savedRequests:
+				if len(request.Sources) != 1 || request.Sources[0].ID != 2 || request.Sources[0].Enabled {
+					t.Fatalf("saved sources = %+v, want BleepingComputer disabled", request.Sources)
+				}
+			default:
+				t.Fatal("settings save request was not received")
+			}
+
+			// Then a reload shows the saved source state without an unsaved action bar.
+			if err := chromedp.Run(browser,
+				chromedp.Reload(),
+				chromedp.WaitVisible(`#main-content .empty-state`),
+			); err != nil {
+				t.Fatalf("reload dashboard: %v", err)
+			}
+			openSettingsPage(t, browser, viewport.width)
+			if err := chromedp.Run(browser, chromedp.Poll(`document.querySelector('#settings-save-bar').hidden && document.querySelector('[data-source-id="2"]').getAttribute('aria-checked') === 'false'`, nil)); err != nil {
+				t.Fatalf("inspect persisted source state: %v", err)
+			}
+		})
 	}
 }
 

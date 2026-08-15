@@ -3,7 +3,6 @@
 package browsertest
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -19,10 +18,7 @@ import (
 func TestDashboardControlsRepaintOnlyTheirOwnBlocks(t *testing.T) {
 	// Given a dashboard whose threat actors change with the None filter.
 	server, requests := newDashboardPartialRenderServer(t)
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	t.Cleanup(cancel)
-	browser, browserCancel := chromedp.NewContext(ctx)
-	t.Cleanup(browserCancel)
+	browser := newBrowserContext(t, 20*time.Second)
 
 	// When the None filter is toggled after marking the blocks it must not touch.
 	var toggled struct {
@@ -91,10 +87,7 @@ func TestDashboardControlsRepaintOnlyTheirOwnBlocks(t *testing.T) {
 
 func TestDashboardRangeChangeDuringInitialLoadKeepsTheNewestResponse(t *testing.T) {
 	server, initialStarted, releaseInitial := newDashboardInitialRaceServer(t)
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	t.Cleanup(cancel)
-	browser, browserCancel := chromedp.NewContext(ctx)
-	t.Cleanup(browserCancel)
+	browser := newBrowserContext(t, 20*time.Second)
 
 	if err := chromedp.Run(browser,
 		chromedp.EmulateViewport(1280, 900),
@@ -133,10 +126,7 @@ func TestDashboardRangeChangeDuringInitialLoadKeepsTheNewestResponse(t *testing.
 
 func TestDashboardOverlappingControlsClearSupersededBusyState(t *testing.T) {
 	server, rangeStarted, releaseRange := newDashboardOverlapServer(t)
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	t.Cleanup(cancel)
-	browser, browserCancel := chromedp.NewContext(ctx)
-	t.Cleanup(browserCancel)
+	browser := newBrowserContext(t, 20*time.Second)
 
 	if err := chromedp.Run(browser,
 		chromedp.EmulateViewport(1280, 900),

@@ -3,7 +3,6 @@
 package browsertest
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -20,21 +19,11 @@ func TestSettingsKeepsStoredAPIKeysOutOfInputs_whenPageLoadsAndPresetChanges(t *
 	// Given a browser bootstrap response that exposes only credential status flags.
 	savedRequests := make(chan api.Settings, 3)
 	server := newSettingsSecurityBrowserServer(t, savedRequests)
-	viewports := []struct {
-		width  int64
-		height int64
-	}{
-		{width: 375, height: 812},
-		{width: 768, height: 900},
-		{width: 1280, height: 900},
-	}
+	viewports := responsiveViewports
 
 	for _, viewport := range viewports {
 		t.Run(fmt.Sprintf("%dpx", viewport.width), func(t *testing.T) {
-			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-			t.Cleanup(cancel)
-			browser, browserCancel := chromedp.NewContext(ctx)
-			t.Cleanup(browserCancel)
+			browser := newBrowserContext(t, 20*time.Second)
 
 			// When the settings page is opened and a configured preset is selected.
 			if err := chromedp.Run(browser,
@@ -128,17 +117,11 @@ func TestSettingsKeepsStoredAPIKeysOutOfInputs_whenPageLoadsAndPresetChanges(t *
 func TestLanguageSelectionLivesInSettingsAndAppliesAfterSave(t *testing.T) {
 	savedRequests := make(chan api.Settings, 3)
 	server := newSettingsSecurityBrowserServer(t, savedRequests)
-	viewports := []struct {
-		width  int64
-		height int64
-	}{{375, 812}, {768, 900}, {1280, 900}}
+	viewports := responsiveViewports
 
 	for _, viewport := range viewports {
 		t.Run(fmt.Sprintf("%dpx", viewport.width), func(t *testing.T) {
-			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-			t.Cleanup(cancel)
-			browser, browserCancel := chromedp.NewContext(ctx)
-			t.Cleanup(browserCancel)
+			browser := newBrowserContext(t, 20*time.Second)
 
 			var headerControls int
 			if err := chromedp.Run(browser,

@@ -3,7 +3,6 @@
 package browsertest
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -18,10 +17,7 @@ import (
 
 func TestCVERefreshDashboardFailureShowsErrorWhenCurrent(t *testing.T) {
 	server, dashboardStarted, releaseDashboard := newCVERefreshDashboardFailureServer(t, false)
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	t.Cleanup(cancel)
-	browser, browserCancel := chromedp.NewContext(ctx)
-	t.Cleanup(browserCancel)
+	browser := newBrowserContext(t, 20*time.Second)
 
 	if err := chromedp.Run(browser,
 		chromedp.EmulateViewport(1280, 900),
@@ -48,10 +44,7 @@ func TestCVERefreshDashboardFailureShowsErrorWhenCurrent(t *testing.T) {
 
 func TestCVERefreshDashboardFailureStaysSilentWhenSuperseded(t *testing.T) {
 	server, dashboardStarted, releaseDashboard := newCVERefreshDashboardFailureServer(t, true)
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	t.Cleanup(cancel)
-	browser, browserCancel := chromedp.NewContext(ctx)
-	t.Cleanup(browserCancel)
+	browser := newBrowserContext(t, 20*time.Second)
 
 	if err := chromedp.Run(browser,
 		chromedp.EmulateViewport(1280, 900),

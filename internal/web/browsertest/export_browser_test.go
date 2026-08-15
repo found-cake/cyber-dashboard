@@ -40,8 +40,7 @@ func TestExportFixture_tracksRuntimeDateBeyondAugust2026(t *testing.T) {
 
 func TestPDFExportActions_openAndClosePrintWindows_fromReportAndDailyViews(t *testing.T) {
 	server := newExportBrowserServer(t)
-	browserContext, cancel := newExportBrowser(t)
-	defer cancel()
+	browserContext := newExportBrowser(t)
 
 	if err := chromedp.Run(browserContext,
 		chromedp.EmulateViewport(1280, 900),
@@ -162,8 +161,7 @@ func TestDailyPDFDocument_containsOnlyDailySummaryContent_inFirstPageFlow(t *tes
 
 func captureReportPDFMarkup(t *testing.T, server *httptest.Server, reportID int64) string {
 	t.Helper()
-	browserContext, cancel := newExportBrowser(t)
-	defer cancel()
+	browserContext := newExportBrowser(t)
 	selector := fmt.Sprintf(`[data-report-id="%d"]`, reportID)
 	var markup string
 	if err := chromedp.Run(browserContext,
@@ -184,8 +182,7 @@ func captureReportPDFMarkup(t *testing.T, server *httptest.Server, reportID int6
 
 func captureDailyPDFMarkup(t *testing.T, server *httptest.Server) string {
 	t.Helper()
-	browserContext, cancel := newExportBrowser(t)
-	defer cancel()
+	browserContext := newExportBrowser(t)
 	var markup string
 	if err := chromedp.Run(browserContext,
 		chromedp.EmulateViewport(1280, 900),
@@ -202,22 +199,16 @@ func captureDailyPDFMarkup(t *testing.T, server *httptest.Server) string {
 	return markup
 }
 
-func newExportBrowser(t *testing.T) (context.Context, context.CancelFunc) {
+func newExportBrowser(t *testing.T) context.Context {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	browserContext, browserCancel := chromedp.NewContext(ctx)
+	browserContext := newBrowserContext(t, 20*time.Second)
 	if err := chromedp.Run(browserContext, chromedp.ActionFunc(func(ctx context.Context) error {
 		_, err := page.AddScriptToEvaluateOnNewDocument(fmt.Sprintf("Date.now = () => %d", exportFixtureNowMillis)).Do(ctx)
 		return err
 	})); err != nil {
-		browserCancel()
-		cancel()
 		t.Fatalf("set export browser date: %v", err)
 	}
-	return browserContext, func() {
-		browserCancel()
-		cancel()
-	}
+	return browserContext
 }
 
 func newExportBrowserServer(t *testing.T) *httptest.Server {
