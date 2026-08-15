@@ -203,6 +203,35 @@ To run with editable frontend files, use this from the repository root:
 CYBER_DASHBOARD_STATIC_DIR=static go run ./cmd/cyber-dashboard-server-only
 ```
 
+### Development tests
+
+Generate the ignored license fixtures, then run the default Go and frontend tests from the repository root:
+
+```sh
+go generate ./generator/license
+go test -race -shuffle=on -count=1 ./...
+node --test test_static/*.test.js
+```
+
+Browser tests require Chrome or Chromium and are excluded from the default Go test command. Run the dashboard UI suite after frontend changes:
+
+```sh
+go test -count=1 -tags=browser ./internal/web/browsertest
+```
+
+To include the browser-based article loader tests, run:
+
+```sh
+go test -race -shuffle=on -count=1 -tags=browser ./internal/feed/... ./internal/web/...
+```
+
+Chromedp normally finds the installed browser automatically. For a non-standard installation, set `CYBER_DASHBOARD_BROWSER_PATH` for the dashboard UI suite; add the browser's directory to `PATH` when running the broader article-loader suite. Visual QA output is optional; set `CYBER_DASHBOARD_VISUAL_QA_DIR` and add the `visualqa` tag to include PDF evidence generation:
+
+```sh
+CYBER_DASHBOARD_BROWSER_PATH=/path/to/chrome go test -count=1 -tags=browser ./internal/web/browsertest
+CYBER_DASHBOARD_VISUAL_QA_DIR=/path/to/output go test -count=1 -tags='browser visualqa' ./internal/web/browsertest
+```
+
 ## Troubleshooting
 
 ### `address already in use`
