@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/found-cake/cyber-dashboard/api"
+	"github.com/found-cake/cyber-dashboard/internal/dashboard"
 	"github.com/labstack/echo/v5"
 )
 
@@ -56,22 +57,26 @@ func (s *Server) configuredTime(offsetMinutes int) time.Time {
 	return s.now().UTC().Add(time.Duration(offsetMinutes) * time.Minute)
 }
 
-// dashboardWindows are the aggregation ranges the dashboard offers; an absent value keeps
-// the original 30-day default.
-var dashboardWindows = map[string]int{"": 30, "7": 7, "30": 30}
+// dashboardWindows are the offered ranges; 30 and 90 bucket to the same ten points on purpose.
+var dashboardWindows = map[string]dashboard.Window{
+	"":   {Days: 30, Bucket: 3},
+	"7":  {Days: 7, Bucket: 1},
+	"30": {Days: 30, Bucket: 3},
+	"90": {Days: 90, Bucket: 9},
+}
 
 func (s *Server) dashboardData(c *echo.Context) error {
-	days, allowed := dashboardWindows[c.QueryParam("days")]
+	window, allowed := dashboardWindows[c.QueryParam("days")]
 	if !allowed {
-		return writeBadRequest(c, "days must be 7 or 30")
+		return writeBadRequest(c, "days must be 7, 30, or 90")
 	}
 	appSettings, err := s.settings.Get(c.Request().Context())
 	if err != nil {
 		return writeAPIError(c, err)
 	}
 	// Compute the window here because SQLite date('now') always uses UTC.
-	since := s.configuredTime(appSettings.TimezoneOffsetMinutes).AddDate(0, 0, -(days - 1)).Format(time.DateOnly)
-	value, err := s.dashboard.Dashboard(c.Request().Context(), since, c.QueryParam("hide_none") == "1")
+	window.Since = s.configuredTime(appSettings.TimezoneOffsetMinutes).AddDate(0, 0, -(window.Days - 1)).Format(time.DateOnly)
+	value, err := s.dashboard.Dashboard(c.Request().Context(), window, c.QueryParam("hide_none") == "1")
 	if err != nil {
 		return writeAPIError(c, err)
 	}

@@ -40,7 +40,7 @@ func TestDashboardAggregatesRecentThreatData(t *testing.T) {
 	}
 
 	// When the dashboard repository builds its response.
-	value, err := NewRepository(db).Dashboard(context.Background(), windowStart, false)
+	value, err := NewRepository(db).Dashboard(context.Background(), Window{Since: windowStart, Days: 30, Bucket: 3}, false)
 	if err != nil {
 		t.Fatalf("build dashboard: %v", err)
 	}
@@ -78,7 +78,7 @@ func TestDashboardExcludesNoneActorBeforeTheTopCut(t *testing.T) {
 	}
 
 	// When the caller hides the "None" bucket.
-	value, err := NewRepository(db).Dashboard(context.Background(), windowStart, true)
+	value, err := NewRepository(db).Dashboard(context.Background(), Window{Since: windowStart, Days: 30, Bucket: 3}, true)
 	if err != nil {
 		t.Fatalf("build dashboard: %v", err)
 	}
@@ -94,7 +94,7 @@ func TestDashboardExcludesNoneActorBeforeTheTopCut(t *testing.T) {
 	}
 
 	// And the unfiltered breakdown still reports it.
-	kept, err := NewRepository(db).Dashboard(context.Background(), windowStart, false)
+	kept, err := NewRepository(db).Dashboard(context.Background(), Window{Since: windowStart, Days: 30, Bucket: 3}, false)
 	if err != nil {
 		t.Fatalf("build unfiltered dashboard: %v", err)
 	}
@@ -104,8 +104,7 @@ func TestDashboardExcludesNoneActorBeforeTheTopCut(t *testing.T) {
 }
 
 func TestDashboardCountsOnlyCVEsMentionedInsideTheWindow(t *testing.T) {
-	// Given one CVE mentioned inside the window, one mentioned only before it, and one that
-	// the catalogue holds without any article mention.
+	// Given a CVE mentioned inside the window, one only before it, and one never mentioned.
 	db, err := database.Open(context.Background(), filepath.Join(t.TempDir(), "dashboard.db"))
 	if err != nil {
 		t.Fatalf("open database: %v", err)
@@ -138,7 +137,7 @@ func TestDashboardCountsOnlyCVEsMentionedInsideTheWindow(t *testing.T) {
 	}
 
 	// When the dashboard aggregates the window.
-	value, err := NewRepository(db).Dashboard(context.Background(), windowStart, false)
+	value, err := NewRepository(db).Dashboard(context.Background(), Window{Since: windowStart, Days: 30, Bucket: 3}, false)
 	if err != nil {
 		t.Fatalf("build dashboard: %v", err)
 	}
@@ -211,7 +210,7 @@ func TestDashboardRanksCVEsByCVSSPlusWeightedMentions(t *testing.T) {
 	}
 
 	// When the dashboard CVE insights are loaded.
-	value, err := NewRepository(db).Dashboard(context.Background(), windowStart, false)
+	value, err := NewRepository(db).Dashboard(context.Background(), Window{Since: windowStart, Days: 30, Bucket: 3}, false)
 
 	// Then the lower CVSS entry's 9.4 score precedes the higher entry's 9.2 score.
 	if err != nil {
@@ -239,7 +238,7 @@ func TestDashboardReturnsAllCVEsForExplorer(t *testing.T) {
 	}
 
 	// When the dashboard data is loaded for the compact table and explorer.
-	value, err := NewRepository(db).Dashboard(context.Background(), windowStart, false)
+	value, err := NewRepository(db).Dashboard(context.Background(), Window{Since: windowStart, Days: 30, Bucket: 3}, false)
 
 	// Then every ranked CVE is available to the explorer.
 	if err != nil {

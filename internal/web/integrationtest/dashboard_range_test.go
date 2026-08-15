@@ -13,13 +13,13 @@ import (
 )
 
 func TestDashboardWindowFollowsTheRequestedDayCount(t *testing.T) {
-	// Given one article inside both windows and one that only the 30-day window reaches.
+	// Given one article per window: inside all three, inside 30 and 90, and inside 90 only.
 	fixedNow := time.Date(2026, 8, 4, 9, 28, 0, 0, time.UTC)
 	server, feeds, _ := newTestServerWithConfig(t, testServerConfig{
 		fetcher: &stubFetcher{},
 		now:     func() time.Time { return fixedNow },
 	})
-	for _, day := range []string{"2026-08-02", "2026-07-20"} {
+	for _, day := range []string{"2026-08-02", "2026-07-20", "2026-06-01"} {
 		if err := feeds.SaveArticle(context.Background(), api.Source{ID: 1}, collector.FeedArticle{
 			ID: "sha256:" + day, URL: "https://example.com/" + day, Title: "Range article",
 			Description: "Range detail",
@@ -28,12 +28,14 @@ func TestDashboardWindowFollowsTheRequestedDayCount(t *testing.T) {
 		}
 	}
 	tests := []struct {
-		name      string
-		query     string
-		wantTotal int
+		name          string
+		query         string
+		wantTotal     int
+		wantOldBucket bool
 	}{
 		{name: "seven days opens the window on 07-29", query: "?days=7", wantTotal: 1},
 		{name: "thirty days opens the window on 07-06", query: "?days=30", wantTotal: 2},
+		{name: "ninety days opens the window on 05-07", query: "?days=90", wantTotal: 3, wantOldBucket: true},
 		{name: "an absent range keeps the 30-day default", query: "", wantTotal: 2},
 	}
 
@@ -53,6 +55,9 @@ func TestDashboardWindowFollowsTheRequestedDayCount(t *testing.T) {
 			}
 			if value.Total != test.wantTotal {
 				t.Fatalf("total = %d, want %d", value.Total, test.wantTotal)
+			}
+			if test.wantOldBucket && (len(value.Trend) != 10 || value.Trend[2].Start != "2026-05-25" || value.Trend[2].End != "2026-06-02" || value.Trend[2].Total != 1) {
+				t.Fatalf("90-day old-article bucket = %+v", value.Trend)
 			}
 		})
 	}
