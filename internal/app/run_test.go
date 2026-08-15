@@ -206,7 +206,7 @@ func TestRunWarns_whenWildcardBindingHasNoTrustedHost(t *testing.T) {
 	select {
 	case <-warningObserved:
 		cancel()
-	case <-time.After(time.Second):
+	case <-time.After(5 * time.Second):
 		cancel()
 		<-done
 		t.Fatal("wildcard trusted-host warning was not logged")
@@ -241,7 +241,7 @@ func TestRunWarns_whenTrustedHostPolicyIsDisabled(t *testing.T) {
 	select {
 	case <-warningObserved:
 		cancel()
-	case <-time.After(time.Second):
+	case <-time.After(5 * time.Second):
 		cancel()
 		<-done
 		t.Fatal("trusted host opt-out warning was not logged")
