@@ -70,11 +70,11 @@ func TestIncidentMethodSeparatesNonIncidentLabels(t *testing.T) {
 func TestActorFormClassification(t *testing.T) {
 	// Given one actor string per form the prompt can produce.
 	tests := []struct {
-		name                                  string
-		actor                                 string
-		unidentified, languageOnly, namedForm bool
+		name                       string
+		actor                      string
+		unidentified, languageOnly bool
 	}{
-		{name: "attributed group", actor: "Lazarus Group", namedForm: true},
+		{name: "attributed group", actor: "Lazarus Group"},
 		{name: "country linked", actor: "Unidentified Russia-linked actor", unidentified: true},
 		{name: "language community", actor: "Unknown (Chinese-speaking)", languageOnly: true},
 		{name: "AI operated", actor: aiOperatedActor},
@@ -86,16 +86,12 @@ func TestActorFormClassification(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			// When each form is classified.
-			// Then the placeholder forms never count as an attributed group, which is what
-			// keeps them out of the named-actor tail on the dashboard.
+			// Then only the corresponding placeholder recognizer matches.
 			if got := isUnidentifiedActor(test.actor); got != test.unidentified {
 				t.Errorf("isUnidentifiedActor(%q) = %v, want %v", test.actor, got, test.unidentified)
 			}
 			if got := isLanguageOnlyActor(test.actor); got != test.languageOnly {
 				t.Errorf("isLanguageOnlyActor(%q) = %v, want %v", test.actor, got, test.languageOnly)
-			}
-			if got := isNamedActor(test.actor); got != test.namedForm {
-				t.Errorf("isNamedActor(%q) = %v, want %v", test.actor, got, test.namedForm)
 			}
 		})
 	}

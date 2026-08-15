@@ -17,10 +17,7 @@ import (
 
 func TestCVEExplorerResumesActiveRefreshAfterReload_withoutAnotherPost(t *testing.T) {
 	server, release, bootstrapCalls, posts, polls := newCVEResumeServer(t)
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	t.Cleanup(cancel)
-	browser, browserCancel := chromedp.NewContext(ctx)
-	t.Cleanup(browserCancel)
+	browser := newBrowserContext(t, 20*time.Second)
 
 	if err := chromedp.Run(browser,
 		chromedp.EmulateViewport(768, 900),

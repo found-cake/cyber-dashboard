@@ -3,7 +3,6 @@
 package browsertest
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -20,21 +19,11 @@ func TestSettingsKeepsStoredAPIKeysOutOfInputs_whenPageLoadsAndPresetChanges(t *
 	// Given a browser bootstrap response that exposes only credential status flags.
 	savedRequests := make(chan api.Settings, 3)
 	server := newSettingsSecurityBrowserServer(t, savedRequests)
-	viewports := []struct {
-		width  int64
-		height int64
-	}{
-		{width: 375, height: 812},
-		{width: 768, height: 900},
-		{width: 1280, height: 900},
-	}
+	viewports := responsiveViewports
 
 	for _, viewport := range viewports {
 		t.Run(fmt.Sprintf("%dpx", viewport.width), func(t *testing.T) {
-			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-			t.Cleanup(cancel)
-			browser, browserCancel := chromedp.NewContext(ctx)
-			t.Cleanup(browserCancel)
+			browser := newBrowserContext(t, 20*time.Second)
 
 			// When the settings page is opened and a configured preset is selected.
 			if err := chromedp.Run(browser,
@@ -128,24 +117,20 @@ func TestSettingsKeepsStoredAPIKeysOutOfInputs_whenPageLoadsAndPresetChanges(t *
 func TestLanguageSelectionLivesInSettingsAndAppliesAfterSave(t *testing.T) {
 	savedRequests := make(chan api.Settings, 3)
 	server := newSettingsSecurityBrowserServer(t, savedRequests)
-	viewports := []struct {
-		width  int64
-		height int64
-	}{{375, 812}, {768, 900}, {1280, 900}}
+	viewports := responsiveViewports
 
 	for _, viewport := range viewports {
 		t.Run(fmt.Sprintf("%dpx", viewport.width), func(t *testing.T) {
-			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-			t.Cleanup(cancel)
-			browser, browserCancel := chromedp.NewContext(ctx)
-			t.Cleanup(browserCancel)
+			browser := newBrowserContext(t, 20*time.Second)
 
 			var headerControls int
 			if err := chromedp.Run(browser,
 				chromedp.EmulateViewport(viewport.width, viewport.height),
 				chromedp.Navigate(server.URL),
 				chromedp.WaitVisible(`#main-content .empty-state`),
-				chromedp.Evaluate(`document.querySelectorAll('.topbar [data-lang], .topbar select').length`, &headerControls),
+				// The dashboard range select is the one header control; anything else there
+				// would be a language switch that belongs in settings.
+				chromedp.Evaluate(`document.querySelectorAll('.topbar [data-lang], .topbar select:not(#dashboard-range)').length`, &headerControls),
 			); err != nil {
 				t.Fatalf("initialize dashboard: %v", err)
 			}
@@ -159,9 +144,12 @@ func TestLanguageSelectionLivesInSettingsAndAppliesAfterSave(t *testing.T) {
 				screenshot := captureSettingsTarget(t, browser, "#setting-language", viewport.width, viewport.height)
 				writeSettingsScreenshot(t, directory, "language", viewport.width, screenshot)
 			}
+			var rangeHidden bool
 			var options int
 			if err := chromedp.Run(browser,
 				chromedp.WaitVisible(`#setting-language`),
+				// The range select belongs to the dashboard, so settings must not inherit it.
+				chromedp.Evaluate(`document.querySelector('#dashboard-range').hidden`, &rangeHidden),
 				chromedp.Evaluate(`document.querySelector('#setting-language').options.length`, &options),
 				chromedp.Evaluate(`(() => { const select = document.querySelector('#setting-language'); select.value = 'en'; select.dispatchEvent(new Event('change', { bubbles: true })); })()`, nil),
 				chromedp.WaitVisible(`#settings-save-bar`),
@@ -170,6 +158,9 @@ func TestLanguageSelectionLivesInSettingsAndAppliesAfterSave(t *testing.T) {
 				chromedp.Poll(`document.documentElement.lang === 'en' && document.querySelector('#page-title').textContent === 'Settings'`, nil),
 			); err != nil {
 				t.Fatalf("select and save language: %v", err)
+			}
+			if !rangeHidden {
+				t.Fatal("dashboard range select stayed visible on the settings page")
 			}
 			if options != 2 {
 				t.Fatalf("language options = %d, want 2", options)

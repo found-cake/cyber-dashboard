@@ -93,9 +93,12 @@ func TestTrustedHostsIncludeAddressAndExplicitEnvironmentHost(t *testing.T) {
 	t.Setenv("CYBER_DASHBOARD_TRUSTED_HOST", "Dashboard.Example.com:8443")
 
 	// When startup resolves the fixed trusted hosts.
-	hosts, err := trustedHostsFromEnvironment()
+	hosts, allowUntrustedHosts, err := trustedHostsFromEnvironment()
 	if err != nil {
 		t.Fatalf("resolve trusted hosts: %v", err)
+	}
+	if allowUntrustedHosts {
+		t.Fatal("trusted host policy unexpectedly disabled")
 	}
 
 	// Then both normalized hostnames are retained without their ports.
@@ -110,9 +113,12 @@ func TestTrustedHostsAcceptIPv6LoopbackAddress(t *testing.T) {
 	t.Setenv("CYBER_DASHBOARD_TRUSTED_HOST", "")
 
 	// When startup resolves the fixed trusted hosts.
-	hosts, err := trustedHostsFromEnvironment()
+	hosts, allowUntrustedHosts, err := trustedHostsFromEnvironment()
 	if err != nil {
 		t.Fatalf("resolve trusted hosts: %v", err)
+	}
+	if allowUntrustedHosts {
+		t.Fatal("trusted host policy unexpectedly disabled")
 	}
 
 	// Then the bracket-free address the listener reports is still a usable host.
@@ -127,9 +133,12 @@ func TestTrustedHostsSkipUnspecifiedAddress_whenBindingAllInterfaces(t *testing.
 	t.Setenv("CYBER_DASHBOARD_TRUSTED_HOST", "")
 
 	// When startup resolves fixed trusted hosts.
-	hosts, err := trustedHostsFromEnvironment()
+	hosts, allowUntrustedHosts, err := trustedHostsFromEnvironment()
 	if err != nil {
 		t.Fatalf("resolve trusted hosts: %v", err)
+	}
+	if allowUntrustedHosts {
+		t.Fatal("trusted host policy unexpectedly disabled")
 	}
 
 	// Then the wildcard bind does not become an allowed hostname.
@@ -144,11 +153,31 @@ func TestTrustedHostsRejectMultipleEnvironmentHosts(t *testing.T) {
 	t.Setenv("CYBER_DASHBOARD_TRUSTED_HOST", "first.example,second.example")
 
 	// When startup parses the trusted host policy.
-	_, err := trustedHostsFromEnvironment()
+	_, _, err := trustedHostsFromEnvironment()
 
 	// Then startup rejects the list because only one additional host is supported.
 	if err == nil {
 		t.Fatal("trustedHostsFromEnvironment returned nil error")
+	}
+}
+
+func TestTrustedHostsDisablePolicy_whenEnvironmentUsesNone(t *testing.T) {
+	// Given an explicit unsafe opt-out for a non-loopback listener.
+	t.Setenv("CYBER_DASHBOARD_ADDR", "192.0.2.10:8080")
+	t.Setenv("CYBER_DASHBOARD_TRUSTED_HOST", "none")
+
+	// When startup resolves the trusted-host policy.
+	hosts, allowUntrustedHosts, err := trustedHostsFromEnvironment()
+	if err != nil {
+		t.Fatalf("resolve trusted hosts: %v", err)
+	}
+
+	// Then the address remains available for server setup and the explicit opt-out is surfaced separately.
+	if len(hosts) != 1 || hosts[0] != "192.0.2.10" {
+		t.Fatalf("trusted hosts = %v, want [192.0.2.10]", hosts)
+	}
+	if !allowUntrustedHosts {
+		t.Fatal("trusted host policy was not disabled")
 	}
 }
 
@@ -159,7 +188,10 @@ func TestRunWarns_whenWildcardBindingHasNoTrustedHost(t *testing.T) {
 	t.Setenv("CYBER_DASHBOARD_DATA_DIR", t.TempDir())
 	warningObserved := make(chan struct{})
 	previousLogger := slog.Default()
-	slog.SetDefault(slog.New(&warningSignalHandler{observed: warningObserved}))
+	slog.SetDefault(slog.New(&warningSignalHandler{
+		observed: warningObserved,
+		message:  "dashboard is bound to all interfaces without a trusted host",
+	}))
 	t.Cleanup(func() { slog.SetDefault(previousLogger) })
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
@@ -174,10 +206,45 @@ func TestRunWarns_whenWildcardBindingHasNoTrustedHost(t *testing.T) {
 	select {
 	case <-warningObserved:
 		cancel()
-	case <-time.After(time.Second):
+	case <-time.After(5 * time.Second):
 		cancel()
 		<-done
 		t.Fatal("wildcard trusted-host warning was not logged")
+	}
+	if err := <-done; err != nil {
+		t.Fatalf("run dashboard: %v", err)
+	}
+}
+
+func TestRunWarns_whenTrustedHostPolicyIsDisabled(t *testing.T) {
+	// Given a wildcard listener with the explicit unsafe opt-out.
+	t.Setenv("CYBER_DASHBOARD_ADDR", "0.0.0.0:0")
+	t.Setenv("CYBER_DASHBOARD_TRUSTED_HOST", "none")
+	t.Setenv("CYBER_DASHBOARD_DATA_DIR", t.TempDir())
+	warningObserved := make(chan struct{})
+	previousLogger := slog.Default()
+	slog.SetDefault(slog.New(&warningSignalHandler{
+		observed: warningObserved,
+		message:  "trusted host protection disabled",
+	}))
+	t.Cleanup(func() { slog.SetDefault(previousLogger) })
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	// When the application starts.
+	done := make(chan error, 1)
+	go func() {
+		done <- Run(ctx, fstest.MapFS{"index.html": {Data: []byte("<!doctype html>")}})
+	}()
+
+	// Then the operator receives a warning that the opt-out weakens host protection.
+	select {
+	case <-warningObserved:
+		cancel()
+	case <-time.After(5 * time.Second):
+		cancel()
+		<-done
+		t.Fatal("trusted host opt-out warning was not logged")
 	}
 	if err := <-done; err != nil {
 		t.Fatalf("run dashboard: %v", err)
@@ -193,6 +260,7 @@ type readinessBlockingHandler struct {
 type warningSignalHandler struct {
 	slog.Handler
 	observed chan struct{}
+	message  string
 }
 
 func (handler *warningSignalHandler) Enabled(context.Context, slog.Level) bool {
@@ -200,7 +268,7 @@ func (handler *warningSignalHandler) Enabled(context.Context, slog.Level) bool {
 }
 
 func (handler *warningSignalHandler) Handle(_ context.Context, record slog.Record) error {
-	if record.Message == "dashboard is bound to all interfaces without a trusted host" {
+	if record.Message == handler.message {
 		close(handler.observed)
 	}
 	return nil

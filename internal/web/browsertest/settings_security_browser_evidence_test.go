@@ -59,10 +59,7 @@ func captureSettingsEvidence(t *testing.T, browser context.Context, serverURL st
 	warmSettingsCapture(t, browser, width)
 	nvdScreenshot := captureSettingsTarget(t, browser, "#nvd-api-key", width, height)
 
-	llmRoot, rootCancel := context.WithTimeout(context.Background(), 20*time.Second)
-	t.Cleanup(rootCancel)
-	llmBrowser, browserCancel := chromedp.NewContext(llmRoot)
-	t.Cleanup(browserCancel)
+	llmBrowser := newBrowserContext(t, 20*time.Second)
 	if err := chromedp.Run(llmBrowser,
 		chromedp.EmulateViewport(width, height),
 		chromedp.Navigate(serverURL),

@@ -104,3 +104,44 @@ func TestRequestIsRejected_whenOriginUsesAnotherPortOnTrustedHost(t *testing.T) 
 		t.Fatalf("status = %d, want %d, body = %s", recorder.Code, http.StatusForbidden, recorder.Body.String())
 	}
 }
+
+func TestRequestIsAccepted_whenTrustedHostPolicyIsExplicitlyDisabled(t *testing.T) {
+	// Given a dashboard with the explicit unsafe trusted-host opt-out.
+	server, _, _ := newTestServerWithConfig(t, testServerConfig{
+		fetcher:             &stubFetcher{},
+		nvdAPIKey:           "test-nvd-key",
+		allowUntrustedHosts: true,
+	})
+
+	// When a client uses a valid but otherwise untrusted Host header without a browser Origin.
+	request := httptest.NewRequest(http.MethodGet, "/api/bootstrap", nil)
+	request.Host = "rebound.example"
+	recorder := httptest.NewRecorder()
+	server.ServeHTTP(recorder, request)
+
+	// Then the explicit opt-out allows the request through.
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d, body = %s", recorder.Code, http.StatusOK, recorder.Body.String())
+	}
+}
+
+func TestRequestIsRejected_whenTrustedHostPolicyIsDisabledButOriginIsAnotherSite(t *testing.T) {
+	// Given a dashboard with the explicit unsafe trusted-host opt-out.
+	server, _, _ := newTestServerWithConfig(t, testServerConfig{
+		fetcher:             &stubFetcher{},
+		nvdAPIKey:           "test-nvd-key",
+		allowUntrustedHosts: true,
+	})
+
+	// When a browser request carries an unrelated Origin.
+	request := httptest.NewRequest(http.MethodGet, "/api/bootstrap", nil)
+	request.Host = "rebound.example"
+	request.Header.Set("Origin", "http://evil.example")
+	recorder := httptest.NewRecorder()
+	server.ServeHTTP(recorder, request)
+
+	// Then the same-origin check still rejects the request.
+	if recorder.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d, body = %s", recorder.Code, http.StatusForbidden, recorder.Body.String())
+	}
+}

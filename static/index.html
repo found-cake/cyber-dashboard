@@ -7,7 +7,7 @@
   <meta name="theme-color" content="#0d1117">
   <title>Cyber Dashboard</title>
   <link rel="icon" href="data:,">
-  <!-- app.js is deferred, so resolve the theme here or light users get a dark flash. Mirrors resolveTheme(). -->
+  <!-- Mirror resolveTheme() before deferred scripts run to prevent a theme flash. -->
   <script>
     (() => {
       const stored = localStorage.getItem("cyber-theme");
@@ -18,6 +18,8 @@
   </script>
   <link rel="stylesheet" href="/styles.css">
   <script defer src="/jquery-4.0.0.min.js"></script>
+  <script defer src="/auth-utils.js"></script>
+  <script defer src="/task-utils.js"></script>
   <script defer src="/collection-task.js"></script>
   <script defer src="/cve-refresh-task.js"></script>
   <script defer src="/export.js"></script>
@@ -49,13 +51,13 @@
       <section class="report-nav" aria-labelledby="report-nav-title">
         <div class="section-kicker-row">
           <span class="section-kicker" id="report-nav-title" data-i18n="reports">Reports</span>
-          <button class="small-button" id="open-report-modal" type="button"><span aria-hidden="true">＋</span> <span data-i18n="newReport">New report</span></button>
+          <button class="small-button" id="open-report-modal" type="button" hidden><span aria-hidden="true">＋</span> <span data-i18n="newReport">New report</span></button>
         </div>
         <div class="report-list" id="report-list"></div>
       </section>
-      <nav class="settings-nav" aria-label="Settings">
-        <button class="nav-item" data-view="settings" type="button">
-          <span class="nav-symbol" aria-hidden="true">S</span><span data-i18n="settings">Settings</span>
+      <nav class="settings-nav" id="settings-navigation" aria-label="Settings">
+        <button class="nav-item" id="settings-action" data-view="settings" type="button" hidden>
+          <span class="nav-symbol" aria-hidden="true">S</span><span class="settings-action-label">Settings</span>
         </button>
       </nav>
     </aside>
@@ -67,9 +69,11 @@
           <div>
             <h1 id="page-title">Dashboard</h1>
             <p id="page-subtitle">Last 30 days</p>
+            <span class="topbar-range"><select class="topbar-select" id="dashboard-range" hidden></select></span>
           </div>
         </div>
         <div class="topbar-actions">
+          <button class="secondary-button auth-action" id="auth-action" type="button" data-i18n="logout" hidden>Log out</button>
           <button class="icon-button theme-toggle" id="theme-toggle" type="button" aria-label="Toggle theme" aria-pressed="false">
             <span class="theme-glyph" aria-hidden="true"></span>
           </button>

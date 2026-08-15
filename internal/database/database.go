@@ -25,7 +25,7 @@ func Open(ctx context.Context, path string) (*gorm.DB, error) {
 		return nil, fmt.Errorf("access sqlite pool: %w", err)
 	}
 	sqlDB.SetMaxOpenConns(1)
-	if err := db.WithContext(ctx).AutoMigrate(&Source{}, &Article{}, &DailySummary{}, &CVE{}, &RejectedCVE{}, &ArticleCVE{}, &Report{}, &Setting{}, &LLMPreset{}); err != nil {
+	if err := db.WithContext(ctx).AutoMigrate(&Source{}, &Article{}, &DailySummary{}, &CVE{}, &RejectedCVE{}, &ArticleCVE{}, &Report{}, &Setting{}, &LLMPreset{}, &AdminCredential{}); err != nil {
 		_ = sqlDB.Close()
 		return nil, fmt.Errorf("auto migrate: %w", err)
 	}

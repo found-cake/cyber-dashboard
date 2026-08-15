@@ -18,17 +18,11 @@ import (
 
 func TestSettingsLicenseDialogShowsProgramAndThirdPartyLicenses(t *testing.T) {
 	server := newSettingsSecurityBrowserServer(t, make(chan api.Settings, 1))
-	viewports := []struct {
-		width  int64
-		height int64
-	}{{375, 812}, {768, 900}, {1280, 900}}
+	viewports := responsiveViewports
 
 	for _, viewport := range viewports {
 		t.Run(fmt.Sprintf("%dpx", viewport.width), func(t *testing.T) {
-			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-			t.Cleanup(cancel)
-			browser, browserCancel := chromedp.NewContext(ctx)
-			t.Cleanup(browserCancel)
+			browser := newBrowserContext(t, 20*time.Second)
 
 			if err := chromedp.Run(browser,
 				chromedp.EmulateViewport(viewport.width, viewport.height),

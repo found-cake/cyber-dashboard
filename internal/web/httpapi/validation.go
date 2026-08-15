@@ -98,6 +98,7 @@ func writeBadRequest(c *echo.Context, message string) error {
 		"date must use YYYY-MM-DD":                         "날짜는 YYYY-MM-DD 형식이어야 합니다",
 		"future dates cannot be collected":                 "미래 날짜는 수집할 수 없습니다",
 		"date is outside the 10-day feed retention window": "피드 보존 기간 10일을 벗어난 날짜입니다",
+		"days must be 7, 30, or 90":                        "집계 기간은 7일, 30일 또는 90일이어야 합니다",
 		"type must be weekly or monthly":                   "보고서 유형은 weekly 또는 monthly여야 합니다",
 		"invalid report period":                            "보고서 기간이 올바르지 않습니다",
 		"invalid report id":                                "보고서 ID가 올바르지 않습니다",

@@ -1,9 +1,5 @@
-// Command promptbench scores the article-analysis prompt against real collected articles.
-//
-// It exists because prompt work is otherwise judged by re-collecting and eyeballing the
-// dashboard, which cannot separate a real improvement from a regression, and cannot compare
-// two models at all. The bench runs the production analysis path, so what it measures is
-// what collection would store.
+// Command promptbench scores the production article-analysis path against collected articles
+// so prompt and model changes can be compared reproducibly.
 //
 //	go run ./cmd/promptbench -base-url http://127.0.0.1:8888/v1 -model gpt-5.6-luna
 //	go run ./cmd/promptbench -base-url http://127.0.0.1:8888/v1 -model gpt-5.4-mini
@@ -164,8 +160,6 @@ func splitDays(value string) []string {
 	return days
 }
 
-// scorecard holds every number the report prints. Scoring is kept separate from printing so
-// the measurements this tool exists to produce can themselves be tested.
 type scorecard struct {
 	observations, analyzed, failed                      int
 	offEnumMethod, offEnumSector                        int
@@ -198,29 +192,23 @@ func score(observations []observation) scorecard {
 			if !isTargetSector(analysis.TargetSector) {
 				card.offEnumSector++
 			}
-			// Severity reads damage_usd, so how often the model finds a figure at all is
-			// worth watching: a run where it never does is a prompt problem, not quiet news.
+			// Track damage extraction because it contributes directly to severity.
 			if analysis.DamageUSD > 0 {
 				card.damageStated++
 			}
-			// Severity moves a step on the patch state, so a blank one on an article about
-			// a specific flaw is a miss. Articles that are not about a flaw are left out of
-			// the denominator: having no patch state is the right answer there.
+			// Measure patch-state coverage only for flaw-related articles.
 			if isFlawMethod(analysis.AttackMethod) {
 				card.flawArticles++
 				if analysis.PatchAvailable != "" {
 					card.patchStated++
 				}
 			}
-			// The prompt pins these two together: every non-incident label means no actor,
-			// and an incident always carries some actor value. Only labels inside the
-			// taxonomy are judged here, so an off-enum method is not counted twice.
+			// Check the method/actor invariant only for labels within the taxonomy.
 			if isAttackMethod(analysis.AttackMethod) &&
 				isIncidentMethod(analysis.AttackMethod) == (analysis.ThreatActor == noAttack) {
 				card.sentinelMismatch++
 			}
-			// A Korean run must still emit the English sentinels, or the dashboard shows
-			// "Unknown" and its translation as two separate bars.
+			// Localized runs must retain English sentinels to avoid split dashboard buckets.
 			if containsHangul(analysis.AttackMethod) || containsHangul(analysis.ThreatActor) || containsHangul(analysis.TargetSector) {
 				card.languageLeak++
 			}

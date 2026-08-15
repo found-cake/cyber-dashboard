@@ -3,7 +3,6 @@
 package browsertest
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -31,10 +30,7 @@ func TestCVEExplorerNavigatesToSubpage_whenDashboardCardIsActivated(t *testing.T
 		}
 	}
 	server := newCVENavigationServer(t, cves)
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	t.Cleanup(cancel)
-	browser, browserCancel := chromedp.NewContext(ctx)
-	t.Cleanup(browserCancel)
+	browser := newBrowserContext(t, 20*time.Second)
 
 	// When the complete CVE card is activated.
 	var previewRows int
@@ -98,10 +94,7 @@ func TestCVEExplorerNavigatesToSubpage_whenDashboardCardIsActivated(t *testing.T
 func TestCVEExplorerRefreshesOnceAndShowsPendingCVSSAsNeutral(t *testing.T) {
 	// Given the CVE explorer contains an NVD assessment that is still pending.
 	server, started, release, refreshCalls := newCVERefreshServer(t)
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	t.Cleanup(cancel)
-	browser, browserCancel := chromedp.NewContext(ctx)
-	t.Cleanup(browserCancel)
+	browser := newBrowserContext(t, 20*time.Second)
 	if err := chromedp.Run(browser,
 		chromedp.EmulateViewport(375, 812),
 		chromedp.Navigate(server.URL+"/#cves"),

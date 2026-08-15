@@ -1,48 +1,35 @@
 (function (root, factory) {
   "use strict";
 
-  const createCollectionTask = factory();
+  const createCollectionTask = factory(
+    typeof module === "object" && module.exports
+      ? require("./task-utils.js")
+      : root.createSingleActiveTask
+  );
   if (typeof module === "object" && module.exports) module.exports = createCollectionTask;
   if (root) root.createCollectionTask = createCollectionTask;
-})(typeof window === "undefined" ? globalThis : window, function () {
+})(typeof window === "undefined" ? globalThis : window, function (createSingleActiveTask) {
   "use strict";
 
   return function createCollectionTask(requestCollection) {
-    let active = null;
-    const listeners = new Set();
-
-    function notify() {
-      listeners.forEach(listener => listener(active ? active.day : null));
-    }
-
-    function activate(day, request) {
-      if (active) return null;
-      active = { day, request };
-      notify();
-      request.always(() => {
-        if (!active || active.request !== request) return;
-        active = null;
-        notify();
-      });
-      return request;
-    }
+    const task = createSingleActiveTask();
 
     return {
       activeDay() {
-        return active ? active.day : null;
+        return task.value();
       },
       start(day) {
-        return active ? null : activate(day, requestCollection(day));
+        return task.start(day, () => requestCollection(day));
       },
       resume(day, request) {
-        return activate(day, request);
+        return task.resume(day, request);
       },
       cancel() {
-        if (active) active.request.abort();
+        const request = task.request();
+        if (request) request.abort();
       },
       subscribe(listener) {
-        listeners.add(listener);
-        return () => listeners.delete(listener);
+        return task.subscribe(() => listener(task.value()));
       }
     };
   };

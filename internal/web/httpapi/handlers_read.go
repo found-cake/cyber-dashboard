@@ -5,15 +5,18 @@ import (
 	"time"
 
 	"github.com/found-cake/cyber-dashboard/api"
+	"github.com/found-cake/cyber-dashboard/internal/dashboard"
 	"github.com/labstack/echo/v5"
 )
 
 func (s *Server) bootstrap(c *echo.Context) error {
 	ctx := c.Request().Context()
-	sources, err := s.feeds.Sources(ctx)
+	authenticated, err := s.authenticated(c)
 	if err != nil {
 		return writeAPIError(c, err)
 	}
+	sources := []api.Source{}
+	presets := []api.LLMPresetResponse{}
 	reports, err := s.reports.List(ctx)
 	if err != nil {
 		return writeAPIError(c, err)
@@ -26,32 +29,54 @@ func (s *Server) bootstrap(c *echo.Context) error {
 	if err != nil {
 		return writeAPIError(c, err)
 	}
-	presets, err := s.settings.Presets(ctx)
-	if err != nil {
-		return writeAPIError(c, err)
+	settingsValue := api.SettingsResponse{
+		Language: appSettings.Language, Accent: appSettings.Accent,
+		TimezoneOffsetMinutes: appSettings.TimezoneOffsetMinutes,
+	}
+	if authenticated {
+		sources, err = s.feeds.Sources(ctx)
+		if err != nil {
+			return writeAPIError(c, err)
+		}
+		values, err := s.settings.Presets(ctx)
+		if err != nil {
+			return writeAPIError(c, err)
+		}
+		presets = llmPresetResponses(values)
+		settingsValue = settingsResponse(appSettings)
 	}
 	return c.JSON(http.StatusOK, api.Bootstrap{
-		Sources: sources, Reports: reports, Settings: settingsResponse(appSettings),
-		LLMPresets: llmPresetResponses(presets), CollectedDays: days, Collection: s.collections.Active(), CVERefresh: s.activeCVERefresh(),
+		Auth:    api.AuthState{Enabled: s.auth != nil, Authenticated: authenticated},
+		Sources: sources, Reports: reports, Settings: settingsValue,
+		LLMPresets: presets, CollectedDays: days, Collection: s.collections.Active(), CVERefresh: s.activeCVERefresh(),
 	})
 }
 
-// configuredTime is the current time shifted onto the configured UTC offset, so its
-// calendar date is the "today" the whole application agrees on. Formatting it with
-// time.DateOnly yields that date because the returned time carries the UTC location.
+// configuredTime shifts UTC so DateOnly formatting yields the application's configured today.
 func (s *Server) configuredTime(offsetMinutes int) time.Time {
 	return s.now().UTC().Add(time.Duration(offsetMinutes) * time.Minute)
 }
 
+// dashboardWindows are the offered ranges; 30 and 90 bucket to the same ten points on purpose.
+var dashboardWindows = map[string]dashboard.Window{
+	"":   {Days: 30, Bucket: 3},
+	"7":  {Days: 7, Bucket: 1},
+	"30": {Days: 30, Bucket: 3},
+	"90": {Days: 90, Bucket: 9},
+}
+
 func (s *Server) dashboardData(c *echo.Context) error {
+	window, allowed := dashboardWindows[c.QueryParam("days")]
+	if !allowed {
+		return writeBadRequest(c, "days must be 7, 30, or 90")
+	}
 	appSettings, err := s.settings.Get(c.Request().Context())
 	if err != nil {
 		return writeAPIError(c, err)
 	}
-	// The 30-day window is computed here rather than with SQLite's date('now'), which is
-	// always UTC and would drift a day away from the configured timezone.
-	since := s.configuredTime(appSettings.TimezoneOffsetMinutes).AddDate(0, 0, -29).Format(time.DateOnly)
-	value, err := s.dashboard.Dashboard(c.Request().Context(), since)
+	// Compute the window here because SQLite date('now') always uses UTC.
+	window.Since = s.configuredTime(appSettings.TimezoneOffsetMinutes).AddDate(0, 0, -(window.Days - 1)).Format(time.DateOnly)
+	value, err := s.dashboard.Dashboard(c.Request().Context(), window, c.QueryParam("hide_none") == "1")
 	if err != nil {
 		return writeAPIError(c, err)
 	}

@@ -66,7 +66,7 @@ func TestServiceCancelsActiveJob_andReleasesTheSlotForAnotherDay(t *testing.T) {
 	service := NewService(func(ctx context.Context, day string) (api.CollectionResult, error) {
 		close(started)
 		<-ctx.Done()
-		return api.CollectionResult{}, ctx.Err()
+		return api.CollectionResult{Day: day, Collected: 3}, nil
 	})
 	job, err := service.Start(context.Background(), "2026-08-03")
 	if err != nil {
@@ -89,6 +89,9 @@ func TestServiceCancelsActiveJob_andReleasesTheSlotForAnotherDay(t *testing.T) {
 	}
 	if settled.Error != "" {
 		t.Fatalf("cancelled job error = %q, want empty", settled.Error)
+	}
+	if settled.Result != nil {
+		t.Fatalf("cancelled job result = %+v, want nil", settled.Result)
 	}
 	if active := service.Active(); active != nil {
 		t.Fatalf("active job = %+v, want none", active)
