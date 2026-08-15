@@ -95,7 +95,8 @@ button:active{transform:translateY(1px)}
 /* The viewBox scales with the card, so one drawing serves every breakpoint. */
 .chart svg{display:block;width:100%;height:auto;overflow:visible}
 .trend-grid line{stroke:var(--divider);stroke-width:1}
-.trend-axis{fill:var(--t3);font-size:13px;font-family:Inter,"Noto Sans KR",sans-serif}
+/* JS lowers --trend-label once the card is wide enough to push the drawn size past its cap. */
+.trend-axis{fill:var(--t3);font-size:var(--trend-label,13px);font-family:Inter,"Noto Sans KR",sans-serif}
 .trend-slot{fill:transparent}
 .trend-targets{position:absolute;inset-block-start:0;inset-inline-start:0;width:100%;aspect-ratio:360/172;pointer-events:none}
 .trend-bucket{position:absolute;padding:0;border:0;background:transparent;outline:0;cursor:default;pointer-events:auto}

@@ -611,6 +611,23 @@
 
   // The 30- and 90-day ranges bucket to these same ten slots, so they share one geometry.
   const trendSlots = 10;
+  const trendLabelUnits = 13, trendLabelMaxPx = 12;
+
+  // Axis text scales with the card like the rest of the drawing, up to a ceiling; past that a
+  // wide card renders it larger than the card's own heading.
+  function fitTrendLabels() {
+    $(".chart svg").each(function () {
+      const rendered = this.getBoundingClientRect().width;
+      if (!rendered) return;
+      const scale = rendered / this.viewBox.baseVal.width;
+      this.style.setProperty("--trend-label", `${Math.min(trendLabelUnits, trendLabelMaxPx / scale).toFixed(2)}px`);
+    });
+  }
+
+  function measureCharts() {
+    markClippedBarLabels();
+    fitTrendLabels();
+  }
 
   function niceCeiling(value) {
     if (value <= 4) return Math.max(value, 1);
@@ -801,7 +818,7 @@
         $("#collection-trend").closest(".card").find(".card-subtitle").text(t("collectionTrendHint")(bucketDays(data.trend)));
         $("#attribution-trend").closest(".card").find(".card-subtitle").text(t("attributionTrendHint")(bucketDays(data.trend)));
       }
-      markClippedBarLabels();
+      measureCharts();
     }).fail(error => {
       if (request === dashboardRequest && state.view === "dashboard") showRequestError(error);
     }).always(() => {
@@ -842,9 +859,9 @@
         </section>
       </div>`);
       bindTrendTargets();
-      markClippedBarLabels();
+      measureCharts();
       // Re-measure after fonts load so fallback metrics do not determine clipping.
-      if (document.fonts) document.fonts.ready.then(markClippedBarLabels);
+      if (document.fonts) document.fonts.ready.then(measureCharts);
       applyViewScroll("dashboard", restoreScroll);
     }).fail(error => {
       if (request === dashboardRequest && state.view === "dashboard") showRequestError(error);
@@ -1608,11 +1625,11 @@
     $("#drawer-close,#drawer-scrim").on("click", closeDrawer);
     $(window).on("resize", () => {
       closeDrawer();
-      markClippedBarLabels();
+      measureCharts();
     });
     // Observe non-window width changes and retain the observer for its target's lifetime.
     if (typeof ResizeObserver === "function") {
-      mainResizeObserver = new ResizeObserver(markClippedBarLabels);
+      mainResizeObserver = new ResizeObserver(measureCharts);
       mainResizeObserver.observe(document.getElementById("main-content"));
     }
     $(window).on("hashchange", () => {
