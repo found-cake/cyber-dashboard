@@ -31,6 +31,7 @@ func TestOpenAppliesSchemaAndSeedsIdempotently(t *testing.T) {
 	// Then global source, language, and built-in preset defaults exist exactly once.
 	var sources, presets int
 	var language string
+	var llmTimeout int
 	var boannewsEnabled, bleepingEnabled bool
 	if err := db.Raw(`SELECT COUNT(*) FROM sources`).Row().Scan(&sources); err != nil {
 		t.Fatalf("count sources: %v", err)
@@ -40,6 +41,9 @@ func TestOpenAppliesSchemaAndSeedsIdempotently(t *testing.T) {
 	}
 	if err := db.Raw(`SELECT lang FROM settings WHERE id = 1`).Row().Scan(&language); err != nil {
 		t.Fatalf("read default language: %v", err)
+	}
+	if err := db.Raw(`SELECT llm_timeout FROM settings WHERE id = 1`).Row().Scan(&llmTimeout); err != nil {
+		t.Fatalf("read default LLM timeout: %v", err)
 	}
 	if err := db.Raw(`SELECT enabled FROM sources WHERE slug = 'boannews'`).Row().Scan(&boannewsEnabled); err != nil {
 		t.Fatalf("read BoanNews source: %v", err)
@@ -52,6 +56,9 @@ func TestOpenAppliesSchemaAndSeedsIdempotently(t *testing.T) {
 	}
 	if language != "en" {
 		t.Fatalf("default language = %q, want en", language)
+	}
+	if llmTimeout != 120 {
+		t.Fatalf("default LLM timeout = %d, want 120", llmTimeout)
 	}
 	if boannewsEnabled {
 		t.Fatal("BoanNews seed is enabled, want disabled")

@@ -81,7 +81,7 @@ type Setting struct {
 	LLMBaseURL            string `gorm:"not null;default:https://api.openai.com/v1"`
 	LLMModel              string `gorm:"not null;default:gpt-4o-mini"`
 	LLMAPIKey             string `gorm:"not null;default:''"`
-	LLMTimeout            int    `gorm:"not null;default:60"`
+	LLMTimeout            int    `gorm:"not null;default:120"`
 	NVDAPIKey             string `gorm:"not null;default:''"`
 	TimezoneOffsetMinutes *int
 }
