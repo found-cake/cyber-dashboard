@@ -3,6 +3,7 @@ package report
 import (
 	"context"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"testing"
 
@@ -14,12 +15,13 @@ import (
 type reportGeneratorStub struct {
 	value   string
 	err     error
-	request summary.Request
+	request summary.ReportRequest
+	groups  []summary.ReportThreatGroup
 }
 
-func (g *reportGeneratorStub) Generate(_ context.Context, request summary.Request) (string, error) {
+func (g *reportGeneratorStub) GenerateReport(_ context.Context, request summary.ReportRequest) (summary.ReportResult, error) {
 	g.request = request
-	return g.value, g.err
+	return summary.ReportResult{Summary: g.value, ThreatGroups: g.groups}, g.err
 }
 
 func TestServiceCreatePersistsGeneratedReport_whenArticlesExist(t *testing.T) {
@@ -89,5 +91,48 @@ func TestServiceCreateDoesNotPersistReport_whenSummaryGenerationFails(t *testing
 	}
 	if len(listed) != 0 {
 		t.Fatalf("stored reports = %d, want 0", len(listed))
+	}
+}
+
+func TestServiceCreatePersistsTranslatedLLMMergedThreats_whenSelectionIsValid(t *testing.T) {
+	// Given three distinct report candidates and an LLM selection that identifies two as one incident.
+	db, err := database.Open(context.Background(), filepath.Join(t.TempDir(), "dashboard.db"))
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	t.Cleanup(func() { _ = database.Close(db) })
+	for index, title := range []string{"Major breach report", "Follow-up on the same breach", "Separate ransomware incident"} {
+		if err := db.Create(&database.Article{
+			SourceID: 1, FeedUID: fmt.Sprintf("selection-%d", index), Title: title,
+			URL: fmt.Sprintf("https://example.com/selection-%d", index), PublishedAt: "2026-08-03",
+			CollectedAt: "2026-08-03T00:00:00Z", Severity: "CRITICAL",
+		}).Error; err != nil {
+			t.Fatalf("insert article: %v", err)
+		}
+	}
+	if err := db.Create(&database.DailySummary{Day: "2026-08-03", Summary: "Daily digest", GeneratedAt: "2026-08-03T23:00:00Z"}).Error; err != nil {
+		t.Fatalf("insert daily summary: %v", err)
+	}
+	generator := &reportGeneratorStub{
+		value: "Generated summary",
+		groups: []summary.ReportThreatGroup{
+			{RepresentativeID: "threat-1", MemberIDs: []string{"threat-1", "threat-2"}, TranslatedTitle: "대규모 정보 유출"},
+			{RepresentativeID: "threat-3", MemberIDs: []string{"threat-3"}, TranslatedTitle: "별도의 랜섬웨어 사고"},
+		},
+	}
+
+	// When the weekly report is created.
+	created, err := NewService(NewRepository(db), generator).Create(context.Background(), api.CreateReportRequest{
+		Type: "weekly", Start: "2026-08-01", End: "2026-08-07",
+	}, CreateOptions{Language: "ko"})
+
+	// Then the semantic duplicate is collapsed and its source count is retained.
+	if err != nil {
+		t.Fatalf("create report: %v", err)
+	}
+	if len(created.TopThreats) != 2 || created.TopThreats[0].Title != "대규모 정보 유출" ||
+		created.TopThreats[1].Title != "별도의 랜섬웨어 사고" || created.TopThreats[0].SourceCount != 2 ||
+		created.TopThreat != created.TopThreats[0].Title {
+		t.Fatalf("created top threats = %+v", created.TopThreats)
 	}
 }

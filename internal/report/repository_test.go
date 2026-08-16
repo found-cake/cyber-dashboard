@@ -22,7 +22,7 @@ func TestBuildReturnsNotFoundForEmptyPeriod(t *testing.T) {
 	t.Cleanup(func() { _ = database.Close(db) })
 
 	// When a report is built for an empty period.
-	_, _, err = NewRepository(db).Build(context.Background(), api.CreateReportRequest{
+	_, err = NewRepository(db).Build(context.Background(), api.CreateReportRequest{
 		Type: "weekly", Start: "2026-08-01", End: "2026-08-03",
 	})
 
@@ -55,7 +55,7 @@ func TestBuildAggregatesReportData_whenPeriodContainsArticles(t *testing.T) {
 	}
 
 	// When a report is built for the populated period.
-	value, facts, err := NewRepository(db).Build(context.Background(), api.CreateReportRequest{
+	draft, err := NewRepository(db).Build(context.Background(), api.CreateReportRequest{
 		Type: "daily", Start: "2026-08-02", End: "2026-08-02",
 	})
 
@@ -63,11 +63,11 @@ func TestBuildAggregatesReportData_whenPeriodContainsArticles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build report: %v", err)
 	}
-	if value.Total != 3 || value.Critical != 1 || value.High != 1 || value.Medium != 1 || value.TopThreat != "Critical incident" {
-		t.Fatalf("report = %+v", value)
+	if draft.report.Total != 3 || draft.report.Critical != 1 || draft.report.High != 1 || draft.report.Medium != 1 || draft.report.TopThreat != "Critical incident" {
+		t.Fatalf("report = %+v", draft.report)
 	}
-	if len(value.Actors) != 2 || value.Actors[0] != "Group A" || len(value.Sectors) != 2 || len(facts) != 3 {
-		t.Fatalf("actors = %v, sectors = %v, facts = %v", value.Actors, value.Sectors, facts)
+	if len(draft.report.Actors) != 2 || draft.report.Actors[0] != "Group A" || len(draft.report.Sectors) != 2 || len(draft.facts) != 3 {
+		t.Fatalf("actors = %v, sectors = %v, facts = %v", draft.report.Actors, draft.report.Sectors, draft.facts)
 	}
 }
 
@@ -84,7 +84,7 @@ func TestBuildTreatsPeriodAsData_whenPeriodContainsSQLSyntax(t *testing.T) {
 	}
 
 	// When the untrusted period reaches the report query.
-	_, _, err = NewRepository(db).Build(context.Background(), api.CreateReportRequest{
+	_, err = NewRepository(db).Build(context.Background(), api.CreateReportRequest{
 		Type: "daily", Start: "' OR 1=1 --", End: "' OR 1=1 --",
 	})
 
@@ -125,6 +125,10 @@ func TestSaveAndListPreserveReport_whenTimezoneIsConfigured(t *testing.T) {
 	input := api.Report{
 		Type: "daily", PeriodStart: "2026-08-03", PeriodEnd: "2026-08-03", Total: 3,
 		Critical: 1, High: 1, Medium: 1, TopThreat: "Critical incident",
+		TopThreats: []api.ReportThreat{
+			{Title: "Critical incident", Severity: "CRITICAL", PublishedAt: "2026-08-03", SourceCount: 2},
+			{Title: "High incident", Severity: "HIGH", PublishedAt: "2026-08-02", SourceCount: 1},
+		},
 		Actors: []string{"Group A", "Group B"}, Sectors: []string{"Finance", "Energy"}, Summary: "Daily summary",
 	}
 
@@ -144,6 +148,9 @@ func TestSaveAndListPreserveReport_whenTimezoneIsConfigured(t *testing.T) {
 	}
 	if listed[0].Summary != input.Summary || strings.Join(listed[0].Actors, ",") != "Group A,Group B" || strings.Join(listed[0].Sectors, ",") != "Finance,Energy" {
 		t.Fatalf("listed report = %+v", listed[0])
+	}
+	if len(listed[0].TopThreats) != 2 || listed[0].TopThreats[1].Title != "High incident" || listed[0].TopThreats[0].SourceCount != 2 {
+		t.Fatalf("listed top threats = %+v", listed[0].TopThreats)
 	}
 }
 
