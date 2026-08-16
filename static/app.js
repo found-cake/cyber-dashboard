@@ -28,8 +28,8 @@
       unsavedSettings: "저장하지 않은 변경사항이 있습니다.", revert: "되돌리기",
       sourceFilter: "뉴스 출처", allSources: "모든 출처", recollect: "재수집", recollectConfirm: "이 날짜의 뉴스를 다시 수집하시겠습니까?",
       timezone: "시간대", timezoneHint: "보고서 저장 시간에 적용됩니다.",
-      reportTitle: "보고서 생성", reportHint: "수집된 기사를 기준으로 보고서를 만듭니다.", weekly: "주간", monthly: "월간",
-      pickYear: "연도", pickMonth: "월", pickWeek: "주 선택 (일 – 토)", articlesUnit: "건", scrollHint: "주간 범위를 선택하세요",
+      reportTitle: "보고서 생성", reportHint: "기간 내 일간 요약을 바탕으로 주간·월간 보고서를 만듭니다.", weekly: "주간", monthly: "월간",
+      pickYear: "연도", pickMonth: "월", pickWeek: "주 선택 (일 – 토)", articleUnit: "건", articlesUnit: "건", scrollHint: "주간 범위를 선택하세요",
       periodStart: "시작일", periodEnd: "종료일", generate: "생성", topThreat: "주요 위협",
       keyActors: "핵심 위협 행위자", summary: "요약", targetSectors: "주요 타겟 섹터", medium: "Medium",
       firstSeen: "최초 등장", mentions: "언급", product: "제품 / 벤더", article: "기사", articleCount: "기사",
@@ -82,9 +82,9 @@
       unsavedSettings: "You have unsaved changes.", revert: "Reset",
       sourceFilter: "News source", allSources: "All sources", recollect: "Recollect", recollectConfirm: "Recollect news for this date?",
       timezone: "Timezone", timezoneHint: "Applied when reports are saved.",
-      reportTitle: "Generate report", reportHint: "Built from the articles collected in the range.", weekly: "Weekly", monthly: "Monthly",
-      pickYear: "Year", pickMonth: "Month", pickWeek: "Pick a week (Sun – Sat)", articlesUnit: "items", scrollHint: "Select a weekly range",
-      periodStart: "Start", periodEnd: "End", generate: "Generate", topThreat: "Top threat",
+      reportTitle: "Generate report", reportHint: "Builds weekly and monthly reports from daily summaries in the selected range.", weekly: "Weekly", monthly: "Monthly",
+      pickYear: "Year", pickMonth: "Month", pickWeek: "Pick a week (Sun – Sat)", articleUnit: "item", articlesUnit: "items", scrollHint: "Select a weekly range",
+      periodStart: "Start", periodEnd: "End", generate: "Generate", topThreat: "Top threats",
       keyActors: "Key threat actors", summary: "Summary", targetSectors: "Target sectors", medium: "Medium",
       firstSeen: "First seen", mentions: "Mentions", product: "Product / Vendor", article: "Article", articleCount: "Articles",
       reportWord: "report", downloadPDF: "Download PDF", downloadReportPDF: "Download report PDF", downloadDailyPDF: "Download daily summary PDF",
@@ -1105,7 +1105,7 @@
       <section class="card"><div class="card-header"><div><h2>${esc(t("timezone"))}</h2><p class="card-subtitle">${esc(t("timezoneHint"))}</p></div></div><div class="field"><label for="timezone-offset">UTC offset</label><select id="timezone-offset">${timezoneOptions(Number(settings.timezone_offset_minutes) || 0)}</select></div></section>
       <section class="card"><div class="card-header"><div><h2>${esc(t("llmTitle"))}</h2><p class="card-subtitle">${esc(t("llmHint"))}</p></div><span class="badge badge-info">OpenAI compatible</span></div>
         <div class="field-grid"><div class="preset-field full-span"><div class="preset-head"><span>${esc(t("preset"))}</span><button class="preset-add" id="add-llm-preset" type="button" title="${esc(t("presetAddHint"))}"${addDisabled ? " disabled" : ""}><span aria-hidden="true">＋</span>${esc(t("presetAdd"))}</button></div><div class="preset-list" id="llm-preset-list">${presetItems}</div></div>
-          <div class="field"><label for="llm-base-url">${esc(t("baseURL"))}</label><input id="llm-base-url" type="url" value="${esc(settings.llm_base_url || "")}"></div><div class="field"><label for="llm-model">${esc(t("model"))}</label><input id="llm-model" value="${esc(settings.llm_model || "")}"></div><div class="field"><label for="llm-api-key">${esc(t("apiKey"))}</label><input id="llm-api-key" type="password" autocomplete="off" value="" placeholder="${llmKeyIsConfigured(settings) ? esc(t("keyStoredPlaceholder")) : ""}"><small>${esc(t("keyInputHint"))}</small></div><div class="field"><label for="llm-timeout">${esc(t("timeout"))}</label><input id="llm-timeout" type="number" min="1" max="600" value="${Number(settings.llm_timeout) || 60}"></div>
+          <div class="field"><label for="llm-base-url">${esc(t("baseURL"))}</label><input id="llm-base-url" type="url" value="${esc(settings.llm_base_url || "")}"></div><div class="field"><label for="llm-model">${esc(t("model"))}</label><input id="llm-model" value="${esc(settings.llm_model || "")}"></div><div class="field"><label for="llm-api-key">${esc(t("apiKey"))}</label><input id="llm-api-key" type="password" autocomplete="off" value="" placeholder="${llmKeyIsConfigured(settings) ? esc(t("keyStoredPlaceholder")) : ""}"><small>${esc(t("keyInputHint"))}</small></div><div class="field"><label for="llm-timeout">${esc(t("timeout"))}</label><input id="llm-timeout" type="number" min="1" max="600" value="${Number(settings.llm_timeout) || 120}"></div>
           <div class="full-span cluster"><button class="secondary-button" id="test-llm" type="button">${esc(t("test"))}</button></div>
           <div class="field full-span"><label>${esc(t("requestPreview"))}</label><pre class="request-preview" id="request-preview">${esc(preview)}</pre></div></div>
       </section>
@@ -1342,7 +1342,8 @@
       const endKey = formatDay(week.end);
       const count = (state.bootstrap.collected_days || []).filter(day => day >= key && day <= endKey).length;
       const selected = state.reportWeekStart === key;
-      return `<button class="report-week${selected ? " is-selected" : ""}" type="button" data-report-week="${key}"${disabled ? " disabled" : ""}><strong>W${index + 1}</strong><span>${esc(key)} – ${esc(endKey)}</span><small>${count} ${esc(t("articlesUnit"))}</small></button>`;
+      const unit = count === 1 ? t("articleUnit") : t("articlesUnit");
+      return `<button class="report-week${selected ? " is-selected" : ""}" type="button" data-report-week="${key}"${disabled ? " disabled" : ""}><strong>W${index + 1}</strong><span>${esc(key)} – ${esc(endKey)}</span><small>${count} ${esc(unit)}</small></button>`;
     }).join("");
     $("#report-period-picker").html(`<div class="report-selects"><div class="field"><label for="report-year">${esc(t("pickYear"))}</label><select id="report-year">${yearOptions}</select></div><div class="field"><label for="report-month">${esc(t("pickMonth"))}</label><select id="report-month">${monthOptions}</select></div></div>${state.reportType === "weekly" ? `<div class="report-week-head"><span>${esc(t("pickWeek"))}</span><small>${esc(t("scrollHint"))}</small></div><div class="report-week-list">${rows}</div>` : `<div class="report-month-summary"><strong>${state.reportYear}.${String(state.reportMonth + 1).padStart(2, "0")}</strong><span>${esc(t("reportHint"))}</span></div>`}`);
     $("#generate-report").prop("disabled", state.reportType === "weekly" && !state.reportWeekStart);
@@ -1374,11 +1375,13 @@
     renderReportList();
     setHeader(report.type === "weekly" ? t("weekly") : t("monthly"), `${report.period_start} – ${report.period_end}`);
     const actors = report.actors.map(actor => esc(actor)).join(" · ") || esc(t("unknownActor"));
+    const threats = reportThreats(report);
+    const threatList = threats.length ? `<ol class="report-threat-list">${threats.map(threat => `<li>${esc(threat.title)}</li>`).join("")}</ol>` : `<p>${esc(t("none"))}</p>`;
     const deleteAction = isAuthenticated() ? `<button class="danger-button" id="delete-report" type="button">${esc(t("deleteReport"))}</button>` : "";
     $("#main-content").html(`<div class="content"><article class="report-sheet">
       <header class="report-sheet-header"><div><h2>${esc(report.type === "weekly" ? t("weekly") : t("monthly"))}</h2><p>${esc(report.period_start)} – ${esc(report.period_end)}</p></div><div class="cluster report-sheet-actions">${pdfDownloadHTML("report")}${deleteAction}</div></header>
       <div class="report-metrics"><div><strong class="tone-info">${report.total}</strong><span>${esc(t("total"))}</span></div><div><strong class="tone-danger">${report.critical}</strong><span>${esc(t("critical"))}</span></div><div><strong class="tone-warning">${report.high}</strong><span>${esc(t("high"))}</span></div><div><strong>${report.medium}</strong><span>${esc(t("medium"))}</span></div></div>
-      <section class="report-section"><h3>${esc(t("topThreat"))}</h3><p>${esc(report.top_threat)}</p></section>
+      <section class="report-section"><h3>${esc(t("topThreat"))}</h3>${threatList}</section>
       <section class="report-section"><h3>${esc(t("keyActors"))}</h3><p>${actors}</p></section>
       <section class="report-section"><h3>${esc(t("summary"))}</h3><p class="prose">${esc(report.summary)}</p></section>
       <section class="report-section"><h3>${esc(t("targetSectors"))}</h3><div class="report-sectors">${report.sectors.map(sector => `<span>${esc(sector)}</span>`).join("")}</div></section>

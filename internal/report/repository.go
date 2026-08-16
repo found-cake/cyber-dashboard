@@ -13,10 +13,17 @@ import (
 )
 
 var ErrNotFound = errors.New("report data not found")
+var ErrDailySummariesRequired = errors.New("daily summaries are required for the report period")
 
 type Repository struct {
 	db  *gorm.DB
 	now func() time.Time
+}
+
+type draft struct {
+	report  api.Report
+	facts   []string
+	threats []threatCandidate
 }
 
 func NewRepository(db *gorm.DB) *Repository {
@@ -30,15 +37,19 @@ func (r *Repository) List(ctx context.Context) ([]api.Report, error) {
 	}
 	reports := make([]api.Report, 0, len(stored))
 	for _, item := range stored {
+		threats := decodeValues[api.ReportThreat](item.TopThreats)
+		if len(threats) == 0 && item.TopThreat != "" {
+			threats = []api.ReportThreat{{Title: item.TopThreat, SourceCount: 1}}
+		}
 		reports = append(reports, api.Report{ID: item.ID, Type: item.Type, PeriodStart: item.PeriodStart,
 			PeriodEnd: item.PeriodEnd, Total: item.Total, Critical: item.Critical, High: item.High,
-			Medium: item.Medium, TopThreat: item.TopThreat, Actors: decodeList(item.Actors),
-			Sectors: decodeList(item.Sectors), Summary: item.Summary, GeneratedAt: item.GeneratedAt})
+			Medium: item.Medium, TopThreat: item.TopThreat, TopThreats: threats, Actors: decodeValues[string](item.Actors),
+			Sectors: decodeValues[string](item.Sectors), Summary: item.Summary, GeneratedAt: item.GeneratedAt})
 	}
 	return reports, nil
 }
 
-func (r *Repository) Build(ctx context.Context, request api.CreateReportRequest) (api.Report, []string, error) {
+func (r *Repository) Build(ctx context.Context, request api.CreateReportRequest) (draft, error) {
 	value := api.Report{Type: request.Type, PeriodStart: request.Start, PeriodEnd: request.End, Actors: []string{}, Sectors: []string{}}
 	var counts struct {
 		Total    int
@@ -51,46 +62,59 @@ func (r *Repository) Build(ctx context.Context, request api.CreateReportRequest)
 			"COALESCE(SUM(severity = 'HIGH'), 0) AS high", "COALESCE(SUM(severity = 'MEDIUM'), 0) AS medium").
 		Where("published_at BETWEEN ? AND ?", request.Start, request.End).Scan(&counts).Error
 	if err != nil {
-		return api.Report{}, nil, fmt.Errorf("aggregate report: %w", err)
+		return draft{}, fmt.Errorf("aggregate report: %w", err)
 	}
 	value.Total, value.Critical, value.High, value.Medium = counts.Total, counts.Critical, counts.High, counts.Medium
 	if value.Total == 0 {
-		return api.Report{}, nil, fmt.Errorf("report %s to %s: %w", request.Start, request.End, ErrNotFound)
-	}
-	if err := r.db.WithContext(ctx).Model(&database.Article{}).Select("title").Where("published_at BETWEEN ? AND ?", request.Start, request.End).
-		Order("CASE severity WHEN 'CRITICAL' THEN 0 WHEN 'HIGH' THEN 1 ELSE 2 END, published_at DESC").Limit(1).Scan(&value.TopThreat).Error; err != nil {
-		return api.Report{}, nil, fmt.Errorf("query top threat: %w", err)
+		return draft{}, fmt.Errorf("report %s to %s: %w", request.Start, request.End, ErrNotFound)
 	}
 	period := valuePeriod{start: request.Start, end: request.End}
 	value.Actors, err = r.topValues(ctx, topQuery{column: "threat_actor", period: period, limit: 6})
 	if err != nil {
-		return api.Report{}, nil, err
+		return draft{}, err
 	}
 	value.Sectors, err = r.topValues(ctx, topQuery{column: "sector", period: period, limit: 5})
 	if err != nil {
-		return api.Report{}, nil, err
+		return draft{}, err
 	}
-	facts, err := r.articleFacts(ctx, period)
+	var facts []string
+	switch request.Type {
+	case "weekly", "monthly":
+		facts, err = r.dailySummaryFacts(ctx, period)
+	default:
+		facts, err = r.articleFacts(ctx, period)
+	}
 	if err != nil {
-		return api.Report{}, nil, err
+		return draft{}, err
 	}
-	return value, facts, nil
+	limit := topThreatLimit(request.Type)
+	threats, err := r.threatCandidates(ctx, period, limit*2)
+	if err != nil {
+		return draft{}, err
+	}
+	value.TopThreats = staticReportThreats(threats, limit)
+	value.TopThreat = firstThreatTitle(value.TopThreats)
+	return draft{report: value, facts: facts, threats: threats}, nil
 }
 
 func (r *Repository) Save(ctx context.Context, value api.Report, timezoneOffsetMinutes int) (api.Report, error) {
 	location := time.FixedZone("configured", timezoneOffsetMinutes*60)
 	value.GeneratedAt = r.now().In(location).Format(time.RFC3339)
-	actors, err := encodeList(value.Actors)
+	actors, err := encodeValues(value.Actors)
 	if err != nil {
 		return api.Report{}, err
 	}
-	sectors, err := encodeList(value.Sectors)
+	sectors, err := encodeValues(value.Sectors)
+	if err != nil {
+		return api.Report{}, err
+	}
+	threats, err := encodeValues(value.TopThreats)
 	if err != nil {
 		return api.Report{}, err
 	}
 	stored := database.Report{Type: value.Type, PeriodStart: value.PeriodStart, PeriodEnd: value.PeriodEnd,
 		Total: value.Total, Critical: value.Critical, High: value.High, Medium: value.Medium,
-		TopThreat: value.TopThreat, Actors: actors, Sectors: sectors, Summary: value.Summary, GeneratedAt: value.GeneratedAt}
+		TopThreat: value.TopThreat, TopThreats: threats, Actors: actors, Sectors: sectors, Summary: value.Summary, GeneratedAt: value.GeneratedAt}
 	if err := r.db.WithContext(ctx).Create(&stored).Error; err != nil {
 		return api.Report{}, fmt.Errorf("insert report: %w", err)
 	}
@@ -109,12 +133,9 @@ func (r *Repository) Delete(ctx context.Context, id int64) error {
 	return nil
 }
 
-// encodeList stores a string list as a JSON array. Actor and sector names come from LLM
-// analysis of article text and routinely contain commas ("Scattered Spider, Inc.",
-// "금융, 보험"), which a comma-joined column cannot round-trip.
-func encodeList(values []string) (string, error) {
+func encodeValues[T any](values []T) (string, error) {
 	if values == nil {
-		values = []string{}
+		values = []T{}
 	}
 	encoded, err := json.Marshal(values)
 	if err != nil {
@@ -123,10 +144,10 @@ func encodeList(values []string) (string, error) {
 	return string(encoded), nil
 }
 
-func decodeList(value string) []string {
-	var values []string
+func decodeValues[T any](value string) []T {
+	var values []T
 	if err := json.Unmarshal([]byte(value), &values); err != nil || values == nil {
-		return []string{}
+		return []T{}
 	}
 	return values
 }

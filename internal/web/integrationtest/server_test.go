@@ -134,6 +134,9 @@ func TestCreateReportGeneratesSummary_whenLLMIsConfigured(t *testing.T) {
 	}, "2026-08-02"); err != nil {
 		t.Fatalf("save article: %v", err)
 	}
+	if err := feeds.SaveDailySummary(context.Background(), "2026-08-02", "일간 보안 요약"); err != nil {
+		t.Fatalf("save daily summary: %v", err)
+	}
 
 	// When a weekly report is created.
 	request := httptest.NewRequest(http.MethodPost, "/api/reports", strings.NewReader(
@@ -153,6 +156,9 @@ func TestCreateReportGeneratesSummary_whenLLMIsConfigured(t *testing.T) {
 	if got.Summary != "주간 보안 요약" {
 		t.Fatalf("summary = %q, want 주간 보안 요약", got.Summary)
 	}
+	if len(got.TopThreats) != 0 || got.TopThreat != "" {
+		t.Fatalf("top threats = %+v, legacy title = %q", got.TopThreats, got.TopThreat)
+	}
 	if !strings.HasSuffix(got.GeneratedAt, "+09:00") {
 		t.Fatalf("generated_at = %q, want configured +09:00 offset", got.GeneratedAt)
 	}
@@ -168,6 +174,9 @@ func TestDeleteReportRemovesStoredReport_whenIDExists(t *testing.T) {
 		Description: "Disposable report detail",
 	}, "2026-08-02"); err != nil {
 		t.Fatalf("save article: %v", err)
+	}
+	if err := feeds.SaveDailySummary(context.Background(), "2026-08-02", "Disposable daily summary"); err != nil {
+		t.Fatalf("save daily summary: %v", err)
 	}
 	createRequest := httptest.NewRequest(http.MethodPost, "/api/reports", strings.NewReader(
 		`{"type":"weekly","period_start":"2026-08-01","period_end":"2026-08-03"}`))

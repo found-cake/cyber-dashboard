@@ -116,7 +116,7 @@ Collection may take several minutes because the application can load full articl
 
 ### 5. Generate reports
 
-Select **New** beside Reports, choose a weekly or monthly period, and generate the report. Reports use the language and timezone saved in Settings at generation time. Deleting a report requires confirmation.
+Select **New** beside Reports, choose a weekly or monthly period, and generate the report. The report synthesizes the stored daily summary for every active day in the period; it is not created if any required daily summary is missing. Reports use the language and timezone saved in Settings at generation time. Deleting a report requires confirmation.
 
 <details>
 <summary>Weekly report example</summary>
@@ -146,7 +146,7 @@ Article analysis uses the article body when it is available, not only the RSS ti
 
 NIST-provided CVSS data is preferred when present. CNA assessment data is retained as a fallback, and NVD records marked as rejected are removed from the active CVE view.
 
-Long daily and report inputs are summarized in batches of at most five fact groups and then combined. Two batch summaries are joined directly; three or more are merged through an additional model request. This reduces oversized requests while preserving the collected facts.
+Long daily inputs are summarized in batches of at most five fact groups; two batches are joined directly and three or more are merged through an additional model request. Weekly and monthly reports instead use the stored daily summaries as their source, summarize them in batches of at most five days, and always merge multiple batches into one period-level narrative.
 
 ### Prompt development
 

@@ -35,6 +35,9 @@ func TestCreateReportReturnsCreated_whenGenerationExceedsServerWriteTimeout(t *t
 			}, "2026-08-09"); err != nil {
 				t.Fatalf("save article: %v", err)
 			}
+			if err := feeds.SaveDailySummary(context.Background(), "2026-08-09", "Daily report source"); err != nil {
+				t.Fatalf("save daily summary: %v", err)
+			}
 			server := httptest.NewUnstartedServer(handler)
 			server.Config.WriteTimeout = time.Nanosecond
 			server.Start()

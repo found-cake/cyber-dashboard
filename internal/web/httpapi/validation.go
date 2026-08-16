@@ -119,6 +119,10 @@ func writeBadRequest(c *echo.Context, message string) error {
 }
 
 func writeAPIError(c *echo.Context, err error) error {
+	if errors.Is(err, report.ErrDailySummariesRequired) {
+		return c.JSON(http.StatusPreconditionFailed, localizedError("daily_summaries_required",
+			"선택한 기간의 일간 요약을 먼저 생성하세요", "Generate daily summaries for the selected period first"))
+	}
 	if errors.Is(err, vulnerability.ErrAPIKeyRequired) {
 		return c.JSON(http.StatusPreconditionFailed, localizedError("nvd_key_required",
 			"NVD API 키를 등록하세요", "Register an NVD API key"))

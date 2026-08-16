@@ -68,6 +68,7 @@ type Report struct {
 	High        int    `gorm:"not null"`
 	Medium      int    `gorm:"not null"`
 	TopThreat   string `gorm:"not null"`
+	TopThreats  string `gorm:"not null;default:'[]'"`
 	Actors      string `gorm:"not null"`
 	Sectors     string `gorm:"not null"`
 	Summary     string `gorm:"not null"`
@@ -81,7 +82,7 @@ type Setting struct {
 	LLMBaseURL            string `gorm:"not null;default:https://api.openai.com/v1"`
 	LLMModel              string `gorm:"not null;default:gpt-4o-mini"`
 	LLMAPIKey             string `gorm:"not null;default:''"`
-	LLMTimeout            int    `gorm:"not null;default:60"`
+	LLMTimeout            int    `gorm:"not null;default:120"`
 	NVDAPIKey             string `gorm:"not null;default:''"`
 	TimezoneOffsetMinutes *int
 }
