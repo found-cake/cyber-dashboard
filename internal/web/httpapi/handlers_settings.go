@@ -2,8 +2,10 @@ package httpapi
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/found-cake/cyber-dashboard/api"
 	"github.com/found-cake/cyber-dashboard/internal/report"
@@ -59,6 +61,9 @@ func (s *Server) listReports(c *echo.Context) error {
 }
 
 func (s *Server) createReport(c *echo.Context) error {
+	if err := http.NewResponseController(c.Response()).SetWriteDeadline(time.Time{}); err != nil && !errors.Is(err, http.ErrNotSupported) {
+		return writeAPIError(c, err)
+	}
 	var request api.CreateReportRequest
 	if err := json.NewDecoder(c.Request().Body).Decode(&request); err != nil {
 		return writeBadRequest(c, "invalid JSON body")
