@@ -38,6 +38,8 @@
     .report-details { break-before: page; page-break-before: always; }
     .section:last-child { border-block-end: 0; }
     .section-body { color: var(--muted); white-space: pre-line; overflow-wrap: anywhere; }
+    .threat-list { display: grid; gap: 2.5mm; margin: 0; padding-inline-start: 5mm; color: var(--muted); }
+    .threat-list li { padding-inline-start: 1mm; break-inside: avoid; page-break-inside: avoid; }
     .chips { display: flex; flex-wrap: wrap; gap: 2mm; }
     .chip { display: inline-block; padding: 1.5mm 2.5mm; background: var(--surface); color: var(--muted); font-size: 8pt; }
     @media screen { body { padding-block: 14mm; } }
@@ -105,9 +107,11 @@
     const noneValues = new Set(["none", String(copy.none || "").trim().toLowerCase()]);
     const actors = array(report.actors).map(actor => String(actor).trim()).filter(actor => actor && !noneValues.has(actor.toLowerCase()));
     const actorSection = `<section class="section"><h3>${text(copy.labels.actors)}</h3><p class="section-body">${text(actors.length ? actors.join(" · ") : copy.unknownActor)}</p></section>`;
+    const threats = reportThreats(report);
+    const threatList = threats.length ? `<ol class="threat-list">${threats.map(threat => `<li>${text(threat.title)}</li>`).join("")}</ol>` : `<p class="section-body">${text(copy.none)}</p>`;
     const sectors = array(report.sectors).map(sector => `<span class="chip">${text(sector)}</span>`).join("") || `<span class="section-body">${text(copy.none)}</span>`;
     const summary = reportSummarySections(report.summary, copy);
-    const body = `<section class="report-cover"><section class="metric-grid">${metric(report.total, copy.labels.total, "total")}${metric(report.critical, copy.labels.critical, "critical")}${metric(report.high, copy.labels.high, "high")}${metric(report.medium, copy.labels.medium, "medium")}</section><section class="section"><h3>${text(copy.labels.topThreat)}</h3><p class="section-body">${text(report.top_threat || copy.none)}</p></section>${actorSection}${summary.cover}</section><section class="report-details">${summary.details}<section class="section"><h3>${text(copy.labels.sectors)}</h3><div class="chips">${sectors}</div></section></section>`;
+    const body = `<section class="report-cover"><section class="metric-grid">${metric(report.total, copy.labels.total, "total")}${metric(report.critical, copy.labels.critical, "critical")}${metric(report.high, copy.labels.high, "high")}${metric(report.medium, copy.labels.medium, "medium")}</section><section class="section"><h3>${text(copy.labels.topThreat)}</h3>${threatList}</section>${actorSection}${summary.cover}</section><section class="report-details">${summary.details}<section class="section"><h3>${text(copy.labels.sectors)}</h3><div class="chips">${sectors}</div></section></section>`;
     return documentHTML(`${type} ${copy.reportWord}`, `${report.period_start} – ${report.period_end}`, copy, body);
   }
 

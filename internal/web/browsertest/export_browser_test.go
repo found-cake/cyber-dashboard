@@ -5,16 +5,13 @@ package browsertest
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/chromedp"
-	"github.com/found-cake/cyber-dashboard/api"
 )
 
 const reportSummaryFixture = `Overview line.
@@ -126,6 +123,15 @@ func TestReportPDFDocuments_keepCoverAndDetailContent_forWeeklyAndMonthly(t *tes
 			if !strings.Contains(markup, report.title) || strings.Contains(markup, ">None<") || !strings.Contains(markup, "APT28") {
 				t.Fatalf("report document lost its title or actor filtering: %q", markup)
 			}
+			if !strings.Contains(markup, `class="threat-list"`) || !strings.Contains(markup, "Supply-chain intrusion") || !strings.Contains(markup, "University data breach") {
+				t.Fatalf("report document lost its top-threat list: %q", markup)
+			}
+			if strings.Contains(markup, "Weekly overflow candidate") || strings.Contains(markup, "Monthly overflow candidate") {
+				t.Fatalf("report document rendered a threat beyond its type limit: %q", markup)
+			}
+			if strings.Contains(markup, `class="threat-severity`) {
+				t.Fatalf("report document rendered redundant critical labels: %q", markup)
+			}
 			if !strings.Contains(markup, `@page { size: A4; margin: 14mm; }`) || strings.Contains(markup, "■") || !strings.Contains(markup, `class="summary-item">- Patchwork`) {
 				t.Fatalf("report document lost its A4 or summary formatting contract: %q", markup)
 			}
@@ -163,19 +169,33 @@ func captureReportPDFMarkup(t *testing.T, server *httptest.Server, reportID int6
 	t.Helper()
 	browserContext := newExportBrowser(t)
 	selector := fmt.Sprintf(`[data-report-id="%d"]`, reportID)
+	wantThreatCount := 3
+	if reportID == 8 {
+		wantThreatCount = 10
+	}
 	var markup string
+	var threatCount int
+	var threatBadges int
 	if err := chromedp.Run(browserContext,
 		chromedp.EmulateViewport(1280, 900),
 		chromedp.Navigate(server.URL),
 		chromedp.WaitVisible(selector),
 		chromedp.Click(selector),
 		chromedp.WaitVisible(`#download-report-pdf`),
+		chromedp.Evaluate(`document.querySelectorAll(".report-threat-list li").length`, &threatCount),
+		chromedp.Evaluate(`document.querySelectorAll(".report-threat-list .badge").length`, &threatBadges),
 		chromedp.Evaluate(printWindowStubScript, nil),
 		chromedp.Click(`#download-report-pdf`),
 		chromedp.Poll(`window.__printWindowClosed === true`, nil),
 		chromedp.Evaluate(`window.__printMarkup`, &markup),
 	); err != nil {
 		t.Fatalf("capture report PDF markup: %v", err)
+	}
+	if threatCount != wantThreatCount {
+		t.Fatalf("rendered top threats = %d, want %d", threatCount, wantThreatCount)
+	}
+	if threatBadges != 0 {
+		t.Fatalf("rendered top-threat badges = %d, want none", threatBadges)
 	}
 	return markup
 }
@@ -213,42 +233,4 @@ func newExportBrowser(t *testing.T) context.Context {
 
 func newExportBrowserServer(t *testing.T) *httptest.Server {
 	return newExportBrowserServerWithReport(t, []string{"Unknown"}, "Weekly report summary")
-}
-
-func newExportBrowserServerWithReport(t *testing.T, actors []string, summary string) *httptest.Server {
-	t.Helper()
-	staticFiles := http.FileServerFS(os.DirFS("../../../static"))
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /api/bootstrap", func(writer http.ResponseWriter, _ *http.Request) {
-		reports := []api.Report{{
-			ID: 7, Type: "weekly", PeriodStart: "2026-08-01", PeriodEnd: "2026-08-07",
-			Total: 4, Critical: 1, High: 2, Medium: 1, TopThreat: "Supply-chain intrusion",
-			Actors: actors, Sectors: []string{"Technology"}, Summary: summary,
-		}, {
-			ID: 8, Type: "monthly", PeriodStart: "2026-08-01", PeriodEnd: "2026-08-31",
-			Total: 4, Critical: 1, High: 2, Medium: 1, TopThreat: "Supply-chain intrusion",
-			Actors: actors, Sectors: []string{"Technology"}, Summary: summary,
-		}}
-		writeJSON(t, writer, api.Bootstrap{
-			Reports:  reports,
-			Settings: api.SettingsResponse{Language: "en", TimezoneOffsetMinutes: 0}, CollectedDays: []string{exportFixtureDay},
-		})
-	})
-	mux.HandleFunc("GET /api/dashboard", func(writer http.ResponseWriter, _ *http.Request) {
-		writeJSON(t, writer, api.Dashboard{Empty: true})
-	})
-	mux.HandleFunc("GET /api/daily/", func(writer http.ResponseWriter, request *http.Request) {
-		if request.URL.Path != "/api/daily/"+exportFixtureDay {
-			http.NotFound(writer, request)
-			return
-		}
-		writeJSON(t, writer, api.Daily{Day: exportFixtureDay, Summary: "Daily threat summary", Articles: []api.Article{{
-			Source: "The Hacker News", Title: "Daily article", Summary: "Article summary", URL: "https://example.com/article",
-			AttackMethod: "Phishing", ThreatActor: "Unknown", Severity: "HIGH", PublishedAt: exportFixtureDay + "T09:00:00Z",
-		}}})
-	})
-	mux.Handle("/", staticFiles)
-	server := httptest.NewServer(mux)
-	t.Cleanup(server.Close)
-	return server
 }
