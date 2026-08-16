@@ -126,6 +126,12 @@ func TestReportPDFDocuments_keepCoverAndDetailContent_forWeeklyAndMonthly(t *tes
 			if !strings.Contains(markup, `class="threat-list"`) || !strings.Contains(markup, "Supply-chain intrusion") || !strings.Contains(markup, "University data breach") {
 				t.Fatalf("report document lost its top-threat list: %q", markup)
 			}
+			if !strings.Contains(markup, `class="threat-rank" aria-hidden="true">1.</span>`) {
+				t.Fatalf("report document does not own its threat-number column: %q", markup)
+			}
+			if report.id == 8 && !strings.Contains(markup, `class="threat-rank" aria-hidden="true">10.</span>`) {
+				t.Fatalf("monthly report document lost its two-digit threat number: %q", markup)
+			}
 			if strings.Contains(markup, "Weekly overflow candidate") || strings.Contains(markup, "Monthly overflow candidate") {
 				t.Fatalf("report document rendered a threat beyond its type limit: %q", markup)
 			}
