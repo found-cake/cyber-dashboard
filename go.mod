@@ -11,7 +11,7 @@ require (
 	golang.org/x/crypto v0.55.0
 	golang.org/x/net v0.57.0
 	gorm.io/gorm v1.31.2
-	modernc.org/sqlite v1.46.1
+	modernc.org/sqlite v1.56.0
 )
 
 require (
