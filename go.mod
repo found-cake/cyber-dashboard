@@ -9,7 +9,7 @@ require (
 	github.com/labstack/echo/v5 v5.3.1
 	github.com/openai/openai-go/v3 v3.50.0
 	golang.org/x/crypto v0.55.0
-	golang.org/x/net v0.57.0
+	golang.org/x/net v0.58.0
 	gorm.io/gorm v1.31.2
 	modernc.org/sqlite v1.46.1
 )
