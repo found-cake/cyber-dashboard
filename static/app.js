@@ -12,7 +12,7 @@
       attributionTrend: "행위자 판별 추이", attributionTrendHint: days => `${days}일 단위 · 막대는 판별 수준, 선은 행위자가 있는 기사`,
       actorNamed: "판별됨", actorQualified: "부분 판별", actorUnknown: "미판별", actorAttributed: "행위자 있음",
       cveHint: "NVD API 보강 · 최초 등장일 최신순", viewAllCVEs: "전체 CVE 보기", allCVEs: "전체 CVE 목록",
-      cveExplorerHint: "CVSS + 언급수 × 0.2 기준 내림차순", cveScrollHint: "좌우로 스크롤하여 전체 열을 확인하세요.", rank: "순위", riskScore: "정렬 점수", entries: "개", backToDashboard: "대시보드로 돌아가기", refreshCVEs: "CVE 갱신", refreshingCVEs: "CVE 갱신 중…", cvssPending: "NVD 평가 대기", noData: "아직 수집된 데이터가 없습니다",
+      cveExplorerHint: "CVSS + 언급수 × 0.2 기준 내림차순", cveSortLabel: "정렬 기준", cveHintCVSS: "CVSS 점수 높은 순", cveHintMentions: "언급 수 많은 순", cveHintFirstSeen: "최초 등장일 최신순", cveScrollHint: "좌우로 스크롤하여 전체 열을 확인하세요.", rank: "순위", riskScore: "정렬 점수", entries: "개", backToDashboard: "대시보드로 돌아가기", refreshCVEs: "CVE 갱신", refreshingCVEs: "CVE 갱신 중…", cvssPending: "NVD 평가 대기", noData: "아직 수집된 데이터가 없습니다",
       noDataHint: "왼쪽 캘린더에서 최근 10일 이내 날짜를 선택해 첫\u00a0수집을 시작하세요.",
       noArticles: "이 날짜에 수집된 기사가 없습니다", collectNow: "수집을 시작하시겠습니까?",
       sourcesActive: "개의 활성 소스에서 메타데이터를 가져옵니다.", cancel: "취소", close: "닫기", start: "수집 시작",
@@ -66,7 +66,7 @@
       attributionTrend: "Attribution trend", attributionTrendHint: days => `${days}-day buckets · bars by precision, line is articles with an actor`,
       actorNamed: "Identified", actorQualified: "Partly identified", actorUnknown: "Unidentified", actorAttributed: "Has actor",
       cveHint: "Enriched via NVD API · newest first", viewAllCVEs: "View all CVEs", allCVEs: "All CVEs",
-      cveExplorerHint: "Ranked by CVSS + mentions × 0.2", cveScrollHint: "Scroll horizontally to view every column.", rank: "Rank", riskScore: "Rank score", entries: "entries", backToDashboard: "Back to dashboard", refreshCVEs: "Refresh CVEs", refreshingCVEs: "Refreshing CVEs…", cvssPending: "NVD assessment pending", noData: "No collected data yet",
+      cveExplorerHint: "Ranked by CVSS + mentions × 0.2", cveSortLabel: "Sort by", cveHintCVSS: "Ranked by CVSS score", cveHintMentions: "Ranked by mention count", cveHintFirstSeen: "Newest first seen first", cveScrollHint: "Scroll horizontally to view every column.", rank: "Rank", riskScore: "Rank score", entries: "entries", backToDashboard: "Back to dashboard", refreshCVEs: "Refresh CVEs", refreshingCVEs: "Refreshing CVEs…", cvssPending: "NVD assessment pending", noData: "No collected data yet",
       noDataHint: "Pick a date within the last 10 days in the calendar to start your first collection.",
       noArticles: "No articles collected for this date", collectNow: "Start collection for this date?",
       sourcesActive: " active sources will provide metadata.", cancel: "Cancel", close: "Close", start: "Start",
@@ -131,12 +131,16 @@
   // A stale value can name a range the server no longer takes, so fall back to the default.
   const normalizedDashboardDays = value => dashboardRanges.includes(Number(value)) ? Number(value) : 30;
   const cachedDashboardDays = () => normalizedDashboardDays(localStorage.getItem("cyber-dashboard-days"));
+  const cveSortKeys = ["score", "cvss", "mentions", "firstSeen"];
+  const normalizedCVESort = value => cveSortKeys.includes(String(value)) ? String(value) : "score";
+  const cachedCVESort = () => normalizedCVESort(localStorage.getItem("cyber-dashboard-cve-sort"));
 
   const state = {
     view: "dashboard",
     lang: cachedLanguage(),
     theme: resolveTheme(),
     dashboardDays: cachedDashboardDays(),
+    cveSort: cachedCVESort(),
     hideNoneActor: cachedHideNoneActor(),
     // Placeholders until /api/bootstrap supplies the configured offset; start() re-derives both.
     month: null,
@@ -185,6 +189,30 @@
     const pending = score <= 0 ? ` title="${esc(t("cvssPending"))}" aria-label="CVSS 0.0 · ${esc(t("cvssPending"))}"` : "";
     const label = score <= 0 ? `${score.toFixed(1)} · ${esc(t("cvssPending"))}` : score.toFixed(1);
     return `<span class="badge${tone ? ` ${tone}` : ""}"${pending}>${label}</span>`;
+  }
+
+  function cveRiskScore(cve) {
+    return Number(cve.cvss) + Number(cve.mentions) * 0.2;
+  }
+
+  // Every criterion falls back to the risk score so equal keys keep the server's ordering.
+  function sortedCVEs(cves) {
+    const byRisk = (left, right) => cveRiskScore(right) - cveRiskScore(left) || right.first_seen.localeCompare(left.first_seen) || left.id.localeCompare(right.id);
+    const comparators = {
+      cvss: (left, right) => Number(right.cvss) - Number(left.cvss) || byRisk(left, right),
+      mentions: (left, right) => Number(right.mentions) - Number(left.mentions) || byRisk(left, right),
+      firstSeen: (left, right) => right.first_seen.localeCompare(left.first_seen) || byRisk(left, right)
+    };
+    return [...cves].sort(comparators[state.cveSort] || byRisk);
+  }
+
+  function cveSortHint() {
+    return t({ cvss: "cveHintCVSS", mentions: "cveHintMentions", firstSeen: "cveHintFirstSeen" }[state.cveSort] || "cveExplorerHint");
+  }
+
+  function cveExplorerRowsHTML(cves) {
+    const rows = sortedCVEs(cves).map((cve, index) => `<tr data-href="https://nvd.nist.gov/vuln/detail/${encodeURIComponent(cve.id)}" tabindex="0"><td class="mono" data-label="${esc(t("rank"))}">${index + 1}</td><td class="mono cve-link" data-label="CVE ID">${esc(cve.id)}</td><td data-label="CVSS">${cvssBadgeHTML(cve.cvss)}</td><td data-label="${esc(t("mentions"))}">${cve.mentions}</td><td class="mono" data-label="${esc(t("riskScore"))}">${cveRiskScore(cve).toFixed(1)}</td><td data-label="${esc(t("product"))}">${esc(cve.affected_product)}</td><td class="mono" data-label="${esc(t("firstSeen"))}">${esc(cve.first_seen)}</td></tr>`).join("");
+    return rows || `<tr><td colspan="7">${esc(t("noData"))}</td></tr>`;
   }
 
   function normalizedEndpoint(value) {
@@ -873,15 +901,17 @@
     state.currentReport = null;
     updateNavigation();
     closeDrawer();
-    setHeader(t("allCVEs"), t("cveExplorerHint"));
+    setHeader(t("allCVEs"), cveSortHint());
+
+    const sortOptions = [["score", t("riskScore")], ["cvss", "CVSS"], ["mentions", t("mentions")], ["firstSeen", t("firstSeen")]]
+      .map(([value, label]) => `<option value="${value}"${value === state.cveSort ? " selected" : ""}>${esc(label)}</option>`).join("");
 
     const renderRows = data => {
       state.dashboard = data;
       const cves = data.cves || [];
-      const rows = cves.map((cve, index) => `<tr data-href="https://nvd.nist.gov/vuln/detail/${encodeURIComponent(cve.id)}" tabindex="0"><td class="mono" data-label="${esc(t("rank"))}">${index + 1}</td><td class="mono cve-link" data-label="CVE ID">${esc(cve.id)}</td><td data-label="CVSS">${cvssBadgeHTML(cve.cvss)}</td><td data-label="${esc(t("mentions"))}">${cve.mentions}</td><td class="mono" data-label="${esc(t("riskScore"))}">${(Number(cve.cvss) + Number(cve.mentions) * 0.2).toFixed(1)}</td><td data-label="${esc(t("product"))}">${esc(cve.affected_product)}</td><td class="mono" data-label="${esc(t("firstSeen"))}">${esc(cve.first_seen)}</td></tr>`).join("");
       $("#main-content").html(`<div class="content stack">
-        <section class="card cve-page-summary"><div><span class="badge badge-info">${cves.length} ${esc(t("entries"))}</span><p class="card-subtitle">${esc(t("cveExplorerHint"))}</p></div><div class="cluster">${isAuthenticated() ? `<button class="secondary-button" id="refresh-cves" type="button">${esc(t("refreshCVEs"))}</button>` : ""}<a class="secondary-button cve-back-link" href="#">${esc(t("backToDashboard"))}</a></div></section>
-        <section class="card"><div class="table-region cve-page-table" role="region" aria-label="${esc(t("allCVEs"))}" tabindex="0"><p class="cve-scroll-hint">${esc(t("cveScrollHint"))}</p><table class="data-table"><thead><tr><th>${esc(t("rank"))}</th><th>CVE ID</th><th>CVSS</th><th>${esc(t("mentions"))}</th><th>${esc(t("riskScore"))}</th><th>${esc(t("product"))}</th><th>${esc(t("firstSeen"))}</th></tr></thead><tbody>${rows || `<tr><td colspan="7">${esc(t("noData"))}</td></tr>`}</tbody></table></div></section>
+        <section class="card cve-page-summary"><div><span class="badge badge-info">${cves.length} ${esc(t("entries"))}</span><p class="card-subtitle" id="cve-sort-hint">${esc(cveSortHint())}</p></div><div class="cluster"><div class="field cve-sort"><label for="cve-sort">${esc(t("cveSortLabel"))}</label><select id="cve-sort">${sortOptions}</select></div>${isAuthenticated() ? `<button class="secondary-button" id="refresh-cves" type="button">${esc(t("refreshCVEs"))}</button>` : ""}<a class="secondary-button cve-back-link" href="#">${esc(t("backToDashboard"))}</a></div></section>
+        <section class="card"><div class="table-region cve-page-table" role="region" aria-label="${esc(t("allCVEs"))}" tabindex="0"><p class="cve-scroll-hint">${esc(t("cveScrollHint"))}</p><table class="data-table"><thead><tr><th>${esc(t("rank"))}</th><th>CVE ID</th><th>CVSS</th><th>${esc(t("mentions"))}</th><th>${esc(t("riskScore"))}</th><th>${esc(t("product"))}</th><th>${esc(t("firstSeen"))}</th></tr></thead><tbody>${cveExplorerRowsHTML(cves)}</tbody></table></div></section>
       </div>`);
       applyViewScroll("cves");
       $("#main-content").trigger("focus");
@@ -1581,6 +1611,14 @@
     $(document).on("change", "#source-filter", function () {
       state.dailySource = $(this).val();
       $("#main-content .article-list").replaceWith(dailyArticlesHTML(state.daily || { articles: [] }));
+    });
+    // Only the table is reordered, so rebuilding the summary card would just steal focus from the select.
+    $(document).on("change", "#cve-sort", function () {
+      state.cveSort = normalizedCVESort($(this).val());
+      localStorage.setItem("cyber-dashboard-cve-sort", state.cveSort);
+      $("#main-content .cve-page-table tbody").html(cveExplorerRowsHTML(state.dashboard?.cves || []));
+      $("#cve-sort-hint").text(cveSortHint());
+      $("#page-subtitle").text(cveSortHint());
     });
     $(document).on("change", "#dashboard-range", function () {
       state.dashboardDays = normalizedDashboardDays($(this).val());
