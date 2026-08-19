@@ -15,7 +15,6 @@ import (
 
 	"github.com/chromedp/chromedp"
 	"github.com/found-cake/cyber-dashboard/api"
-	"github.com/found-cake/cyber-dashboard/internal/dashboard"
 )
 
 func TestCVEExplorerNavigatesToSubpage_whenDashboardCardIsActivated(t *testing.T) {
@@ -169,32 +168,6 @@ func TestCVEExplorerRefreshesOnceAndShowsPendingCVSSAsNeutral(t *testing.T) {
 	if refreshCalls.Load() != 1 || completed.Disabled || completed.CVE != "CVE-2026-1001" || completed.Toast == "" {
 		t.Fatalf("calls = %d, completed = %+v", refreshCalls.Load(), completed)
 	}
-}
-
-func newCVENavigationServer(t *testing.T, cves []api.CVEInsight) *httptest.Server {
-	t.Helper()
-	staticFiles := http.FileServerFS(os.DirFS("../../../static"))
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /api/bootstrap", func(writer http.ResponseWriter, _ *http.Request) {
-		writeJSON(t, writer, api.Bootstrap{
-			Sources:       []api.Source{},
-			Reports:       []api.ReportSummary{},
-			Settings:      api.SettingsResponse{Language: "ko"},
-			LLMPresets:    []api.LLMPresetResponse{},
-			CollectedDays: []string{},
-		})
-	})
-	mux.HandleFunc("GET /api/dashboard", func(writer http.ResponseWriter, _ *http.Request) {
-		preview := cves[:min(len(cves), dashboard.DashboardCVELimit)]
-		writeJSON(t, writer, api.Dashboard{Total: 12, CVECount: len(cves), CVEs: preview})
-	})
-	mux.HandleFunc("GET /api/cves", func(writer http.ResponseWriter, _ *http.Request) {
-		writeJSON(t, writer, cves)
-	})
-	mux.Handle("/", staticFiles)
-	server := httptest.NewServer(mux)
-	t.Cleanup(server.Close)
-	return server
 }
 
 func newCVERefreshServer(t *testing.T) (*httptest.Server, <-chan struct{}, func(), *atomic.Int32) {

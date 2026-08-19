@@ -132,6 +132,7 @@
   const normalizedDashboardDays = value => dashboardRanges.includes(Number(value)) ? Number(value) : 30;
   const cachedDashboardDays = () => normalizedDashboardDays(localStorage.getItem("cyber-dashboard-days"));
   const cveSortKeys = ["score", "cvss", "mentions", "firstSeen"];
+  const cvePageSize = 100;
   const normalizedCVESort = value => cveSortKeys.includes(String(value)) ? String(value) : "score";
   const cachedCVESort = () => normalizedCVESort(localStorage.getItem("cyber-dashboard-cve-sort"));
 
@@ -147,7 +148,6 @@
     selectedDay: null,
     bootstrap: { auth: { enabled: false, authenticated: true }, sources: [], reports: [], settings: {}, llm_presets: [], collected_days: [] },
     dashboard: null,
-    cves: null,
     daily: null,
     currentReport: null,
     reportType: "weekly",
@@ -198,23 +198,12 @@
     return Number(cve.cvss) + Number(cve.mentions) * 0.2;
   }
 
-  // Every criterion falls back to the risk score so equal keys keep the server's ordering.
-  function sortedCVEs(cves) {
-    const byRisk = (left, right) => cveRiskScore(right) - cveRiskScore(left) || right.first_seen.localeCompare(left.first_seen) || left.id.localeCompare(right.id);
-    const comparators = {
-      cvss: (left, right) => Number(right.cvss) - Number(left.cvss) || byRisk(left, right),
-      mentions: (left, right) => Number(right.mentions) - Number(left.mentions) || byRisk(left, right),
-      firstSeen: (left, right) => right.first_seen.localeCompare(left.first_seen) || byRisk(left, right)
-    };
-    return [...cves].sort(comparators[state.cveSort] || byRisk);
-  }
-
   function cveSortHint() {
     return t({ cvss: "cveHintCVSS", mentions: "cveHintMentions", firstSeen: "cveHintFirstSeen" }[state.cveSort] || "cveExplorerHint");
   }
 
   function cveExplorerRowsHTML(cves) {
-    const rows = sortedCVEs(cves).map((cve, index) => `<tr data-href="https://nvd.nist.gov/vuln/detail/${encodeURIComponent(cve.id)}" tabindex="0"><td class="mono" data-label="${esc(t("rank"))}">${index + 1}</td><td class="mono cve-link" data-label="CVE ID">${esc(cve.id)}</td><td data-label="CVSS">${cvssBadgeHTML(cve.cvss)}</td><td data-label="${esc(t("mentions"))}">${cve.mentions}</td><td class="mono" data-label="${esc(t("riskScore"))}">${cveRiskScore(cve).toFixed(1)}</td><td data-label="${esc(t("product"))}">${esc(cve.affected_product)}</td><td class="mono" data-label="${esc(t("firstSeen"))}">${esc(cve.first_seen)}</td></tr>`).join("");
+    const rows = cves.map((cve, index) => `<tr data-href="https://nvd.nist.gov/vuln/detail/${encodeURIComponent(cve.id)}" tabindex="0"><td class="mono" data-label="${esc(t("rank"))}">${index + 1}</td><td class="mono cve-link" data-label="CVE ID">${esc(cve.id)}</td><td data-label="CVSS">${cvssBadgeHTML(cve.cvss)}</td><td data-label="${esc(t("mentions"))}">${cve.mentions}</td><td class="mono" data-label="${esc(t("riskScore"))}">${cveRiskScore(cve).toFixed(1)}</td><td data-label="${esc(t("product"))}">${esc(cve.affected_product)}</td><td class="mono" data-label="${esc(t("firstSeen"))}">${esc(cve.first_seen)}</td></tr>`).join("");
     return rows || `<tr><td colspan="7">${esc(t("noData"))}</td></tr>`;
   }
 
@@ -934,16 +923,28 @@
       refreshCVEControls();
     };
 
-    const request = ++cvesRequest;
     setLoading();
-    api("GET", "/api/cves").done(cves => {
-      if (request !== cvesRequest || state.view !== "cves") return;
-      // Retained only so the sort control can reorder the rendered table without refetching.
-      state.cves = cves;
-      renderRows(cves);
-    }).fail(error => {
-      if (request === cvesRequest && state.view === "cves") showRequestError(error);
-    });
+    loadCVEInsights(renderRows);
+  }
+
+  function loadCVEInsights(onComplete) {
+    const request = ++cvesRequest;
+    const sort = state.cveSort;
+    const values = [];
+    const loadPage = offset => {
+      api("GET", `/api/cves?sort=${encodeURIComponent(sort)}&offset=${offset}`).done(page => {
+        if (request !== cvesRequest || state.view !== "cves") return;
+        values.push(...page);
+        if (page.length === cvePageSize) loadPage(offset + page.length);
+        else onComplete(values);
+      }).fail(error => {
+        if (request === cvesRequest && state.view === "cves") {
+          $("#main-content .cve-page-table").attr("aria-busy", null);
+          showRequestError(error);
+        }
+      });
+    };
+    loadPage(0);
   }
 
   function refreshCVEs() {
@@ -1637,13 +1638,16 @@
       state.dailySource = $(this).val();
       $("#main-content .article-list").replaceWith(dailyArticlesHTML(state.daily || { articles: [] }));
     });
-    // Only the table is reordered, so rebuilding the summary card would just steal focus from the select.
     $(document).on("change", "#cve-sort", function () {
       state.cveSort = normalizedCVESort($(this).val());
       localStorage.setItem("cyber-dashboard-cve-sort", state.cveSort);
-      $("#main-content .cve-page-table tbody").html(cveExplorerRowsHTML(state.cves || []));
       $("#cve-sort-hint").text(cveSortHint());
       $("#page-subtitle").text(cveSortHint());
+      $("#main-content .cve-page-table").attr("aria-busy", "true");
+      loadCVEInsights(cves => {
+        $("#main-content .cve-page-table tbody").html(cveExplorerRowsHTML(cves));
+        $("#main-content .cve-page-table").attr("aria-busy", null);
+      });
     });
     $(document).on("change", "#dashboard-range", function () {
       state.dashboardDays = normalizedDashboardDays($(this).val());

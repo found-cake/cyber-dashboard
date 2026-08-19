@@ -10,7 +10,7 @@ import (
 	"github.com/found-cake/cyber-dashboard/api"
 )
 
-func TestCVEExplorerReordersRows_whenSortCriterionChanges(t *testing.T) {
+func TestCVEExplorerRequestsServerRanking_whenSortCriterionChanges(t *testing.T) {
 	// Given CVEs whose risk-score order differs from their mention and first-seen order.
 	cves := []api.CVEInsight{
 		{ID: "CVE-2026-0001", CVSS: 9.8, AffectedProduct: "QA product", FirstSeen: "2026-08-01", Mentions: 1},
@@ -26,8 +26,9 @@ func TestCVEExplorerReordersRows_whenSortCriterionChanges(t *testing.T) {
 		t.Fatalf("open CVE explorer: %v", err)
 	}
 
-	selectSort := func(value string) string {
+	selectSort := func(value, expected string) string {
 		t.Helper()
+		requestCount := len(server.cveRequests())
 		var result struct {
 			First     string `json:"first"`
 			Hint      string `json:"hint"`
@@ -39,6 +40,7 @@ func TestCVEExplorerReordersRows_whenSortCriterionChanges(t *testing.T) {
 				select.focus(); select.value = "`+value+`";
 				select.dispatchEvent(new Event("change", { bubbles: true }));
 			})()`, nil),
+			chromedp.Poll(`document.querySelector(".cve-page-table tbody tr td:nth-child(2)").textContent === "`+expected+`"`, nil),
 			chromedp.Evaluate(`({
 				first: document.querySelector(".cve-page-table tbody tr td:nth-child(2)").textContent,
 				hint: document.querySelector("#cve-sort-hint").textContent,
@@ -53,17 +55,21 @@ func TestCVEExplorerReordersRows_whenSortCriterionChanges(t *testing.T) {
 		if result.Hint == "" {
 			t.Fatalf("sorting by %s left the criterion hint empty", value)
 		}
+		requests := server.cveRequests()
+		if len(requests) <= requestCount || requests[len(requests)-1] != "/api/cves?sort="+value+"&offset=0" {
+			t.Fatalf("requests after sorting by %s = %v", value, requests)
+		}
 		return result.First
 	}
 
 	// When each criterion is selected, then the ranking follows that column.
-	if first := selectSort("mentions"); first != "CVE-2026-0002" {
+	if first := selectSort("mentions", "CVE-2026-0002"); first != "CVE-2026-0002" {
 		t.Fatalf("top row by mentions = %q, want CVE-2026-0002", first)
 	}
-	if first := selectSort("firstSeen"); first != "CVE-2026-0003" {
+	if first := selectSort("firstSeen", "CVE-2026-0003"); first != "CVE-2026-0003" {
 		t.Fatalf("top row by first seen = %q, want CVE-2026-0003", first)
 	}
-	if first := selectSort("score"); first != "CVE-2026-0001" {
+	if first := selectSort("score", "CVE-2026-0001"); first != "CVE-2026-0001" {
 		t.Fatalf("top row by risk score = %q, want CVE-2026-0001", first)
 	}
 
