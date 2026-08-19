@@ -243,7 +243,7 @@ func TestDashboardCardCapsCVEsWhileExplorerKeepsAll(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build dashboard: %v", err)
 	}
-	all, err := repository.CVEInsights(context.Background())
+	all, err := repository.CVEInsights(context.Background(), CVESortScore, 0)
 	if err != nil {
 		t.Fatalf("list CVE insights: %v", err)
 	}

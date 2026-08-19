@@ -3,15 +3,33 @@ package httpapi
 import (
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/found-cake/cyber-dashboard/api"
+	"github.com/found-cake/cyber-dashboard/internal/dashboard"
 	"github.com/found-cake/cyber-dashboard/internal/vulnerability"
 	"github.com/labstack/echo/v5"
 )
 
 func (s *Server) listCVEs(c *echo.Context) error {
-	values, err := s.dashboard.CVEInsights(c.Request().Context())
+	sort := dashboard.CVESortScore
+	if value := c.QueryParam("sort"); value != "" {
+		parsed, ok := dashboard.ParseCVESort(value)
+		if !ok {
+			return writeBadRequest(c, "sort must be score, cvss, mentions, or firstSeen")
+		}
+		sort = parsed
+	}
+	offset := 0
+	if value := c.QueryParam("offset"); value != "" {
+		parsed, parseErr := strconv.Atoi(value)
+		if parseErr != nil || parsed < 0 {
+			return writeBadRequest(c, "offset must be a non-negative integer")
+		}
+		offset = parsed
+	}
+	values, err := s.dashboard.CVEInsights(c.Request().Context(), sort, offset)
 	if err != nil {
 		return writeAPIError(c, err)
 	}

@@ -134,3 +134,67 @@ func TestReportDetailRejectsInvalidAndMissingIDs(t *testing.T) {
 		})
 	}
 }
+
+func TestCVEEndpointCapsPages_withoutHidingLaterEntries(t *testing.T) {
+	// Given one more CVE than a single public response may contain.
+	server, feeds, _ := newTestServer(t, &stubFetcher{})
+	day := recentCollectionDay()
+	for index := range dashboard.CVEPageSize + 1 {
+		cveID := fmt.Sprintf("CVE-2026-%04d", index)
+		if err := feeds.SaveArticle(context.Background(), api.Source{ID: 1}, collector.FeedArticle{
+			ID: "sha256:cve-page-" + cveID, URL: "https://example.com/" + cveID,
+			Title: cveID + " advisory", Description: "Assessment for " + cveID,
+		}, day); err != nil {
+			t.Fatalf("save article %s: %v", cveID, err)
+		}
+	}
+
+	// When consecutive offsets are requested through the real router.
+	firstResponse := performRequest(t, server, http.MethodGet, "/api/cves?sort=score&offset=0", nil)
+	secondResponse := performRequest(t, server, http.MethodGet, fmt.Sprintf("/api/cves?sort=score&offset=%d", dashboard.CVEPageSize), nil)
+
+	// Then the first response is capped and the remaining entry is available on the next page.
+	if firstResponse.Code != http.StatusOK || secondResponse.Code != http.StatusOK {
+		t.Fatalf("statuses = %d and %d; bodies = %s and %s", firstResponse.Code, secondResponse.Code, firstResponse.Body.String(), secondResponse.Body.String())
+	}
+	var first, second []api.CVEInsight
+	if err := json.Unmarshal(firstResponse.Body.Bytes(), &first); err != nil {
+		t.Fatalf("decode first CVE page: %v", err)
+	}
+	if err := json.Unmarshal(secondResponse.Body.Bytes(), &second); err != nil {
+		t.Fatalf("decode second CVE page: %v", err)
+	}
+	if len(first) != dashboard.CVEPageSize || len(second) != 1 {
+		t.Fatalf("page lengths = %d and %d", len(first), len(second))
+	}
+}
+
+func TestCVEEndpointRejectsInvalidSortAndOffset(t *testing.T) {
+	// Given query values outside the public CVE page contract.
+	server, _, _ := newTestServer(t, &stubFetcher{})
+	tests := []string{
+		"/api/cves?sort=unknown",
+		"/api/cves?offset=-1",
+		"/api/cves?offset=text",
+		"/api/cves?offset=9223372036854775808",
+	}
+
+	for _, path := range tests {
+		t.Run(path, func(t *testing.T) {
+			// When the malformed query reaches the real router.
+			response := performRequest(t, server, http.MethodGet, path, nil)
+
+			// Then the server returns the stable client-facing bad-request shape.
+			if response.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+			}
+			var value api.ErrorResponse
+			if err := json.Unmarshal(response.Body.Bytes(), &value); err != nil {
+				t.Fatalf("decode error response: %v", err)
+			}
+			if value.Code != "bad_request" || value.MessageKO == "" || value.MessageEN == "" {
+				t.Fatalf("error response = %+v", value)
+			}
+		})
+	}
+}

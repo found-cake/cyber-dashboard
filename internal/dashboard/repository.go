@@ -20,6 +20,9 @@ const (
 // DashboardCVELimit is how many CVEs the dashboard card lists; the rest load from GET /api/cves.
 const DashboardCVELimit = 8
 
+// CVEPageSize bounds each public CVE explorer response.
+const CVEPageSize = 100
+
 // Window is the rolling aggregation window; Bucket divides Days evenly into trend points.
 type Window struct {
 	// Supplied by the caller because SQLite's date('now') is UTC and would shift the boundary.
@@ -174,29 +177,76 @@ func (r *Repository) breakdown(ctx context.Context, column string, limit int, si
 
 // riskOrder ranks the explorer; the dashboard card leads with first_seen and breaks ties the same way.
 const (
-	riskOrder   = "(c.cvss_score + 0.2 * COUNT(ac.article_id)) DESC, c.first_seen DESC, c.cve_id ASC"
-	recentOrder = "c.first_seen DESC, (c.cvss_score + 0.2 * COUNT(ac.article_id)) DESC, c.cve_id ASC"
+	riskOrder     = "(c.cvss_score + 0.2 * COUNT(ac.article_id)) DESC, c.first_seen DESC, c.cve_id ASC"
+	cvssOrder     = "c.cvss_score DESC, " + riskOrder
+	mentionsOrder = "COUNT(ac.article_id) DESC, " + riskOrder
+	recentOrder   = "c.first_seen DESC, " + riskOrder
 )
 
-// CVEInsights returns the whole table for the CVE explorer.
-func (r *Repository) CVEInsights(ctx context.Context) ([]api.CVEInsight, error) {
-	return r.cveInsights(ctx, riskOrder, 0)
+// CVESort is a server-owned CVE explorer ranking.
+type CVESort string
+
+const (
+	CVESortScore     CVESort = "score"
+	CVESortCVSS      CVESort = "cvss"
+	CVESortMentions  CVESort = "mentions"
+	CVESortFirstSeen CVESort = "firstSeen"
+)
+
+// ParseCVESort converts the public query value into a supported ranking.
+func ParseCVESort(value string) (CVESort, bool) {
+	sort := CVESort(value)
+	switch sort {
+	case CVESortScore, CVESortCVSS, CVESortMentions, CVESortFirstSeen:
+		return sort, true
+	default:
+		return "", false
+	}
+}
+
+func (s CVESort) order() string {
+	switch s {
+	case CVESortScore:
+		return riskOrder
+	case CVESortCVSS:
+		return cvssOrder
+	case CVESortMentions:
+		return mentionsOrder
+	case CVESortFirstSeen:
+		return recentOrder
+	default:
+		return riskOrder
+	}
+}
+
+// CVEInsights returns one fixed-size, server-sorted explorer page.
+func (r *Repository) CVEInsights(ctx context.Context, sort CVESort, offset int) ([]api.CVEInsight, error) {
+	return r.cveInsights(ctx, cveQuery{order: sort.order(), limit: CVEPageSize, offset: offset})
 }
 
 // recentCVEs returns only what the dashboard card shows, so the response stays small.
 func (r *Repository) recentCVEs(ctx context.Context, limit int) ([]api.CVEInsight, error) {
-	return r.cveInsights(ctx, recentOrder, limit)
+	return r.cveInsights(ctx, cveQuery{order: recentOrder, limit: limit})
 }
 
-func (r *Repository) cveInsights(ctx context.Context, order string, limit int) ([]api.CVEInsight, error) {
+type cveQuery struct {
+	order  string
+	limit  int
+	offset int
+}
+
+func (r *Repository) cveInsights(ctx context.Context, query cveQuery) ([]api.CVEInsight, error) {
 	insights := []api.CVEInsight{}
-	query := r.db.WithContext(ctx).Table("cves AS c").Select(`c.cve_id AS id, c.cvss_score AS cvss,
+	databaseQuery := r.db.WithContext(ctx).Table("cves AS c").Select(`c.cve_id AS id, c.cvss_score AS cvss,
 		c.affected_product, c.first_seen, COUNT(ac.article_id) AS mentions`).
-		Joins("LEFT JOIN article_cves AS ac ON ac.cve_id = c.cve_id").Group("c.cve_id").Order(order)
-	if limit > 0 {
-		query = query.Limit(limit)
+		Joins("LEFT JOIN article_cves AS ac ON ac.cve_id = c.cve_id").Group("c.cve_id").Order(query.order)
+	if query.limit > 0 {
+		databaseQuery = databaseQuery.Limit(query.limit)
 	}
-	if err := query.Scan(&insights).Error; err != nil {
+	if query.offset > 0 {
+		databaseQuery = databaseQuery.Offset(query.offset)
+	}
+	if err := databaseQuery.Scan(&insights).Error; err != nil {
 		return nil, fmt.Errorf("query cve insights: %w", err)
 	}
 	return insights, nil
