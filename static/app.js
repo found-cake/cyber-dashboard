@@ -147,6 +147,7 @@
     selectedDay: null,
     bootstrap: { auth: { enabled: false, authenticated: true }, sources: [], reports: [], settings: {}, llm_presets: [], collected_days: [] },
     dashboard: null,
+    cves: null,
     daily: null,
     currentReport: null,
     reportType: "weekly",
@@ -158,6 +159,7 @@
     dashboardScroll: 0
   };
   let modalLastFocus = null;
+  let cvesRequest = 0;
   let viewRequest = 0;
   let dashboardRequest = 0;
   let renderedScrollKey = null;
@@ -887,9 +889,7 @@
       if (request !== dashboardRequest || state.view !== "dashboard") return;
       state.dashboard = data;
       const empty = data.empty ? `<section class="empty-state"><span class="empty-mark">01</span><h2>${esc(t("noData"))}</h2><p>${esc(t("noDataHint"))}</p></section>` : "";
-      const cveRows = [...(data.cves || [])]
-        .sort((left, right) => right.first_seen.localeCompare(left.first_seen))
-        .slice(0, 8)
+      const cveRows = (data.cves || [])
         .map(cve => `<tr><td class="mono cve-link" data-label="CVE ID">${esc(cve.id)}</td><td data-label="CVSS">${cvssBadgeHTML(cve.cvss)}</td><td data-label="${esc(t("product"))}">${esc(cve.affected_product)}</td><td class="mono" data-label="${esc(t("firstSeen"))}">${esc(cve.first_seen)}</td><td data-label="${esc(t("mentions"))}">${cve.mentions}</td></tr>`).join("");
       $("#main-content").html(`<div class="content stack">
         ${dashboardStatsHTML(data)}
@@ -924,9 +924,7 @@
     const sortOptions = [["score", t("riskScore")], ["cvss", "CVSS"], ["mentions", t("mentions")], ["firstSeen", t("firstSeen")]]
       .map(([value, label]) => `<option value="${value}"${value === state.cveSort ? " selected" : ""}>${esc(label)}</option>`).join("");
 
-    const renderRows = data => {
-      state.dashboard = data;
-      const cves = data.cves || [];
+    const renderRows = cves => {
       $("#main-content").html(`<div class="content stack">
         <section class="card cve-page-summary"><div><span class="badge badge-info">${cves.length} ${esc(t("entries"))}</span><p class="card-subtitle" id="cve-sort-hint">${esc(cveSortHint())}</p></div><div class="cluster"><div class="field cve-sort"><label for="cve-sort">${esc(t("cveSortLabel"))}</label><select id="cve-sort">${sortOptions}</select></div>${isAuthenticated() ? `<button class="secondary-button" id="refresh-cves" type="button">${esc(t("refreshCVEs"))}</button>` : ""}<a class="secondary-button cve-back-link" href="#">${esc(t("backToDashboard"))}</a></div></section>
         <section class="card"><div class="table-region cve-page-table" role="region" aria-label="${esc(t("allCVEs"))}" tabindex="0"><p class="cve-scroll-hint">${esc(t("cveScrollHint"))}</p><table class="data-table"><thead><tr><th>${esc(t("rank"))}</th><th>CVE ID</th><th>CVSS</th><th>${esc(t("mentions"))}</th><th>${esc(t("riskScore"))}</th><th>${esc(t("product"))}</th><th>${esc(t("firstSeen"))}</th></tr></thead><tbody>${cveExplorerRowsHTML(cves)}</tbody></table></div></section>
@@ -936,16 +934,16 @@
       refreshCVEControls();
     };
 
-    if (state.dashboard) renderRows(state.dashboard);
-    else {
-      const request = beginDashboardRequest();
-      setLoading();
-      api("GET", dashboardPath()).done(data => {
-        if (request === dashboardRequest && state.view === "cves") renderRows(data);
-      }).fail(error => {
-        if (request === dashboardRequest && state.view === "cves") showRequestError(error);
-      });
-    }
+    const request = ++cvesRequest;
+    setLoading();
+    api("GET", "/api/cves").done(cves => {
+      if (request !== cvesRequest || state.view !== "cves") return;
+      // Retained only so the sort control can reorder the rendered table without refetching.
+      state.cves = cves;
+      renderRows(cves);
+    }).fail(error => {
+      if (request === cvesRequest && state.view === "cves") showRequestError(error);
+    });
   }
 
   function refreshCVEs() {
@@ -1639,7 +1637,7 @@
     $(document).on("change", "#cve-sort", function () {
       state.cveSort = normalizedCVESort($(this).val());
       localStorage.setItem("cyber-dashboard-cve-sort", state.cveSort);
-      $("#main-content .cve-page-table tbody").html(cveExplorerRowsHTML(state.dashboard?.cves || []));
+      $("#main-content .cve-page-table tbody").html(cveExplorerRowsHTML(state.cves || []));
       $("#cve-sort-hint").text(cveSortHint());
       $("#page-subtitle").text(cveSortHint());
     });

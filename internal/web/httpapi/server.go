@@ -91,6 +91,7 @@ func NewServer(dependencies Dependencies) *Server {
 	})
 	e.GET("/api/bootstrap", server.bootstrap)
 	e.GET("/api/dashboard", server.dashboardData)
+	e.GET("/api/cves", server.listCVEs)
 	e.GET("/api/cves/refresh/:id", server.cveRefreshStatus)
 	e.GET("/api/daily/:day", server.daily)
 	e.GET("/api/collect/:id", server.collectionStatus)

@@ -16,7 +16,7 @@ import (
 )
 
 func TestCVERefreshDashboardFailureShowsErrorWhenCurrent(t *testing.T) {
-	server, dashboardStarted, releaseDashboard := newCVERefreshDashboardFailureServer(t, false)
+	server, dashboardStarted, _, releaseDashboard := newCVERefreshDashboardFailureServer(t, false)
 	browser := newBrowserContext(t, 20*time.Second)
 
 	if err := chromedp.Run(browser,
@@ -43,7 +43,7 @@ func TestCVERefreshDashboardFailureShowsErrorWhenCurrent(t *testing.T) {
 }
 
 func TestCVERefreshDashboardFailureStaysSilentWhenSuperseded(t *testing.T) {
-	server, dashboardStarted, releaseDashboard := newCVERefreshDashboardFailureServer(t, true)
+	server, dashboardStarted, dashboardFinished, releaseDashboard := newCVERefreshDashboardFailureServer(t, true)
 	browser := newBrowserContext(t, 20*time.Second)
 
 	if err := chromedp.Run(browser,
@@ -59,14 +59,20 @@ func TestCVERefreshDashboardFailureStaysSilentWhenSuperseded(t *testing.T) {
 	if err := chromedp.Run(browser,
 		chromedp.Evaluate(`window.location.hash = ""`, nil),
 		chromedp.WaitVisible(`#main-content [aria-label="Loading"]`),
+		chromedp.Evaluate(`window.__supersededDashboardSettled = false;
+			$(document).on("ajaxComplete.cve-dashboard-failure-test", (_event, request, options) => {
+				if (!options.url.endsWith("/api/dashboard?days=30") || request.getResponseHeader("X-Test-Delayed-Dashboard") !== "1") return;
+				requestAnimationFrame(() => requestAnimationFrame(() => { window.__supersededDashboardSettled = true; }));
+			})`, nil),
 	); err != nil {
 		t.Fatalf("supersede dashboard reload: %v", err)
 	}
 	releaseDashboard()
+	waitForDashboardRequest(t, dashboardFinished, "superseded dashboard failure completion")
 
 	var errors int
 	if err := chromedp.Run(browser,
-		chromedp.Poll(`performance.getEntriesByType("resource").filter(entry => entry.name.includes("/api/dashboard")).length === 3`, nil),
+		chromedp.Poll(`window.__supersededDashboardSettled === true`, nil),
 		chromedp.WaitVisible(`#dashboard-stats`),
 		chromedp.Evaluate(`document.querySelectorAll('.toast.is-error').length`, &errors),
 	); err != nil {
@@ -77,11 +83,13 @@ func TestCVERefreshDashboardFailureStaysSilentWhenSuperseded(t *testing.T) {
 	}
 }
 
-func newCVERefreshDashboardFailureServer(t *testing.T, blockFailure bool) (*httptest.Server, <-chan struct{}, func()) {
+func newCVERefreshDashboardFailureServer(t *testing.T, blockFailure bool) (*httptest.Server, <-chan struct{}, <-chan struct{}, func()) {
 	t.Helper()
 	dashboardStarted := make(chan struct{})
+	dashboardFinished := make(chan struct{})
 	releaseDashboard := make(chan struct{})
 	var release sync.Once
+	var finish sync.Once
 	var dashboardCalls atomic.Int32
 	staticFiles := http.FileServerFS(os.DirFS("../../../static"))
 	mux := http.NewServeMux()
@@ -90,12 +98,14 @@ func newCVERefreshDashboardFailureServer(t *testing.T, blockFailure bool) (*http
 	})
 	mux.HandleFunc("GET /api/dashboard", func(writer http.ResponseWriter, _ *http.Request) {
 		call := dashboardCalls.Add(1)
-		if call == 2 {
+		if call == 1 {
+			writer.Header().Set("X-Test-Delayed-Dashboard", "1")
 			close(dashboardStarted)
 			if blockFailure {
 				<-releaseDashboard
 			}
 			http.Error(writer, "dashboard refresh failed", http.StatusInternalServerError)
+			finish.Do(func() { close(dashboardFinished) })
 			return
 		}
 		writeJSON(t, writer, api.Dashboard{
@@ -104,6 +114,11 @@ func newCVERefreshDashboardFailureServer(t *testing.T, blockFailure bool) (*http
 				ID: "CVE-2026-1001", CVSS: 8.1, AffectedProduct: "acme / gateway", FirstSeen: "2026-08-01", Mentions: 2,
 			}},
 		})
+	})
+	mux.HandleFunc("GET /api/cves", func(writer http.ResponseWriter, _ *http.Request) {
+		writeJSON(t, writer, []api.CVEInsight{{
+			ID: "CVE-2026-1001", CVSS: 8.1, AffectedProduct: "acme / gateway", FirstSeen: "2026-08-01", Mentions: 2,
+		}})
 	})
 	mux.HandleFunc("POST /api/cves/refresh", func(writer http.ResponseWriter, _ *http.Request) {
 		writeJSONStatus(t, writer, http.StatusAccepted, api.CVERefreshJob{
@@ -116,5 +131,5 @@ func newCVERefreshDashboardFailureServer(t *testing.T, blockFailure bool) (*http
 	t.Cleanup(server.Close)
 	releaseRequest := func() { release.Do(func() { close(releaseDashboard) }) }
 	t.Cleanup(releaseRequest)
-	return server, dashboardStarted, releaseRequest
+	return server, dashboardStarted, dashboardFinished, releaseRequest
 }

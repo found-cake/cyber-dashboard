@@ -15,6 +15,7 @@ import (
 
 	"github.com/chromedp/chromedp"
 	"github.com/found-cake/cyber-dashboard/api"
+	"github.com/found-cake/cyber-dashboard/internal/dashboard"
 )
 
 func TestCVEExplorerNavigatesToSubpage_whenDashboardCardIsActivated(t *testing.T) {
@@ -145,7 +146,7 @@ func TestCVEExplorerRefreshesOnceAndShowsPendingCVSSAsNeutral(t *testing.T) {
 		t.Fatalf("running button = %+v, want disabled busy state", running)
 	}
 
-	// Then completion reloads dashboard data, unlocks the button, and reports the result.
+	// Then completion reloads CVE data, unlocks the button, and reports the result.
 	release()
 	if err := chromedp.Run(browser,
 		chromedp.WaitVisible(`tr[data-href*="CVE-2026-1001"]`),
@@ -184,7 +185,11 @@ func newCVENavigationServer(t *testing.T, cves []api.CVEInsight) *httptest.Serve
 		})
 	})
 	mux.HandleFunc("GET /api/dashboard", func(writer http.ResponseWriter, _ *http.Request) {
-		writeJSON(t, writer, api.Dashboard{Total: 12, CVECount: len(cves), CVEs: cves})
+		preview := cves[:min(len(cves), dashboard.DashboardCVELimit)]
+		writeJSON(t, writer, api.Dashboard{Total: 12, CVECount: len(cves), CVEs: preview})
+	})
+	mux.HandleFunc("GET /api/cves", func(writer http.ResponseWriter, _ *http.Request) {
+		writeJSON(t, writer, cves)
 	})
 	mux.Handle("/", staticFiles)
 	server := httptest.NewServer(mux)
@@ -210,16 +215,21 @@ func newCVERefreshServer(t *testing.T) (*httptest.Server, <-chan struct{}, func(
 	mux.HandleFunc("GET /api/bootstrap", func(writer http.ResponseWriter, _ *http.Request) {
 		writeJSON(t, writer, api.Bootstrap{Settings: api.SettingsResponse{Language: "ko"}})
 	})
-	mux.HandleFunc("GET /api/dashboard", func(writer http.ResponseWriter, _ *http.Request) {
+	currentCVEs := func() []api.CVEInsight {
 		if !completed.Load() {
-			writeJSON(t, writer, api.Dashboard{CVECount: 1, CVEs: []api.CVEInsight{{
+			return []api.CVEInsight{{
 				ID: "CVE-2026-PENDING", CVSS: 0, AffectedProduct: "NVD enrichment pending", FirstSeen: "2026-08-01", Mentions: 1,
-			}}})
-			return
+			}}
 		}
-		writeJSON(t, writer, api.Dashboard{CVECount: 1, CVEs: []api.CVEInsight{{
+		return []api.CVEInsight{{
 			ID: "CVE-2026-1001", CVSS: 8.1, AffectedProduct: "acme / gateway", FirstSeen: "2026-08-01", Mentions: 2,
-		}}})
+		}}
+	}
+	mux.HandleFunc("GET /api/dashboard", func(writer http.ResponseWriter, _ *http.Request) {
+		writeJSON(t, writer, api.Dashboard{CVECount: 1, CVEs: currentCVEs()})
+	})
+	mux.HandleFunc("GET /api/cves", func(writer http.ResponseWriter, _ *http.Request) {
+		writeJSON(t, writer, currentCVEs())
 	})
 	mux.HandleFunc("POST /api/cves/refresh", func(writer http.ResponseWriter, _ *http.Request) {
 		refreshCalls.Add(1)

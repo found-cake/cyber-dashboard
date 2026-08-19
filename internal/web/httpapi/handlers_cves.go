@@ -10,6 +10,14 @@ import (
 	"github.com/labstack/echo/v5"
 )
 
+func (s *Server) listCVEs(c *echo.Context) error {
+	values, err := s.dashboard.CVEInsights(c.Request().Context())
+	if err != nil {
+		return writeAPIError(c, err)
+	}
+	return c.JSON(http.StatusOK, values)
+}
+
 func (s *Server) refreshCVEs(c *echo.Context) error {
 	if s.cveRefreshes == nil {
 		return c.JSON(http.StatusServiceUnavailable, localizedError("nvd_unavailable",
