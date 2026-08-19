@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	cdpinput "github.com/chromedp/cdproto/input"
 	"github.com/chromedp/chromedp"
 )
 
@@ -93,20 +92,7 @@ func warmSettingsCapture(t *testing.T, browser context.Context, width int64) {
 func captureSettingsTarget(t *testing.T, browser context.Context, target string, width, height int64) []byte {
 	t.Helper()
 	var screenshot []byte
-	delta := float64(1)
-	if target == "#llm-api-key" {
-		if err := chromedp.Run(browser, chromedp.Evaluate(`(() => {
-				const rect = document.querySelector("#llm-api-key").getBoundingClientRect();
-				return rect.top - (innerHeight + 68) / 2 - 32;
-			})()`, &delta)); err != nil {
-			t.Fatalf("measure scroll to %s at %dpx: %v", target, width, err)
-		}
-	}
-	if err := chromedp.Run(browser,
-		chromedp.ActionFunc(func(ctx context.Context) error {
-			return cdpinput.DispatchMouseEvent(cdpinput.MouseWheel, float64(width)/2, float64(height)/2).WithDeltaY(delta).Do(ctx)
-		}),
-	); err != nil {
+	if err := chromedp.Run(browser, chromedp.ScrollIntoView(target, chromedp.ByQuery)); err != nil {
 		t.Fatalf("scroll to %s at %dpx: %v", target, width, err)
 	}
 	if target == "#llm-api-key" {
