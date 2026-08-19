@@ -25,8 +25,10 @@ import (
 
 // Only JSON endpoints are compressed; the static frontend is served as-is.
 const (
-	apiPathPrefix     = "/api/"
-	gzipMinimumLength = 1024
+	apiPathPrefix              = "/api/"
+	gzipMinimumLength          = 1024
+	staticAssetCacheControl    = "public, max-age=3600"
+	staticDocumentCacheControl = "no-cache"
 )
 
 type Dependencies struct {
@@ -137,7 +139,21 @@ func NewServer(dependencies Dependencies) *Server {
 	e.PUT("/api/llm/presets/:id", server.updateLLMPreset, server.requireAuth)
 	e.DELETE("/api/llm/presets/:id", server.deleteLLMPreset, server.requireAuth)
 	e.PUT("/api/auth/password", server.changePassword, server.requireAuth)
-	e.StaticFS("/", dependencies.Assets)
+	e.StaticFS("/", dependencies.Assets, func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c *echo.Context) error {
+			requestPath := c.Request().URL.Path
+			cacheControl := staticAssetCacheControl
+			if requestPath == "/app.js" || strings.HasSuffix(requestPath, "/") || strings.HasSuffix(requestPath, ".html") {
+				cacheControl = staticDocumentCacheControl
+			}
+			c.Response().Header().Set(echo.HeaderCacheControl, cacheControl)
+			if err := next(c); err != nil {
+				c.Response().Header().Del(echo.HeaderCacheControl)
+				return err
+			}
+			return nil
+		}
+	})
 	return server
 }
 
