@@ -3,7 +3,10 @@ package httpapi
 import (
 	"context"
 	"io/fs"
+	"mime"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/found-cake/cyber-dashboard/api"
@@ -17,6 +20,13 @@ import (
 	"github.com/found-cake/cyber-dashboard/internal/summary"
 	"github.com/found-cake/cyber-dashboard/internal/vulnerability"
 	"github.com/labstack/echo/v5"
+	"github.com/labstack/echo/v5/middleware"
+)
+
+// Only JSON endpoints are compressed; the static frontend is served as-is.
+const (
+	apiPathPrefix     = "/api/"
+	gzipMinimumLength = 1024
 )
 
 type Dependencies struct {
@@ -67,6 +77,20 @@ func NewServer(dependencies Dependencies) *Server {
 	e := echo.New()
 	hostGuard := newHostGuard(dependencies.TrustedHosts, dependencies.AllowUntrustedHosts)
 	e.Pre(hostGuard.middleware)
+	e.Use(middleware.GzipWithConfig(middleware.GzipConfig{
+		Skipper: func(c *echo.Context) bool {
+			if !strings.HasPrefix(c.Request().URL.Path, apiPathPrefix) {
+				return true
+			}
+			if acceptsGzip(c.Request().Header.Get(echo.HeaderAcceptEncoding)) {
+				c.Request().Header.Set(echo.HeaderAcceptEncoding, "gzip")
+				return false
+			}
+			c.Response().Header().Add(echo.HeaderVary, echo.HeaderAcceptEncoding)
+			return true
+		},
+		MinLength: gzipMinimumLength,
+	}))
 	now := dependencies.Now
 	if now == nil {
 		now = time.Now
@@ -115,6 +139,46 @@ func NewServer(dependencies Dependencies) *Server {
 	e.PUT("/api/auth/password", server.changePassword, server.requireAuth)
 	e.StaticFS("/", dependencies.Assets)
 	return server
+}
+
+func acceptsGzip(header string) bool {
+	wildcardAccepted := false
+	gzipSpecified := false
+	for value := range strings.SplitSeq(header, ",") {
+		candidate := strings.TrimSpace(value)
+		coding, parameterText, hasParameters := strings.Cut(candidate, ";")
+		isWildcard := strings.TrimSpace(coding) == "*"
+		if isWildcard {
+			candidate = "wildcard"
+			if hasParameters {
+				candidate += ";" + parameterText
+			}
+		}
+		encoding, parameters, err := mime.ParseMediaType(candidate)
+		if err != nil || !strings.EqualFold(encoding, "gzip") && !isWildcard {
+			continue
+		}
+		isGzip := strings.EqualFold(encoding, "gzip")
+		if isGzip {
+			gzipSpecified = true
+		}
+		quality := 1.0
+		qualityValue, exists := parameters["q"]
+		if exists {
+			parsed, parseErr := strconv.ParseFloat(qualityValue, 64)
+			if parseErr != nil || parsed < 0 || parsed > 1 {
+				continue
+			}
+			quality = parsed
+		}
+		if isGzip && quality > 0 {
+			return true
+		}
+		if !isGzip && quality > 0 {
+			wildcardAccepted = true
+		}
+	}
+	return !gzipSpecified && wildcardAccepted
 }
 
 func (s *Server) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
