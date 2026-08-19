@@ -17,7 +17,7 @@ func (s *Server) bootstrap(c *echo.Context) error {
 	}
 	sources := []api.Source{}
 	presets := []api.LLMPresetResponse{}
-	reports, err := s.reports.List(ctx)
+	reports, err := s.reports.Summaries(ctx)
 	if err != nil {
 		return writeAPIError(c, err)
 	}

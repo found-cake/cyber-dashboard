@@ -177,7 +177,7 @@ func newCVENavigationServer(t *testing.T, cves []api.CVEInsight) *httptest.Serve
 	mux.HandleFunc("GET /api/bootstrap", func(writer http.ResponseWriter, _ *http.Request) {
 		writeJSON(t, writer, api.Bootstrap{
 			Sources:       []api.Source{},
-			Reports:       []api.Report{},
+			Reports:       []api.ReportSummary{},
 			Settings:      api.SettingsResponse{Language: "ko"},
 			LLMPresets:    []api.LLMPresetResponse{},
 			CollectedDays: []string{},

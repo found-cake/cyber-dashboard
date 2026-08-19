@@ -90,6 +90,18 @@ func (s *Server) createReport(c *echo.Context) error {
 	return c.JSON(http.StatusCreated, value)
 }
 
+func (s *Server) getReport(c *echo.Context) error {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || id < 1 {
+		return writeBadRequest(c, "invalid report id")
+	}
+	value, err := s.reports.Get(c.Request().Context(), id)
+	if err != nil {
+		return writeAPIError(c, err)
+	}
+	return c.JSON(http.StatusOK, value)
+}
+
 func (s *Server) deleteReport(c *echo.Context) error {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil || id < 1 {

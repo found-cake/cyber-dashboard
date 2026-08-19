@@ -152,7 +152,7 @@ func newThemePreferenceBrowserServer(t *testing.T, savedRequests chan<- map[stri
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/bootstrap", func(writer http.ResponseWriter, _ *http.Request) {
 		writeJSON(t, writer, api.Bootstrap{
-			Sources: []api.Source{}, Reports: []api.Report{}, CollectedDays: []string{},
+			Sources: []api.Source{}, Reports: []api.ReportSummary{}, CollectedDays: []string{},
 			Settings: api.SettingsResponse{
 				Language: "en", Accent: "#4f6ef7", LLMBaseURL: "https://api.openai.com/v1",
 				LLMModel: "gpt-4o-mini", LLMTimeout: 60, TimezoneOffsetMinutes: 540,

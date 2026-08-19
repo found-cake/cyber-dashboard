@@ -95,6 +95,7 @@ func NewServer(dependencies Dependencies) *Server {
 	e.GET("/api/daily/:day", server.daily)
 	e.GET("/api/collect/:id", server.collectionStatus)
 	e.GET("/api/reports", server.listReports)
+	e.GET("/api/reports/:id", server.getReport)
 	e.POST("/api/auth/login", server.login)
 	e.POST("/api/auth/refresh", server.refreshSession)
 	e.POST("/api/auth/logout", server.logout)

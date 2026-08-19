@@ -158,6 +158,7 @@
     dashboardScroll: 0
   };
   let modalLastFocus = null;
+  let viewRequest = 0;
   let dashboardRequest = 0;
   let renderedScrollKey = null;
   let mainResizeObserver = null;
@@ -388,6 +389,23 @@
       applyConfiguredToday();
       applyChrome();
       return data;
+    });
+  }
+
+  function beginView(view) {
+    state.view = view;
+    return ++viewRequest;
+  }
+
+  // Bootstrap carries only sidebar entries, so the body is read fresh every time a report opens.
+  function openReport(id) {
+    const request = beginView("report");
+    state.currentReport = null;
+    setLoading();
+    api("GET", `/api/reports/${encodeURIComponent(id)}`).done(report => {
+      if (request === viewRequest) renderReport(report);
+    }).fail(error => {
+      if (request === viewRequest) showRequestError(error);
     });
   }
 
@@ -856,7 +874,7 @@
 
   function renderDashboard() {
     const restoreScroll = state.view === "cves" ? state.dashboardScroll : 0;
-    state.view = "dashboard";
+    beginView("dashboard");
     state.currentReport = null;
     clearCVEHash();
     updateNavigation();
@@ -897,7 +915,7 @@
   }
 
   function renderCVEExplorer() {
-    state.view = "cves";
+    beginView("cves");
     state.currentReport = null;
     updateNavigation();
     closeDrawer();
@@ -1032,7 +1050,7 @@
   }
 
   function renderDaily() {
-    state.view = "daily";
+    beginView("daily");
     state.currentReport = null;
     clearCVEHash();
     updateNavigation();
@@ -1104,7 +1122,7 @@
     // Arriving from another view discards a source draft the user never saved.
     if (state.view !== "settings") state.sourceDraft = null;
     const passwords = state.view === "settings" ? passwordFormValue() : null;
-    state.view = "settings";
+    beginView("settings");
     state.currentReport = null;
     clearCVEHash();
     updateNavigation();
@@ -1393,12 +1411,17 @@
     const today = configuredToday();
     if (end > today) end = today;
     api("POST", "/api/reports", { type: state.reportType, period_start: formatDay(start), period_end: formatDay(end) })
-      .done(report => { state.bootstrap.reports.unshift(report); closeModal(); renderReport(report); renderReportList(); })
+      .done(report => {
+        state.bootstrap.reports.unshift({ id: report.id, type: report.type, period_start: report.period_start, period_end: report.period_end });
+        closeModal();
+        renderReport(report);
+        renderReportList();
+      })
       .fail(error => { $button.prop("disabled", false); if (error.status === 404) toast(t("emptyReport"), true); else showRequestError(error); });
   }
 
   function renderReport(report) {
-    state.view = "report";
+    beginView("report");
     state.currentReport = report;
     clearCVEHash();
     updateNavigation();
@@ -1581,7 +1604,7 @@
     $(document).on("click", "#open-cve-explorer", () => { state.dashboardScroll = $("#main-content").scrollTop(); });
     $(document).on("click", "#refresh-cves", refreshCVEs);
     $(document).on("click", ".calendar-day[data-day]", function () { if (!this.disabled) selectDay($(this).data("day")); });
-    $(document).on("click", "[data-report-id]", function () { const report = state.bootstrap.reports.find(item => item.id === Number($(this).data("report-id"))); if (report) renderReport(report); });
+    $(document).on("click", "[data-report-id]", function () { openReport(Number($(this).data("report-id"))); });
     $(document).on("click", "#download-report-pdf", downloadReportPDF);
     $(document).on("click", "#download-daily-pdf", downloadDailyPDF);
     $(document).on("click", "#delete-report", () => { if (state.currentReport) openDeleteReportModal(state.currentReport); });
