@@ -18,13 +18,18 @@ import (
 
 type cveNavigationServer struct {
 	*httptest.Server
-	mu       sync.Mutex
-	requests []string
+	mu                  sync.Mutex
+	cves                []api.CVEInsight
+	requests            []string
+	revision            uint64
+	failOnceAtOffset    int
+	failed              bool
+	staleOnceOnNextPage bool
 }
 
 func newCVENavigationServer(t *testing.T, cves []api.CVEInsight) *cveNavigationServer {
 	t.Helper()
-	result := &cveNavigationServer{}
+	result := &cveNavigationServer{cves: slices.Clone(cves), revision: 1, failOnceAtOffset: -1}
 	staticFiles := http.FileServerFS(os.DirFS("../../../static"))
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/bootstrap", func(writer http.ResponseWriter, _ *http.Request) {
@@ -43,13 +48,43 @@ func newCVENavigationServer(t *testing.T, cves []api.CVEInsight) *cveNavigationS
 	mux.HandleFunc("GET /api/cves", func(writer http.ResponseWriter, request *http.Request) {
 		result.mu.Lock()
 		result.requests = append(result.requests, request.URL.RequestURI())
+		offset, _ := strconv.Atoi(request.URL.Query().Get("offset"))
+		if result.failOnceAtOffset == offset && !result.failed {
+			result.failed = true
+			result.mu.Unlock()
+			writeJSONStatus(t, writer, http.StatusInternalServerError, api.ErrorResponse{Code: "internal", MessageEN: "CVE page failed"})
+			return
+		}
+		if offset > 0 && result.staleOnceOnNextPage {
+			result.staleOnceOnNextPage = false
+			result.revision++
+			result.cves[len(result.cves)-1].CVSS = 10
+			result.mu.Unlock()
+			writeJSONStatus(t, writer, http.StatusConflict, api.ErrorResponse{Code: "cve_page_stale", MessageEN: "CVE ranking changed"})
+			return
+		}
+		values := slices.Clone(result.cves)
+		revision := result.revision
 		result.mu.Unlock()
-		writeJSON(t, writer, cveFixturePage(cves, request))
+		writer.Header().Set("X-CVE-Revision", strconv.FormatUint(revision, 10))
+		writeJSON(t, writer, cveFixturePage(values, request))
 	})
 	mux.Handle("/", staticFiles)
 	result.Server = httptest.NewServer(mux)
 	t.Cleanup(result.Close)
 	return result
+}
+
+func (s *cveNavigationServer) failNextPageAt(offset int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.failOnceAtOffset = offset
+}
+
+func (s *cveNavigationServer) staleNextContinuation() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.staleOnceOnNextPage = true
 }
 
 func (s *cveNavigationServer) cveRequests() []string {

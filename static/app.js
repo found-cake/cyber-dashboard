@@ -12,7 +12,7 @@
       attributionTrend: "행위자 판별 추이", attributionTrendHint: days => `${days}일 단위 · 막대는 판별 수준, 선은 행위자가 있는 기사`,
       actorNamed: "판별됨", actorQualified: "부분 판별", actorUnknown: "미판별", actorAttributed: "행위자 있음",
       cveHint: "NVD API 보강 · 최초 등장일 최신순", viewAllCVEs: "전체 CVE 보기", allCVEs: "전체 CVE 목록",
-      cveExplorerHint: "CVSS + 언급수 × 0.2 기준 내림차순", cveSortLabel: "정렬 기준", cveHintCVSS: "CVSS 점수 높은 순", cveHintMentions: "언급 수 많은 순", cveHintFirstSeen: "최초 등장일 최신순", cveScrollHint: "좌우로 스크롤하여 전체 열을 확인하세요.", rank: "순위", riskScore: "정렬 점수", entries: "개", backToDashboard: "대시보드로 돌아가기", refreshCVEs: "CVE 갱신", refreshingCVEs: "CVE 갱신 중…", cvssPending: "NVD 평가 대기", noData: "아직 수집된 데이터가 없습니다",
+      cveExplorerHint: "CVSS + 언급수 × 0.2 기준 내림차순", cveSortLabel: "정렬 기준", cveHintCVSS: "CVSS 점수 높은 순", cveHintMentions: "언급 수 많은 순", cveHintFirstSeen: "최초 등장일 최신순", cveScrollHint: "좌우로 스크롤하여 전체 열을 확인하세요.", rank: "순위", riskScore: "정렬 점수", entries: "개", backToDashboard: "대시보드로 돌아가기", refreshCVEs: "CVE 갱신", refreshingCVEs: "CVE 갱신 중…", cvssPending: "NVD 평가 대기", cveLoadFailed: "CVE 목록을 불러오지 못했습니다.", retry: "다시 시도", noData: "아직 수집된 데이터가 없습니다",
       noDataHint: "왼쪽 캘린더에서 최근 10일 이내 날짜를 선택해 첫\u00a0수집을 시작하세요.",
       noArticles: "이 날짜에 수집된 기사가 없습니다", collectNow: "수집을 시작하시겠습니까?",
       sourcesActive: "개의 활성 소스에서 메타데이터를 가져옵니다.", cancel: "취소", close: "닫기", start: "수집 시작",
@@ -66,7 +66,7 @@
       attributionTrend: "Attribution trend", attributionTrendHint: days => `${days}-day buckets · bars by precision, line is articles with an actor`,
       actorNamed: "Identified", actorQualified: "Partly identified", actorUnknown: "Unidentified", actorAttributed: "Has actor",
       cveHint: "Enriched via NVD API · newest first", viewAllCVEs: "View all CVEs", allCVEs: "All CVEs",
-      cveExplorerHint: "Ranked by CVSS + mentions × 0.2", cveSortLabel: "Sort by", cveHintCVSS: "Ranked by CVSS score", cveHintMentions: "Ranked by mention count", cveHintFirstSeen: "Newest first seen first", cveScrollHint: "Scroll horizontally to view every column.", rank: "Rank", riskScore: "Rank score", entries: "entries", backToDashboard: "Back to dashboard", refreshCVEs: "Refresh CVEs", refreshingCVEs: "Refreshing CVEs…", cvssPending: "NVD assessment pending", noData: "No collected data yet",
+      cveExplorerHint: "Ranked by CVSS + mentions × 0.2", cveSortLabel: "Sort by", cveHintCVSS: "Ranked by CVSS score", cveHintMentions: "Ranked by mention count", cveHintFirstSeen: "Newest first seen first", cveScrollHint: "Scroll horizontally to view every column.", rank: "Rank", riskScore: "Rank score", entries: "entries", backToDashboard: "Back to dashboard", refreshCVEs: "Refresh CVEs", refreshingCVEs: "Refreshing CVEs…", cvssPending: "NVD assessment pending", cveLoadFailed: "The CVE catalogue could not be loaded.", retry: "Retry", noData: "No collected data yet",
       noDataHint: "Pick a date within the last 10 days in the calendar to start your first collection.",
       noArticles: "No articles collected for this date", collectNow: "Start collection for this date?",
       sourcesActive: " active sources will provide metadata.", cancel: "Cancel", close: "Close", start: "Start",
@@ -924,27 +924,42 @@
     };
 
     setLoading();
-    loadCVEInsights(renderRows);
+    loadCVEInsights(renderRows, error => {
+      $("#main-content").html(`<div class="content stack"><section class="empty-state">
+        <span class="empty-mark">!</span><h2>${esc(t("cveLoadFailed"))}</h2>
+        <button class="secondary-button" id="retry-cves" type="button">${esc(t("retry"))}</button>
+      </section></div>`);
+      showRequestError(error);
+    });
   }
 
-  function loadCVEInsights(onComplete) {
-    const request = ++cvesRequest;
+  function loadCVEInsights(onComplete, onFailure = showRequestError) {
+    const requestID = ++cvesRequest;
     const sort = state.cveSort;
-    const values = [];
-    const loadPage = offset => {
-      api("GET", `/api/cves?sort=${encodeURIComponent(sort)}&offset=${offset}`).done(page => {
-        if (request !== cvesRequest || state.view !== "cves") return;
-        values.push(...page);
-        if (page.length === cvePageSize) loadPage(offset + page.length);
-        else onComplete(values);
-      }).fail(error => {
-        if (request === cvesRequest && state.view === "cves") {
-          $("#main-content .cve-page-table").attr("aria-busy", null);
-          showRequestError(error);
-        }
-      });
+    let restarts = 0;
+    const loadRanking = () => {
+      const values = [];
+      const loadPage = (offset, revision = "") => {
+        const continuation = revision ? `&revision=${encodeURIComponent(revision)}` : "";
+        request("GET", `/api/cves?sort=${encodeURIComponent(sort)}&offset=${offset}${continuation}`).done((page, _status, response) => {
+          if (requestID !== cvesRequest || state.view !== "cves") return;
+          const currentRevision = revision || response.getResponseHeader("X-CVE-Revision") || "";
+          values.push(...page);
+          if (page.length === cvePageSize) loadPage(offset + page.length, currentRevision);
+          else onComplete(values);
+        }).fail(error => {
+          if (requestID !== cvesRequest || state.view !== "cves") return;
+          if (error.status === 409 && error.responseJSON?.code === "cve_page_stale" && restarts < 3) {
+            restarts++;
+            loadRanking();
+            return;
+          }
+          onFailure(error);
+        });
+      };
+      loadPage(0);
     };
-    loadPage(0);
+    loadRanking();
   }
 
   function refreshCVEs() {
@@ -1605,6 +1620,7 @@
     $(document).on("input", "#login-password", () => clearFieldErrors("#login-form"));
     $(document).on("input", "#password-form input", () => clearFieldErrors("#password-form"));
     $(document).on("click", "#open-cve-explorer", () => { state.dashboardScroll = $("#main-content").scrollTop(); });
+    $(document).on("click", "#retry-cves", renderCVEExplorer);
     $(document).on("click", "#refresh-cves", refreshCVEs);
     $(document).on("click", ".calendar-day[data-day]", function () { if (!this.disabled) selectDay($(this).data("day")); });
     $(document).on("click", "[data-report-id]", function () { openReport(Number($(this).data("report-id"))); });
@@ -1647,6 +1663,9 @@
       loadCVEInsights(cves => {
         $("#main-content .cve-page-table tbody").html(cveExplorerRowsHTML(cves));
         $("#main-content .cve-page-table").attr("aria-busy", null);
+      }, error => {
+        $("#main-content .cve-page-table").attr("aria-busy", null);
+        showRequestError(error);
       });
     });
     $(document).on("change", "#dashboard-range", function () {
