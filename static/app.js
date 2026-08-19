@@ -993,15 +993,19 @@
     const date = parseDay(day);
     const { today, oldest } = retentionWindow();
     if (date > today) return toast(t("futureDate"), true);
+    const request = beginView("daily");
     state.selectedDay = day;
     state.dailySource = "all";
     renderCalendar();
     setLoading();
     api("GET", `/api/daily/${encodeURIComponent(day)}`).done(data => {
+      if (request !== viewRequest) return;
       state.daily = data;
       renderDaily();
       if (isAuthenticated() && date >= oldest && !data.articles.length && !(state.bootstrap.collected_days || []).includes(day)) openCollectModal(day);
-    }).fail(showRequestError);
+    }).fail(error => {
+      if (request === viewRequest) showRequestError(error);
+    });
   }
 
   function exportCopy(day = state.selectedDay) {
