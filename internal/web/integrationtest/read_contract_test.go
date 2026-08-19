@@ -150,11 +150,12 @@ func TestCVEEndpointCapsPages_withoutHidingLaterEntries(t *testing.T) {
 		}
 	}
 
-	// When consecutive offsets are requested through the real router.
-	firstResponse := performRequest(t, server, http.MethodGet, "/api/cves?sort=score&offset=0", nil)
+	// When consecutive cursors are requested through the real router.
+	firstResponse := performRequest(t, server, http.MethodGet, "/api/cves?sort=score", nil)
 	revision := firstResponse.Header().Get("X-CVE-Revision")
+	cursor := firstResponse.Header().Get("X-CVE-Cursor")
 	secondResponse := performRequest(t, server, http.MethodGet, fmt.Sprintf(
-		"/api/cves?sort=score&offset=%d&revision=%s", dashboard.CVEPageSize, url.QueryEscape(revision)), nil)
+		"/api/cves?sort=score&cursor=%s&revision=%s", url.QueryEscape(cursor), url.QueryEscape(revision)), nil)
 
 	// Then the first response is capped and the remaining entry is available on the next page.
 	if firstResponse.Code != http.StatusOK || secondResponse.Code != http.StatusOK {
@@ -167,7 +168,7 @@ func TestCVEEndpointCapsPages_withoutHidingLaterEntries(t *testing.T) {
 	if err := json.Unmarshal(secondResponse.Body.Bytes(), &second); err != nil {
 		t.Fatalf("decode second CVE page: %v", err)
 	}
-	if revision == "" || len(first) != dashboard.CVEPageSize || len(second) != 1 {
+	if revision == "" || cursor == "" || len(first) != dashboard.CVEPageSize || len(second) != 1 {
 		t.Fatalf("page lengths = %d and %d", len(first), len(second))
 	}
 }
@@ -178,11 +179,10 @@ func TestCVEEndpointRejectsInvalidPageQueries(t *testing.T) {
 	tests := []string{
 		"/api/cves?sort=unknown",
 		"/api/cves?offset=-1",
-		"/api/cves?offset=1",
-		"/api/cves?offset=100",
-		"/api/cves?offset=100&revision=text",
-		"/api/cves?offset=text",
-		"/api/cves?offset=9223372036854775808",
+		"/api/cves?cursor=score.CVE-2026-0001",
+		"/api/cves?cursor=score.CVE-2026-0001&revision=text",
+		"/api/cves?cursor=other.CVE-2026-0001&revision=1",
+		"/api/cves?cursor=score.CVE-2026-9999&revision=1",
 	}
 
 	for _, path := range tests {
@@ -205,7 +205,7 @@ func TestCVEEndpointRejectsInvalidPageQueries(t *testing.T) {
 	}
 }
 
-func TestCVEEndpointRejectsStaleRevisionAndOutOfRangeContinuation(t *testing.T) {
+func TestCVEEndpointRejectsStaleRevisionAndInvalidCursor(t *testing.T) {
 	// Given a first page whose server ranking changes before its continuation.
 	server, feeds, _ := newTestServer(t, &stubFetcher{})
 	day := recentCollectionDay()
@@ -218,10 +218,11 @@ func TestCVEEndpointRejectsStaleRevisionAndOutOfRangeContinuation(t *testing.T) 
 			t.Fatalf("save article %s: %v", cveID, err)
 		}
 	}
-	first := performRequest(t, server, http.MethodGet, "/api/cves?sort=score&offset=0", nil)
+	first := performRequest(t, server, http.MethodGet, "/api/cves?sort=score", nil)
 	revision := first.Header().Get("X-CVE-Revision")
-	if revision == "" {
-		t.Fatal("first CVE page omitted its revision")
+	cursor := first.Header().Get("X-CVE-Cursor")
+	if revision == "" || cursor == "" {
+		t.Fatal("first CVE page omitted its continuation headers")
 	}
 	if err := feeds.SaveAssessment(context.Background(), vulnerability.Assessment{
 		CVEID: "CVE-2026-0100", Score: 10, Product: "Promoted product",
@@ -229,17 +230,17 @@ func TestCVEEndpointRejectsStaleRevisionAndOutOfRangeContinuation(t *testing.T) 
 		t.Fatalf("change CVE ranking: %v", err)
 	}
 
-	// When the stale next page and an out-of-range page are requested.
+	// When the stale next page and an unknown cursor are requested.
 	stale := performRequest(t, server, http.MethodGet, fmt.Sprintf(
-		"/api/cves?sort=score&offset=%d&revision=%s", dashboard.CVEPageSize, url.QueryEscape(revision)), nil)
-	restarted := performRequest(t, server, http.MethodGet, "/api/cves?sort=score&offset=0", nil)
+		"/api/cves?sort=score&cursor=%s&revision=%s", url.QueryEscape(cursor), url.QueryEscape(revision)), nil)
+	restarted := performRequest(t, server, http.MethodGet, "/api/cves?sort=score", nil)
 	currentRevision := restarted.Header().Get("X-CVE-Revision")
-	outOfRange := performRequest(t, server, http.MethodGet, fmt.Sprintf(
-		"/api/cves?sort=score&offset=%d&revision=%s", dashboard.CVEPageSize*2, url.QueryEscape(currentRevision)), nil)
+	invalidCursor := performRequest(t, server, http.MethodGet, fmt.Sprintf(
+		"/api/cves?sort=score&cursor=score.CVE-2026-9999&revision=%s", url.QueryEscape(currentRevision)), nil)
 
-	// Then stale data is conflict-rejected and a current revision cannot authorize arbitrary offsets.
-	if stale.Code != http.StatusConflict || outOfRange.Code != http.StatusBadRequest {
-		t.Fatalf("statuses = stale %d, out of range %d", stale.Code, outOfRange.Code)
+	// Then stale data is conflict-rejected and unknown cursor state is not accepted.
+	if stale.Code != http.StatusConflict || invalidCursor.Code != http.StatusBadRequest {
+		t.Fatalf("statuses = stale %d, invalid cursor %d", stale.Code, invalidCursor.Code)
 	}
 	var value api.ErrorResponse
 	if err := json.Unmarshal(stale.Body.Bytes(), &value); err != nil {

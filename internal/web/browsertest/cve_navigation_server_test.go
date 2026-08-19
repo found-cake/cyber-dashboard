@@ -9,6 +9,7 @@ import (
 	"os"
 	"slices"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 
@@ -22,14 +23,14 @@ type cveNavigationServer struct {
 	cves                []api.CVEInsight
 	requests            []string
 	revision            uint64
-	failOnceAtOffset    int
+	failNextPage        bool
 	failed              bool
 	staleOnceOnNextPage bool
 }
 
 func newCVENavigationServer(t *testing.T, cves []api.CVEInsight) *cveNavigationServer {
 	t.Helper()
-	result := &cveNavigationServer{cves: slices.Clone(cves), revision: 1, failOnceAtOffset: -1}
+	result := &cveNavigationServer{cves: slices.Clone(cves), revision: 1}
 	staticFiles := http.FileServerFS(os.DirFS("../../../static"))
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/bootstrap", func(writer http.ResponseWriter, _ *http.Request) {
@@ -48,14 +49,14 @@ func newCVENavigationServer(t *testing.T, cves []api.CVEInsight) *cveNavigationS
 	mux.HandleFunc("GET /api/cves", func(writer http.ResponseWriter, request *http.Request) {
 		result.mu.Lock()
 		result.requests = append(result.requests, request.URL.RequestURI())
-		offset, _ := strconv.Atoi(request.URL.Query().Get("offset"))
-		if result.failOnceAtOffset == offset && !result.failed {
+		cursor := request.URL.Query().Get("cursor")
+		if cursor != "" && result.failNextPage && !result.failed {
 			result.failed = true
 			result.mu.Unlock()
 			writeJSONStatus(t, writer, http.StatusInternalServerError, api.ErrorResponse{Code: "internal", MessageEN: "CVE page failed"})
 			return
 		}
-		if offset > 0 && result.staleOnceOnNextPage {
+		if cursor != "" && result.staleOnceOnNextPage {
 			result.staleOnceOnNextPage = false
 			result.revision++
 			result.cves[len(result.cves)-1].CVSS = 10
@@ -66,8 +67,12 @@ func newCVENavigationServer(t *testing.T, cves []api.CVEInsight) *cveNavigationS
 		values := slices.Clone(result.cves)
 		revision := result.revision
 		result.mu.Unlock()
+		page := cveFixturePage(values, request)
 		writer.Header().Set("X-CVE-Revision", strconv.FormatUint(revision, 10))
-		writeJSON(t, writer, cveFixturePage(values, request))
+		if len(page) > 0 {
+			writer.Header().Set("X-CVE-Cursor", request.URL.Query().Get("sort")+"."+page[len(page)-1].ID)
+		}
+		writeJSON(t, writer, page)
 	})
 	mux.Handle("/", staticFiles)
 	result.Server = httptest.NewServer(mux)
@@ -75,10 +80,10 @@ func newCVENavigationServer(t *testing.T, cves []api.CVEInsight) *cveNavigationS
 	return result
 }
 
-func (s *cveNavigationServer) failNextPageAt(offset int) {
+func (s *cveNavigationServer) failNextContinuation() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.failOnceAtOffset = offset
+	s.failNextPage = true
 }
 
 func (s *cveNavigationServer) staleNextContinuation() {
@@ -117,9 +122,17 @@ func cveFixturePage(cves []api.CVEInsight, request *http.Request) []api.CVEInsig
 			return byRisk()
 		}
 	})
-	offset, _ := strconv.Atoi(request.URL.Query().Get("offset"))
-	if offset >= len(values) {
-		return []api.CVEInsight{}
+	start := 0
+	if cursor := request.URL.Query().Get("cursor"); cursor != "" {
+		_, id, found := strings.Cut(cursor, ".")
+		if !found {
+			return []api.CVEInsight{}
+		}
+		index := slices.IndexFunc(values, func(value api.CVEInsight) bool { return value.ID == id })
+		if index < 0 {
+			return []api.CVEInsight{}
+		}
+		start = index + 1
 	}
-	return values[offset:min(offset+dashboard.CVEPageSize, len(values))]
+	return values[start:min(start+dashboard.CVEPageSize, len(values))]
 }

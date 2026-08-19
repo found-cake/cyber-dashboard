@@ -12,7 +12,10 @@ import (
 	"github.com/labstack/echo/v5"
 )
 
-const cveRevisionHeader = "X-CVE-Revision"
+const (
+	cveRevisionHeader = "X-CVE-Revision"
+	cveCursorHeader   = "X-CVE-Cursor"
+)
 
 func (s *Server) listCVEs(c *echo.Context) error {
 	sort := dashboard.CVESortScore
@@ -23,14 +26,10 @@ func (s *Server) listCVEs(c *echo.Context) error {
 		}
 		sort = parsed
 	}
-	offset := 0
-	if value := c.QueryParam("offset"); value != "" {
-		parsed, parseErr := strconv.Atoi(value)
-		if parseErr != nil || parsed < 0 || parsed%dashboard.CVEPageSize != 0 {
-			return writeBadRequest(c, "offset must be a non-negative multiple of 100")
-		}
-		offset = parsed
+	if c.QueryParam("offset") != "" {
+		return writeBadRequest(c, "offset is not supported")
 	}
+	cursor := c.QueryParam("cursor")
 	var expectedRevision *uint64
 	if value := c.QueryParam("revision"); value != "" {
 		parsed, parseErr := strconv.ParseUint(value, 10, 64)
@@ -39,23 +38,26 @@ func (s *Server) listCVEs(c *echo.Context) error {
 		}
 		expectedRevision = &parsed
 	}
-	if offset > 0 && expectedRevision == nil {
+	if cursor != "" && expectedRevision == nil {
 		return writeBadRequest(c, "revision is required after the first CVE page")
 	}
 	page, err := s.dashboard.CVEInsights(c.Request().Context(), dashboard.CVEPageRequest{
-		Sort: sort, Offset: offset, ExpectedRevision: expectedRevision,
+		Sort: sort, Cursor: cursor, ExpectedRevision: expectedRevision,
 	})
 	if errors.Is(err, dashboard.ErrCVEPageStale) {
 		return c.JSON(http.StatusConflict, localizedError("cve_page_stale",
 			"CVE 정렬이 변경되어 처음부터 다시 불러옵니다", "The CVE ranking changed; reload from the first page"))
 	}
-	if errors.Is(err, dashboard.ErrCVEPageOutOfRange) {
-		return writeBadRequest(c, "offset exceeds the current CVE catalogue")
+	if errors.Is(err, dashboard.ErrCVECursorInvalid) {
+		return writeBadRequest(c, "invalid CVE cursor")
 	}
 	if err != nil {
 		return writeAPIError(c, err)
 	}
 	c.Response().Header().Set(cveRevisionHeader, strconv.FormatUint(page.Revision, 10))
+	if page.NextCursor != "" {
+		c.Response().Header().Set(cveCursorHeader, page.NextCursor)
+	}
 	return c.JSON(http.StatusOK, page.Values)
 }
 

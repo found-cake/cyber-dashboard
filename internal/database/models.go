@@ -42,6 +42,10 @@ type CVE struct {
 	FirstSeen       string  `gorm:"not null"`
 	CVSSScore       float64 `gorm:"not null;default:0"`
 	MentionCount    int     `gorm:"not null;default:0"`
+	RiskKey         float64 `gorm:"not null;default:0"`
+	CVSSKey         float64 `gorm:"not null;default:0"`
+	MentionsKey     int     `gorm:"not null;default:0"`
+	FirstSeenKey    int     `gorm:"not null;default:0"`
 	CVSSSource      string  `gorm:"not null;default:''"`
 	CVSSVersion     string  `gorm:"not null;default:''"`
 	CVSSVector      string  `gorm:"not null;default:''"`
@@ -51,7 +55,6 @@ type CVE struct {
 type cveState struct {
 	ID       int    `gorm:"primaryKey;check:id = 1"`
 	Revision uint64 `gorm:"not null;default:1"`
-	CVECount int64  `gorm:"not null;default:0"`
 }
 
 func (cveState) TableName() string {

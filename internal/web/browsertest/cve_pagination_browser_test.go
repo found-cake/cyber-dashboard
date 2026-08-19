@@ -32,11 +32,11 @@ func TestCVEExplorerLoadsEveryServerPage_whenMoreThanOneHundredEntriesExist(t *t
 		t.Fatalf("load paged CVE explorer: %v", err)
 	}
 
-	// Then all entries are rendered after the browser requests the three consecutive offsets.
+	// Then all entries are rendered after the browser requests three bounded cursor pages.
 	wantRequests := []string{
-		"/api/cves?sort=score&offset=0",
-		"/api/cves?sort=score&offset=100&revision=1",
-		"/api/cves?sort=score&offset=200&revision=1",
+		"/api/cves?sort=score",
+		"/api/cves?sort=score&cursor=score.CVE-2026-0099&revision=1",
+		"/api/cves?sort=score&cursor=score.CVE-2026-0199&revision=1",
 	}
 	if requests := server.cveRequests(); !slices.Equal(requests, wantRequests) {
 		t.Fatalf("CVE requests = %v, want %v", requests, wantRequests)
@@ -75,10 +75,10 @@ func TestCVEExplorerRestartsEveryPage_whenRankingRevisionChanges(t *testing.T) {
 		t.Fatalf("unique CVE rows = %d, want %d", uniqueRows, len(cves))
 	}
 	wantRequests := []string{
-		"/api/cves?sort=score&offset=0",
-		"/api/cves?sort=score&offset=100&revision=1",
-		"/api/cves?sort=score&offset=0",
-		"/api/cves?sort=score&offset=100&revision=2",
+		"/api/cves?sort=score",
+		"/api/cves?sort=score&cursor=score.CVE-2026-0099&revision=1",
+		"/api/cves?sort=score",
+		"/api/cves?sort=score&cursor=score.CVE-2026-0098&revision=2",
 	}
 	if requests := server.cveRequests(); !slices.Equal(requests, wantRequests) {
 		t.Fatalf("CVE requests = %v, want %v", requests, wantRequests)
@@ -95,7 +95,7 @@ func TestCVEExplorerOffersRetry_whenLaterPageFails(t *testing.T) {
 		}
 	}
 	server := newCVENavigationServer(t, cves)
-	server.failNextPageAt(100)
+	server.failNextContinuation()
 	browser := newBrowserContext(t, 20*time.Second)
 
 	// When loading stops after the partial page.

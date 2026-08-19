@@ -21,6 +21,7 @@ func Open(ctx context.Context, path string) (*gorm.DB, error) {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
 	hasMentionCount := db.Migrator().HasColumn(&CVE{}, "MentionCount")
+	hasRankingKeys := db.Migrator().HasColumn(&CVE{}, "RiskKey")
 	sqlDB, err := db.DB()
 	if err != nil {
 		return nil, fmt.Errorf("access sqlite pool: %w", err)
@@ -30,7 +31,7 @@ func Open(ctx context.Context, path string) (*gorm.DB, error) {
 		_ = sqlDB.Close()
 		return nil, fmt.Errorf("auto migrate: %w", err)
 	}
-	if err := ensureCVERankingSchema(ctx, db, !hasMentionCount); err != nil {
+	if err := ensureCVERankingSchema(ctx, db, !hasMentionCount, !hasRankingKeys); err != nil {
 		_ = sqlDB.Close()
 		return nil, err
 	}

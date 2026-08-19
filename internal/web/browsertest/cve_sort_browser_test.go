@@ -56,7 +56,7 @@ func TestCVEExplorerRequestsServerRanking_whenSortCriterionChanges(t *testing.T)
 			t.Fatalf("sorting by %s left the criterion hint empty", value)
 		}
 		requests := server.cveRequests()
-		if len(requests) <= requestCount || requests[len(requests)-1] != "/api/cves?sort="+value+"&offset=0" {
+		if len(requests) <= requestCount || requests[len(requests)-1] != "/api/cves?sort="+value {
 			t.Fatalf("requests after sorting by %s = %v", value, requests)
 		}
 		return result.First

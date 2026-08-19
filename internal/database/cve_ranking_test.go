@@ -62,10 +62,6 @@ func TestOpenBackfillsAndMaintainsCVEMentionRankingState_whenLegacyDatabaseMigra
 	if err := db.Raw(`SELECT revision FROM cve_states WHERE id = 1`).Row().Scan(&revisionBefore); err != nil {
 		t.Fatalf("read initial CVE revision: %v", err)
 	}
-	var cveCount int
-	if err := db.Raw(`SELECT cve_count FROM cve_states WHERE id = 1`).Row().Scan(&cveCount); err != nil {
-		t.Fatalf("read migrated CVE count: %v", err)
-	}
 	if err := db.Exec(`INSERT INTO articles (source_id, feed_uid, title, url, published_at, collected_at)
       VALUES (1, 'legacy-two', 'Threat', 'https://example.com/two', '2026-08-01', '2026-08-01')`).Error; err != nil {
 		t.Fatalf("insert second article: %v", err)
@@ -79,15 +75,19 @@ func TestOpenBackfillsAndMaintainsCVEMentionRankingState_whenLegacyDatabaseMigra
 
 	// Then migration backfills the legacy mention, triggers keep the count correct, and the revision advances.
 	var mentions int
-	if err := db.Raw(`SELECT mention_count FROM cves WHERE cve_id = 'CVE-2026-0001'`).Row().Scan(&mentions); err != nil {
+	var riskKey, cvssKey float64
+	var mentionsKey, firstSeenKey int
+	if err := db.Raw(`SELECT mention_count, risk_key, cvss_key, mentions_key, first_seen_key
+      FROM cves WHERE cve_id = 'CVE-2026-0001'`).Row().Scan(&mentions, &riskKey, &cvssKey, &mentionsKey, &firstSeenKey); err != nil {
 		t.Fatalf("read maintained mention count: %v", err)
 	}
 	var revisionAfter uint64
 	if err := db.Raw(`SELECT revision FROM cve_states WHERE id = 1`).Row().Scan(&revisionAfter); err != nil {
 		t.Fatalf("read updated CVE revision: %v", err)
 	}
-	if migratedMentions != 1 || mentions != 1 || cveCount != 1 || revisionAfter <= revisionBefore {
-		t.Fatalf("ranking state = migrated %d, current %d, count %d, revisions %d -> %d", migratedMentions, mentions, cveCount, revisionBefore, revisionAfter)
+	if migratedMentions != 1 || mentions != 1 || riskKey != -0.2 || cvssKey != 0 || mentionsKey != -1 || firstSeenKey != -20260801 || revisionAfter <= revisionBefore {
+		t.Fatalf("ranking state = migrated %d, current %d, keys %g/%g/%d/%d, revisions %d -> %d",
+			migratedMentions, mentions, riskKey, cvssKey, mentionsKey, firstSeenKey, revisionBefore, revisionAfter)
 	}
 }
 
@@ -101,18 +101,36 @@ func TestOpenCreatesIndexesUsedByEveryCVERanking(t *testing.T) {
 	tests := []struct {
 		name      string
 		order     string
+		seek      string
+		arguments []any
 		indexName string
 	}{
-		{name: "score", order: "(cvss_score + 0.2 * mention_count) DESC, first_seen DESC, cve_id ASC", indexName: "cves_score_order_idx"},
-		{name: "CVSS", order: "cvss_score DESC, (cvss_score + 0.2 * mention_count) DESC, first_seen DESC, cve_id ASC", indexName: "cves_cvss_order_idx"},
-		{name: "mentions", order: "mention_count DESC, (cvss_score + 0.2 * mention_count) DESC, first_seen DESC, cve_id ASC", indexName: "cves_mentions_order_idx"},
-		{name: "first seen", order: "first_seen DESC, (cvss_score + 0.2 * mention_count) DESC, cve_id ASC", indexName: "cves_first_seen_order_idx"},
+		{
+			name: "score", order: "risk_key, first_seen_key, cve_id",
+			seek:      "(risk_key, first_seen_key, cve_id) > (?, ?, ?)",
+			arguments: []any{-8.2, -20260801, "CVE-2026-0001"}, indexName: "cves_score_seek_idx",
+		},
+		{
+			name: "CVSS", order: "cvss_key, risk_key, first_seen_key, cve_id",
+			seek:      "(cvss_key, risk_key, first_seen_key, cve_id) > (?, ?, ?, ?)",
+			arguments: []any{-8.0, -8.2, -20260801, "CVE-2026-0001"}, indexName: "cves_cvss_seek_idx",
+		},
+		{
+			name: "mentions", order: "mentions_key, risk_key, first_seen_key, cve_id",
+			seek:      "(mentions_key, risk_key, first_seen_key, cve_id) > (?, ?, ?, ?)",
+			arguments: []any{-1, -8.2, -20260801, "CVE-2026-0001"}, indexName: "cves_mentions_seek_idx",
+		},
+		{
+			name: "first seen", order: "first_seen_key, risk_key, cve_id",
+			seek:      "(first_seen_key, risk_key, cve_id) > (?, ?, ?)",
+			arguments: []any{-20260801, -8.2, "CVE-2026-0001"}, indexName: "cves_first_seen_seek_idx",
+		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			// When SQLite plans one server-owned ranking query.
-			rows, err := db.Raw(`EXPLAIN QUERY PLAN SELECT cve_id FROM cves ORDER BY ` + test.order + ` LIMIT 100`).Rows()
+			rows, err := db.Raw(`EXPLAIN QUERY PLAN SELECT cve_id FROM cves WHERE `+test.seek+` ORDER BY `+test.order+` LIMIT 100`, test.arguments...).Rows()
 			if err != nil {
 				t.Fatalf("explain CVE ranking: %v", err)
 			}
@@ -129,8 +147,8 @@ func TestOpenCreatesIndexesUsedByEveryCVERanking(t *testing.T) {
 
 			// Then the matching ranking index satisfies the order without a temporary sort.
 			plan := strings.Join(details, "\n")
-			if !strings.Contains(plan, test.indexName) || strings.Contains(plan, "TEMP B-TREE") {
-				t.Fatalf("query plan = %q, want index %q without temp sort", plan, test.indexName)
+			if !strings.Contains(plan, "SEARCH cves USING ") || !strings.Contains(plan, test.indexName) || strings.Contains(plan, "TEMP B-TREE") {
+				t.Fatalf("query plan = %q, want a seek on %q without temp sort", plan, test.indexName)
 			}
 		})
 	}

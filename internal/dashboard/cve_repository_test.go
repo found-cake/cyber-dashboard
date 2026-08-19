@@ -27,26 +27,30 @@ func TestCVEInsightsReturnsFixedPages_withoutDroppingEntries(t *testing.T) {
 	repository := NewRepository(db)
 
 	// When each consecutive page is loaded.
-	first, err := repository.CVEInsights(context.Background(), CVEPageRequest{Sort: CVESortScore})
-	if err != nil {
-		t.Fatalf("load first CVE page: %v", err)
-	}
-	revision := first.Revision
-	second, err := repository.CVEInsights(context.Background(), CVEPageRequest{Sort: CVESortScore, Offset: CVEPageSize, ExpectedRevision: &revision})
-	if err != nil {
-		t.Fatalf("load second CVE page: %v", err)
-	}
-	third, err := repository.CVEInsights(context.Background(), CVEPageRequest{Sort: CVESortScore, Offset: CVEPageSize * 2, ExpectedRevision: &revision})
-	if err != nil {
-		t.Fatalf("load third CVE page: %v", err)
-	}
+	for _, sort := range []CVESort{CVESortScore, CVESortCVSS, CVESortMentions, CVESortFirstSeen} {
+		t.Run(string(sort), func(t *testing.T) {
+			first, err := repository.CVEInsights(context.Background(), CVEPageRequest{Sort: sort})
+			if err != nil {
+				t.Fatalf("load first CVE page: %v", err)
+			}
+			revision := first.Revision
+			second, err := repository.CVEInsights(context.Background(), CVEPageRequest{Sort: sort, Cursor: first.NextCursor, ExpectedRevision: &revision})
+			if err != nil {
+				t.Fatalf("load second CVE page: %v", err)
+			}
+			third, err := repository.CVEInsights(context.Background(), CVEPageRequest{Sort: sort, Cursor: second.NextCursor, ExpectedRevision: &revision})
+			if err != nil {
+				t.Fatalf("load third CVE page: %v", err)
+			}
 
-	// Then every response is bounded and the pages form one complete ordered list.
-	if len(first.Values) != CVEPageSize || len(second.Values) != CVEPageSize || len(third.Values) != 5 {
-		t.Fatalf("page lengths = %d, %d, %d", len(first.Values), len(second.Values), len(third.Values))
-	}
-	if first.Values[0].ID != "CVE-2026-0000" || second.Values[0].ID != "CVE-2026-0100" || third.Values[0].ID != "CVE-2026-0200" {
-		t.Fatalf("page starts = %q, %q, %q", first.Values[0].ID, second.Values[0].ID, third.Values[0].ID)
+			// Then every response is bounded and the pages form one complete ordered list.
+			if len(first.Values) != CVEPageSize || len(second.Values) != CVEPageSize || len(third.Values) != 5 {
+				t.Fatalf("page lengths = %d, %d, %d", len(first.Values), len(second.Values), len(third.Values))
+			}
+			if first.Values[0].ID != "CVE-2026-0000" || second.Values[0].ID != "CVE-2026-0100" || third.Values[0].ID != "CVE-2026-0200" {
+				t.Fatalf("page starts = %q, %q, %q", first.Values[0].ID, second.Values[0].ID, third.Values[0].ID)
+			}
+		})
 	}
 }
 
@@ -142,7 +146,7 @@ func TestCVEInsightsRejectsContinuation_whenRankingRevisionChanges(t *testing.T)
 	// When the next page is requested with the superseded revision.
 	revision := first.Revision
 	_, err = repository.CVEInsights(context.Background(), CVEPageRequest{
-		Sort: CVESortScore, Offset: CVEPageSize, ExpectedRevision: &revision,
+		Sort: CVESortScore, Cursor: first.NextCursor, ExpectedRevision: &revision,
 	})
 
 	// Then the repository rejects the inconsistent continuation instead of returning duplicates or omissions.

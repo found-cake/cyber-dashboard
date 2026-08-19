@@ -939,13 +939,14 @@
     let restarts = 0;
     const loadRanking = () => {
       const values = [];
-      const loadPage = (offset, revision = "") => {
-        const continuation = revision ? `&revision=${encodeURIComponent(revision)}` : "";
-        request("GET", `/api/cves?sort=${encodeURIComponent(sort)}&offset=${offset}${continuation}`).done((page, _status, response) => {
+      const loadPage = (cursor = "", revision = "") => {
+        const continuation = cursor ? `&cursor=${encodeURIComponent(cursor)}&revision=${encodeURIComponent(revision)}` : "";
+        request("GET", `/api/cves?sort=${encodeURIComponent(sort)}${continuation}`).done((page, _status, response) => {
           if (requestID !== cvesRequest || state.view !== "cves") return;
           const currentRevision = revision || response.getResponseHeader("X-CVE-Revision") || "";
+          const nextCursor = response.getResponseHeader("X-CVE-Cursor") || "";
           values.push(...page);
-          if (page.length === cvePageSize) loadPage(offset + page.length, currentRevision);
+          if (page.length === cvePageSize) loadPage(nextCursor, currentRevision);
           else onComplete(values);
         }).fail(error => {
           if (requestID !== cvesRequest || state.view !== "cves") return;
