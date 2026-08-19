@@ -19,7 +19,7 @@ It runs locally, stores its data in SQLite, and is available as a single executa
 - Read AI-generated article summaries and a combined daily briefing.
 - Filter a collected day by news source or recollect it when needed.
 - Track recently mentioned CVEs, CVSS scores, affected products, first-seen dates, and mention counts.
-- Explore every collected CVE ranked by `CVSS + mentions × 0.2`.
+- Explore every collected CVE ranked by `CVSS + mentions × 0.2`, or re-rank the list by CVSS, mention count, or first seen date.
 - Compare collection, severity, and threat-attribution trends across selectable 7-day, 30-day, and 90-day dashboard periods.
 - Review threat-category and threat-actor distributions, with an option to exclude unattributed actors.
 - Generate and keep weekly or monthly reports in English or Korean.
