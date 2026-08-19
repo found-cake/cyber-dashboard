@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"reflect"
 	"testing"
 
@@ -151,7 +152,9 @@ func TestCVEEndpointCapsPages_withoutHidingLaterEntries(t *testing.T) {
 
 	// When consecutive offsets are requested through the real router.
 	firstResponse := performRequest(t, server, http.MethodGet, "/api/cves?sort=score&offset=0", nil)
-	secondResponse := performRequest(t, server, http.MethodGet, fmt.Sprintf("/api/cves?sort=score&offset=%d", dashboard.CVEPageSize), nil)
+	revision := firstResponse.Header().Get("X-CVE-Revision")
+	secondResponse := performRequest(t, server, http.MethodGet, fmt.Sprintf(
+		"/api/cves?sort=score&offset=%d&revision=%s", dashboard.CVEPageSize, url.QueryEscape(revision)), nil)
 
 	// Then the first response is capped and the remaining entry is available on the next page.
 	if firstResponse.Code != http.StatusOK || secondResponse.Code != http.StatusOK {
@@ -164,17 +167,20 @@ func TestCVEEndpointCapsPages_withoutHidingLaterEntries(t *testing.T) {
 	if err := json.Unmarshal(secondResponse.Body.Bytes(), &second); err != nil {
 		t.Fatalf("decode second CVE page: %v", err)
 	}
-	if len(first) != dashboard.CVEPageSize || len(second) != 1 {
+	if revision == "" || len(first) != dashboard.CVEPageSize || len(second) != 1 {
 		t.Fatalf("page lengths = %d and %d", len(first), len(second))
 	}
 }
 
-func TestCVEEndpointRejectsInvalidSortAndOffset(t *testing.T) {
+func TestCVEEndpointRejectsInvalidPageQueries(t *testing.T) {
 	// Given query values outside the public CVE page contract.
 	server, _, _ := newTestServer(t, &stubFetcher{})
 	tests := []string{
 		"/api/cves?sort=unknown",
 		"/api/cves?offset=-1",
+		"/api/cves?offset=1",
+		"/api/cves?offset=100",
+		"/api/cves?offset=100&revision=text",
 		"/api/cves?offset=text",
 		"/api/cves?offset=9223372036854775808",
 	}
@@ -196,5 +202,50 @@ func TestCVEEndpointRejectsInvalidSortAndOffset(t *testing.T) {
 				t.Fatalf("error response = %+v", value)
 			}
 		})
+	}
+}
+
+func TestCVEEndpointRejectsStaleRevisionAndOutOfRangeContinuation(t *testing.T) {
+	// Given a first page whose server ranking changes before its continuation.
+	server, feeds, _ := newTestServer(t, &stubFetcher{})
+	day := recentCollectionDay()
+	for index := range dashboard.CVEPageSize + 1 {
+		cveID := fmt.Sprintf("CVE-2026-%04d", index)
+		if err := feeds.SaveArticle(context.Background(), api.Source{ID: 1}, collector.FeedArticle{
+			ID: "sha256:cve-revision-" + cveID, URL: "https://example.com/" + cveID,
+			Title: cveID + " advisory", Description: "Assessment for " + cveID,
+		}, day); err != nil {
+			t.Fatalf("save article %s: %v", cveID, err)
+		}
+	}
+	first := performRequest(t, server, http.MethodGet, "/api/cves?sort=score&offset=0", nil)
+	revision := first.Header().Get("X-CVE-Revision")
+	if revision == "" {
+		t.Fatal("first CVE page omitted its revision")
+	}
+	if err := feeds.SaveAssessment(context.Background(), vulnerability.Assessment{
+		CVEID: "CVE-2026-0100", Score: 10, Product: "Promoted product",
+	}); err != nil {
+		t.Fatalf("change CVE ranking: %v", err)
+	}
+
+	// When the stale next page and an out-of-range page are requested.
+	stale := performRequest(t, server, http.MethodGet, fmt.Sprintf(
+		"/api/cves?sort=score&offset=%d&revision=%s", dashboard.CVEPageSize, url.QueryEscape(revision)), nil)
+	restarted := performRequest(t, server, http.MethodGet, "/api/cves?sort=score&offset=0", nil)
+	currentRevision := restarted.Header().Get("X-CVE-Revision")
+	outOfRange := performRequest(t, server, http.MethodGet, fmt.Sprintf(
+		"/api/cves?sort=score&offset=%d&revision=%s", dashboard.CVEPageSize*2, url.QueryEscape(currentRevision)), nil)
+
+	// Then stale data is conflict-rejected and a current revision cannot authorize arbitrary offsets.
+	if stale.Code != http.StatusConflict || outOfRange.Code != http.StatusBadRequest {
+		t.Fatalf("statuses = stale %d, out of range %d", stale.Code, outOfRange.Code)
+	}
+	var value api.ErrorResponse
+	if err := json.Unmarshal(stale.Body.Bytes(), &value); err != nil {
+		t.Fatalf("decode stale response: %v", err)
+	}
+	if value.Code != "cve_page_stale" {
+		t.Fatalf("stale response = %+v", value)
 	}
 }

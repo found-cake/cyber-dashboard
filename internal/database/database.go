@@ -20,14 +20,19 @@ func Open(ctx context.Context, path string) (*gorm.DB, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
+	hasMentionCount := db.Migrator().HasColumn(&CVE{}, "MentionCount")
 	sqlDB, err := db.DB()
 	if err != nil {
 		return nil, fmt.Errorf("access sqlite pool: %w", err)
 	}
 	sqlDB.SetMaxOpenConns(1)
-	if err := db.WithContext(ctx).AutoMigrate(&Source{}, &Article{}, &DailySummary{}, &CVE{}, &RejectedCVE{}, &ArticleCVE{}, &Report{}, &Setting{}, &LLMPreset{}, &AdminCredential{}); err != nil {
+	if err := db.WithContext(ctx).AutoMigrate(&Source{}, &Article{}, &DailySummary{}, &CVE{}, &cveState{}, &RejectedCVE{}, &ArticleCVE{}, &Report{}, &Setting{}, &LLMPreset{}, &AdminCredential{}); err != nil {
 		_ = sqlDB.Close()
 		return nil, fmt.Errorf("auto migrate: %w", err)
+	}
+	if err := ensureCVERankingSchema(ctx, db, !hasMentionCount); err != nil {
+		_ = sqlDB.Close()
+		return nil, err
 	}
 	if err := seed(ctx, db); err != nil {
 		_ = sqlDB.Close()

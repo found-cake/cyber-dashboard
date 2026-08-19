@@ -243,10 +243,11 @@ func TestDashboardCardCapsCVEsWhileExplorerKeepsAll(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build dashboard: %v", err)
 	}
-	all, err := repository.CVEInsights(context.Background(), CVESortScore, 0)
+	page, err := repository.CVEInsights(context.Background(), CVEPageRequest{Sort: CVESortScore})
 	if err != nil {
 		t.Fatalf("list CVE insights: %v", err)
 	}
+	all := page.Values
 
 	// Then the card carries only its own newest rows while the explorer still sees every entry.
 	if len(value.CVEs) != DashboardCVELimit {

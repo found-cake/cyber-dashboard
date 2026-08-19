@@ -41,10 +41,21 @@ type CVE struct {
 	CVEID           string  `gorm:"primaryKey"`
 	FirstSeen       string  `gorm:"not null"`
 	CVSSScore       float64 `gorm:"not null;default:0"`
+	MentionCount    int     `gorm:"not null;default:0"`
 	CVSSSource      string  `gorm:"not null;default:''"`
 	CVSSVersion     string  `gorm:"not null;default:''"`
 	CVSSVector      string  `gorm:"not null;default:''"`
 	AffectedProduct string  `gorm:"not null;default:NVD enrichment pending"`
+}
+
+type cveState struct {
+	ID       int    `gorm:"primaryKey;check:id = 1"`
+	Revision uint64 `gorm:"not null;default:1"`
+	CVECount int64  `gorm:"not null;default:0"`
+}
+
+func (cveState) TableName() string {
+	return "cve_states"
 }
 
 type RejectedCVE struct {
