@@ -69,7 +69,7 @@ func newCVENavigationServer(t *testing.T, cves []api.CVEInsight) *cveNavigationS
 		result.mu.Unlock()
 		page := cveFixturePage(values, request)
 		writer.Header().Set("X-CVE-Revision", strconv.FormatUint(revision, 10))
-		if len(page) > 0 {
+		if len(page) == dashboard.CVEPageSize {
 			writer.Header().Set("X-CVE-Cursor", request.URL.Query().Get("sort")+"."+page[len(page)-1].ID)
 		}
 		writeJSON(t, writer, page)

@@ -132,7 +132,6 @@
   const normalizedDashboardDays = value => dashboardRanges.includes(Number(value)) ? Number(value) : 30;
   const cachedDashboardDays = () => normalizedDashboardDays(localStorage.getItem("cyber-dashboard-days"));
   const cveSortKeys = ["score", "cvss", "mentions", "firstSeen"];
-  const cvePageSize = 100;
   const normalizedCVESort = value => cveSortKeys.includes(String(value)) ? String(value) : "score";
   const cachedCVESort = () => normalizedCVESort(localStorage.getItem("cyber-dashboard-cve-sort"));
 
@@ -946,7 +945,7 @@
           const currentRevision = revision || response.getResponseHeader("X-CVE-Revision") || "";
           const nextCursor = response.getResponseHeader("X-CVE-Cursor") || "";
           values.push(...page);
-          if (page.length === cvePageSize) loadPage(nextCursor, currentRevision);
+          if (nextCursor) loadPage(nextCursor, currentRevision);
           else onComplete(values);
         }).fail(error => {
           if (requestID !== cvesRequest || state.view !== "cves") return;
@@ -958,7 +957,7 @@
           onFailure(error);
         });
       };
-      loadPage(0);
+      loadPage();
     };
     loadRanking();
   }
