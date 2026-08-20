@@ -74,14 +74,20 @@ func newCVEResumeServer(t *testing.T) (*httptest.Server, func(), *atomic.Int32, 
 			},
 		})
 	})
-	mux.HandleFunc("GET /api/dashboard", func(writer http.ResponseWriter, _ *http.Request) {
+	currentCVEs := func() []api.CVEInsight {
 		id := "CVE-2026-PENDING"
 		if completed.Load() {
 			id = "CVE-2026-RESUMED"
 		}
-		writeJSON(t, writer, api.Dashboard{CVECount: 1, CVEs: []api.CVEInsight{{
+		return []api.CVEInsight{{
 			ID: id, CVSS: 7.5, AffectedProduct: "resume fixture", FirstSeen: "2026-08-02", Mentions: 1,
-		}}})
+		}}
+	}
+	mux.HandleFunc("GET /api/dashboard", func(writer http.ResponseWriter, _ *http.Request) {
+		writeJSON(t, writer, api.Dashboard{CVECount: 1, CVEs: currentCVEs()})
+	})
+	mux.HandleFunc("GET /api/cves", func(writer http.ResponseWriter, _ *http.Request) {
+		writeJSON(t, writer, currentCVEs())
 	})
 	mux.HandleFunc("POST /api/cves/refresh", func(writer http.ResponseWriter, _ *http.Request) {
 		posts.Add(1)

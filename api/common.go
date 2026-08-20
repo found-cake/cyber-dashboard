@@ -4,7 +4,7 @@ package api
 type Bootstrap struct {
 	Auth          AuthState           `json:"auth"`
 	Sources       []Source            `json:"sources"`
-	Reports       []Report            `json:"reports"`
+	Reports       []ReportSummary     `json:"reports"`
 	Settings      SettingsResponse    `json:"settings"`
 	LLMPresets    []LLMPresetResponse `json:"llm_presets"`
 	CollectedDays []string            `json:"collected_days"`

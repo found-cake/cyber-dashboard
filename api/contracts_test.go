@@ -11,7 +11,7 @@ import (
 func TestBootstrapMarshalsEmptyCollectionsAsArrays(t *testing.T) {
 	// Given a public bootstrap response with initialized empty collections.
 	value := api.Bootstrap{
-		Sources: []api.Source{}, Reports: []api.Report{}, LLMPresets: []api.LLMPresetResponse{}, CollectedDays: []string{},
+		Sources: []api.Source{}, Reports: []api.ReportSummary{}, LLMPresets: []api.LLMPresetResponse{}, CollectedDays: []string{},
 	}
 
 	// When an external application serializes the response.

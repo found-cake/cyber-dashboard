@@ -3,12 +3,63 @@ package httpapi
 import (
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/found-cake/cyber-dashboard/api"
+	"github.com/found-cake/cyber-dashboard/internal/dashboard"
 	"github.com/found-cake/cyber-dashboard/internal/vulnerability"
 	"github.com/labstack/echo/v5"
 )
+
+const (
+	cveRevisionHeader = "X-CVE-Revision"
+	cveCursorHeader   = "X-CVE-Cursor"
+)
+
+func (s *Server) listCVEs(c *echo.Context) error {
+	sort := dashboard.CVESortScore
+	if value := c.QueryParam("sort"); value != "" {
+		parsed, ok := dashboard.ParseCVESort(value)
+		if !ok {
+			return writeBadRequest(c, "sort must be score, cvss, mentions, or firstSeen")
+		}
+		sort = parsed
+	}
+	if c.QueryParam("offset") != "" {
+		return writeBadRequest(c, "offset is not supported")
+	}
+	cursor := c.QueryParam("cursor")
+	var expectedRevision *uint64
+	if value := c.QueryParam("revision"); value != "" {
+		parsed, parseErr := strconv.ParseUint(value, 10, 64)
+		if parseErr != nil {
+			return writeBadRequest(c, "revision must be an unsigned integer")
+		}
+		expectedRevision = &parsed
+	}
+	if cursor != "" && expectedRevision == nil {
+		return writeBadRequest(c, "revision is required after the first CVE page")
+	}
+	page, err := s.dashboard.CVEInsights(c.Request().Context(), dashboard.CVEPageRequest{
+		Sort: sort, Cursor: cursor, ExpectedRevision: expectedRevision,
+	})
+	if errors.Is(err, dashboard.ErrCVEPageStale) {
+		return c.JSON(http.StatusConflict, localizedError("cve_page_stale",
+			"CVE 정렬이 변경되어 처음부터 다시 불러옵니다", "The CVE ranking changed; reload from the first page"))
+	}
+	if errors.Is(err, dashboard.ErrCVECursorInvalid) {
+		return writeBadRequest(c, "invalid CVE cursor")
+	}
+	if err != nil {
+		return writeAPIError(c, err)
+	}
+	c.Response().Header().Set(cveRevisionHeader, strconv.FormatUint(page.Revision, 10))
+	if page.NextCursor != "" {
+		c.Response().Header().Set(cveCursorHeader, page.NextCursor)
+	}
+	return c.JSON(http.StatusOK, page.Values)
+}
 
 func (s *Server) refreshCVEs(c *echo.Context) error {
 	if s.cveRefreshes == nil {

@@ -17,6 +17,12 @@ const (
 	qualifiedUnknownFmt = "Unknown (%"
 )
 
+// DashboardCVELimit is how many CVEs the dashboard card lists; the rest load from GET /api/cves.
+const DashboardCVELimit = 8
+
+// CVEPageSize bounds each public CVE explorer response.
+const CVEPageSize = 100
+
 // Window is the rolling aggregation window; Bucket divides Days evenly into trend points.
 type Window struct {
 	// Supplied by the caller because SQLite's date('now') is UTC and would shift the boundary.
@@ -52,7 +58,7 @@ func (r *Repository) Dashboard(ctx context.Context, window Window, hideNoneActor
 		return api.Dashboard{}, fmt.Errorf("query dashboard stats: %w", err)
 	}
 	result.Total, result.Critical, result.High = stats.Total, stats.Critical, stats.High
-	// Counted through articles so the stat row shares one window; the CVE table stays complete.
+	// CVECount follows the selected article window; the card itself is capped below.
 	var cveCount int64
 	if err := r.db.WithContext(ctx).Table("article_cves AS ac").
 		Joins("JOIN articles AS a ON a.id = ac.article_id").
@@ -74,7 +80,7 @@ func (r *Repository) Dashboard(ctx context.Context, window Window, hideNoneActor
 	if err != nil {
 		return api.Dashboard{}, err
 	}
-	result.CVEs, err = r.cveInsights(ctx)
+	result.CVEs, err = r.recentCVEs(ctx, DashboardCVELimit)
 	if err != nil {
 		return api.Dashboard{}, err
 	}
@@ -167,15 +173,4 @@ func (r *Repository) breakdown(ctx context.Context, column string, limit int, si
 		return nil, fmt.Errorf("query %s breakdown: %w", column, err)
 	}
 	return result, nil
-}
-
-func (r *Repository) cveInsights(ctx context.Context) ([]api.CVEInsight, error) {
-	insights := []api.CVEInsight{}
-	if err := r.db.WithContext(ctx).Table("cves AS c").Select(`c.cve_id AS id, c.cvss_score AS cvss,
-		c.affected_product, c.first_seen, COUNT(ac.article_id) AS mentions`).
-		Joins("LEFT JOIN article_cves AS ac ON ac.cve_id = c.cve_id").Group("c.cve_id").
-		Order("(c.cvss_score + 0.2 * COUNT(ac.article_id)) DESC, c.first_seen DESC, c.cve_id ASC").Scan(&insights).Error; err != nil {
-		return nil, fmt.Errorf("query cve insights: %w", err)
-	}
-	return insights, nil
 }

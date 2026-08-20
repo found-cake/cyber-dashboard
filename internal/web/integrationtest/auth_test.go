@@ -21,10 +21,19 @@ func TestAuthenticationBoundaryAndJWTCookies(t *testing.T) {
 		now: func() time.Time { return currentTime },
 	})
 
-	for _, endpoint := range []string{"/api/dashboard", "/api/daily/2026-08-13", "/api/reports"} {
-		public := performRequest(t, server, http.MethodGet, endpoint, nil)
-		if public.Code != http.StatusOK {
-			t.Fatalf("public GET %s status = %d", endpoint, public.Code)
+	for _, endpoint := range []struct {
+		path   string
+		status int
+	}{
+		{path: "/api/dashboard", status: http.StatusOK},
+		{path: "/api/cves", status: http.StatusOK},
+		{path: "/api/daily/2026-08-13", status: http.StatusOK},
+		{path: "/api/reports", status: http.StatusOK},
+		{path: "/api/reports/1", status: http.StatusNotFound},
+	} {
+		public := performRequest(t, server, http.MethodGet, endpoint.path, nil)
+		if public.Code != endpoint.status {
+			t.Fatalf("public GET %s status = %d, want %d", endpoint.path, public.Code, endpoint.status)
 		}
 	}
 	bootstrapResponse := performRequest(t, server, http.MethodGet, "/api/bootstrap", nil)

@@ -79,12 +79,17 @@ func TestDashboardRangeChangeDuringInitialLoadKeepsTheNewestResponse(t *testing.
 			select.dispatchEvent(new Event("change", { bubbles: true }));
 		})()`, nil),
 		chromedp.Poll(`document.querySelector("#dashboard-stats strong")?.textContent === "7"`, nil),
+		chromedp.Evaluate(`window.__initialDashboardSettled = false;
+			$(document).on("ajaxComplete.dashboard-initial-test", (_event, _request, options) => {
+				if (!options.url.endsWith("/api/dashboard?days=30")) return;
+				requestAnimationFrame(() => requestAnimationFrame(() => { window.__initialDashboardSettled = true; }));
+			})`, nil),
 	); err != nil {
 		t.Fatalf("render the selected range: %v", err)
 	}
 	releaseInitial()
 	if err := chromedp.Run(browser,
-		chromedp.Poll(`performance.getEntriesByType("resource").filter(entry => entry.name.includes("/api/dashboard")).length === 2`, nil),
+		chromedp.Poll(`window.__initialDashboardSettled === true`, nil),
 	); err != nil {
 		t.Fatalf("settle the superseded request: %v", err)
 	}
@@ -124,13 +129,18 @@ func TestDashboardOverlappingControlsClearSupersededBusyState(t *testing.T) {
 	if err := chromedp.Run(browser,
 		chromedp.Click(`#hide-none-actor`),
 		chromedp.Poll(`document.querySelector("#threat-actor-bars .bar-label")?.textContent === "LockBit"`, nil),
+		chromedp.Evaluate(`window.__rangeDashboardSettled = false;
+			$(document).on("ajaxComplete.dashboard-range-test", (_event, _request, options) => {
+				if (!options.url.endsWith("/api/dashboard?days=7")) return;
+				requestAnimationFrame(() => requestAnimationFrame(() => { window.__rangeDashboardSettled = true; }));
+			})`, nil),
 	); err != nil {
 		t.Fatalf("complete actor refresh: %v", err)
 	}
 	releaseRange()
 	var result map[string]int
 	if err := chromedp.Run(browser,
-		chromedp.Poll(`performance.getEntriesByType("resource").filter(entry => entry.name.includes("/api/dashboard")).length === 3`, nil),
+		chromedp.Poll(`window.__rangeDashboardSettled === true`, nil),
 		chromedp.Evaluate(`({ busyCount: document.querySelectorAll('[aria-busy="true"]').length, errorCount: document.querySelectorAll('.toast.is-error').length })`, &result),
 	); err != nil {
 		t.Fatalf("settle overlapping refreshes: %v", err)

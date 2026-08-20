@@ -123,7 +123,7 @@ func newSourceSettingsBrowserServer(t *testing.T, savedRequests chan<- api.SaveS
 	mux.HandleFunc("GET /api/bootstrap", func(writer http.ResponseWriter, _ *http.Request) {
 		mutex.Lock()
 		defer mutex.Unlock()
-		writeJSON(t, writer, api.Bootstrap{Sources: append([]api.Source(nil), sources...), Settings: settings, Reports: []api.Report{}, CollectedDays: []string{}})
+		writeJSON(t, writer, api.Bootstrap{Sources: append([]api.Source(nil), sources...), Settings: settings, Reports: []api.ReportSummary{}, CollectedDays: []string{}})
 	})
 	mux.HandleFunc("GET /api/dashboard", func(writer http.ResponseWriter, _ *http.Request) {
 		writeJSON(t, writer, api.Dashboard{Empty: true})

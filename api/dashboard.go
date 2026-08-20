@@ -6,7 +6,7 @@ type BreakdownRow struct {
 	Value int    `json:"value"`
 }
 
-// CVEInsight appears in Dashboard responses from GET /api/dashboard.
+// CVEInsight appears in responses from GET /api/dashboard and GET /api/cves.
 type CVEInsight struct {
 	ID              string  `json:"id"`
 	CVSS            float64 `json:"cvss"`
@@ -41,5 +41,6 @@ type Dashboard struct {
 	AttackMethods []BreakdownRow `json:"attack_methods"`
 	ThreatActors  []BreakdownRow `json:"threat_actors"`
 	Trend         []TrendPoint   `json:"trend"`
-	CVEs          []CVEInsight   `json:"cves"`
+	// CVEs is the newest-first dashboard preview, capped at eight entries.
+	CVEs []CVEInsight `json:"cves"`
 }

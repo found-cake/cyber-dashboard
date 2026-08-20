@@ -3,6 +3,7 @@
 package browsertest
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -31,21 +32,32 @@ func newExportBrowserServerWithReport(t *testing.T, actors []string, summary str
 	)
 	staticFiles := http.FileServerFS(os.DirFS("../../../static"))
 	mux := http.NewServeMux()
+	reports := []api.Report{{
+		ID: 7, Type: "weekly", PeriodStart: "2026-08-01", PeriodEnd: "2026-08-07",
+		Total: 4, Critical: 1, High: 2, Medium: 1, TopThreat: weeklyThreats[0].Title, TopThreats: weeklyThreats,
+		Actors: actors, Sectors: []string{"Technology"}, Summary: summary,
+	}, {
+		ID: 8, Type: "monthly", PeriodStart: "2026-08-01", PeriodEnd: "2026-08-31",
+		Total: 20, Critical: 8, High: 9, Medium: 3, TopThreat: monthlyThreats[0].Title, TopThreats: monthlyThreats,
+		Actors: actors, Sectors: []string{"Technology"}, Summary: summary,
+	}}
 	mux.HandleFunc("GET /api/bootstrap", func(writer http.ResponseWriter, _ *http.Request) {
-		reports := []api.Report{{
-			ID: 7, Type: "weekly", PeriodStart: "2026-08-01", PeriodEnd: "2026-08-07",
-			Total: 4, Critical: 1, High: 2, Medium: 1, TopThreat: weeklyThreats[0].Title, TopThreats: weeklyThreats,
-			Actors: actors, Sectors: []string{"Technology"}, Summary: summary,
-		}, {
-			ID: 8, Type: "monthly", PeriodStart: "2026-08-01", PeriodEnd: "2026-08-31",
-			Total: 20, Critical: 8, High: 9, Medium: 3, TopThreat: monthlyThreats[0].Title, TopThreats: monthlyThreats,
-			Actors: actors, Sectors: []string{"Technology"}, Summary: summary,
-		}}
+		summaries := make([]api.ReportSummary, 0, len(reports))
+		for _, item := range reports {
+			summaries = append(summaries, api.ReportSummary{
+				ID: item.ID, Type: item.Type, PeriodStart: item.PeriodStart, PeriodEnd: item.PeriodEnd,
+			})
+		}
 		writeJSON(t, writer, api.Bootstrap{
-			Reports: reports, Settings: api.SettingsResponse{Language: "en", TimezoneOffsetMinutes: 0},
+			Reports: summaries, Settings: api.SettingsResponse{Language: "en", TimezoneOffsetMinutes: 0},
 			CollectedDays: []string{exportFixtureDay},
 		})
 	})
+	for _, item := range reports {
+		mux.HandleFunc(fmt.Sprintf("GET /api/reports/%d", item.ID), func(writer http.ResponseWriter, _ *http.Request) {
+			writeJSON(t, writer, item)
+		})
+	}
 	mux.HandleFunc("GET /api/dashboard", func(writer http.ResponseWriter, _ *http.Request) {
 		writeJSON(t, writer, api.Dashboard{Empty: true})
 	})

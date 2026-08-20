@@ -104,7 +104,7 @@ func newAuthExpiryBrowserServer(t *testing.T) (*httptest.Server, *authExpiryCoun
 		counts.bootstrap.Add(1)
 		writeJSON(t, writer, api.Bootstrap{
 			Auth:    api.AuthState{Enabled: true, Authenticated: authenticated.Load()},
-			Sources: []api.Source{}, Reports: []api.Report{}, Settings: settings,
+			Sources: []api.Source{}, Reports: []api.ReportSummary{}, Settings: settings,
 			LLMPresets: []api.LLMPresetResponse{}, CollectedDays: []string{},
 		})
 	})

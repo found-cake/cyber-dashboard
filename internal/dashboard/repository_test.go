@@ -221,30 +221,42 @@ func TestDashboardRanksCVEsByCVSSPlusWeightedMentions(t *testing.T) {
 	}
 }
 
-func TestDashboardReturnsAllCVEsForExplorer(t *testing.T) {
-	// Given more CVEs than the compact dashboard table displays.
+func TestDashboardCardCapsCVEsWhileExplorerKeepsAll(t *testing.T) {
+	// Given more CVEs than the compact dashboard table displays, each first seen a day apart.
 	db, err := database.Open(context.Background(), filepath.Join(t.TempDir(), "dashboard.db"))
 	if err != nil {
 		t.Fatalf("open database: %v", err)
 	}
 	t.Cleanup(func() { _ = database.Close(db) })
-	today := time.Now().Format(time.DateOnly)
 	windowStart := time.Now().AddDate(0, 0, -29).Format(time.DateOnly)
 	for index := range 10 {
+		firstSeen := time.Now().AddDate(0, 0, index-9).Format(time.DateOnly)
 		if err := db.Exec(`INSERT INTO cves (cve_id, first_seen, cvss_score, affected_product)
-      VALUES (?, ?, ?, 'Example')`, fmt.Sprintf("CVE-2026-%04d", index), today, float64(index)).Error; err != nil {
+      VALUES (?, ?, ?, 'Example')`, fmt.Sprintf("CVE-2026-%04d", index), firstSeen, float64(index)).Error; err != nil {
 			t.Fatalf("insert CVE %d: %v", index, err)
 		}
 	}
+	repository := NewRepository(db)
 
-	// When the dashboard data is loaded for the compact table and explorer.
-	value, err := NewRepository(db).Dashboard(context.Background(), Window{Since: windowStart, Days: 30, Bucket: 3}, false)
-
-	// Then every ranked CVE is available to the explorer.
+	// When the dashboard card and the explorer list are loaded.
+	value, err := repository.Dashboard(context.Background(), Window{Since: windowStart, Days: 30, Bucket: 3}, false)
 	if err != nil {
 		t.Fatalf("build dashboard: %v", err)
 	}
-	if len(value.CVEs) != 10 {
-		t.Fatalf("CVE count = %d, want 10", len(value.CVEs))
+	page, err := repository.CVEInsights(context.Background(), CVEPageRequest{Sort: CVESortScore})
+	if err != nil {
+		t.Fatalf("list CVE insights: %v", err)
+	}
+	all := page.Values
+
+	// Then the card carries only its own newest rows while the explorer still sees every entry.
+	if len(value.CVEs) != DashboardCVELimit {
+		t.Fatalf("dashboard CVE count = %d, want %d", len(value.CVEs), DashboardCVELimit)
+	}
+	if value.CVEs[0].ID != "CVE-2026-0009" {
+		t.Fatalf("dashboard leads with %q, want the newest CVE-2026-0009", value.CVEs[0].ID)
+	}
+	if len(all) != 10 {
+		t.Fatalf("explorer CVE count = %d, want 10", len(all))
 	}
 }

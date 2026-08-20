@@ -37,16 +37,44 @@ func (r *Repository) List(ctx context.Context) ([]api.Report, error) {
 	}
 	reports := make([]api.Report, 0, len(stored))
 	for _, item := range stored {
-		threats := decodeValues[api.ReportThreat](item.TopThreats)
-		if len(threats) == 0 && item.TopThreat != "" {
-			threats = []api.ReportThreat{{Title: item.TopThreat, SourceCount: 1}}
-		}
-		reports = append(reports, api.Report{ID: item.ID, Type: item.Type, PeriodStart: item.PeriodStart,
-			PeriodEnd: item.PeriodEnd, Total: item.Total, Critical: item.Critical, High: item.High,
-			Medium: item.Medium, TopThreat: item.TopThreat, TopThreats: threats, Actors: decodeValues[string](item.Actors),
-			Sectors: decodeValues[string](item.Sectors), Summary: item.Summary, GeneratedAt: item.GeneratedAt})
+		reports = append(reports, decodeReport(item))
 	}
 	return reports, nil
+}
+
+// Summaries feeds the sidebar; the bodies stay behind Get so bootstrap does not carry them.
+func (r *Repository) Summaries(ctx context.Context) ([]api.ReportSummary, error) {
+	summaries := []api.ReportSummary{}
+	if err := r.db.WithContext(ctx).Model(&database.Report{}).
+		Select("id", "type", "period_start", "period_end").
+		Order("generated_at DESC").Scan(&summaries).Error; err != nil {
+		return nil, fmt.Errorf("query report summaries: %w", err)
+	}
+	return summaries, nil
+}
+
+func (r *Repository) Get(ctx context.Context, id int64) (api.Report, error) {
+	var stored database.Report
+	err := r.db.WithContext(ctx).Where("id = ?", id).First(&stored).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return api.Report{}, fmt.Errorf("report %d: %w", id, ErrNotFound)
+	}
+	if err != nil {
+		return api.Report{}, fmt.Errorf("query report %d: %w", id, err)
+	}
+	return decodeReport(stored), nil
+}
+
+// decodeReport restores a stored row, falling back to the legacy single top threat.
+func decodeReport(item database.Report) api.Report {
+	threats := decodeValues[api.ReportThreat](item.TopThreats)
+	if len(threats) == 0 && item.TopThreat != "" {
+		threats = []api.ReportThreat{{Title: item.TopThreat, SourceCount: 1}}
+	}
+	return api.Report{ID: item.ID, Type: item.Type, PeriodStart: item.PeriodStart,
+		PeriodEnd: item.PeriodEnd, Total: item.Total, Critical: item.Critical, High: item.High,
+		Medium: item.Medium, TopThreat: item.TopThreat, TopThreats: threats, Actors: decodeValues[string](item.Actors),
+		Sectors: decodeValues[string](item.Sectors), Summary: item.Summary, GeneratedAt: item.GeneratedAt}
 }
 
 func (r *Repository) Build(ctx context.Context, request api.CreateReportRequest) (draft, error) {

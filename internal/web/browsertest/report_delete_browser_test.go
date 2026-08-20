@@ -109,15 +109,21 @@ func newReportDeleteBrowserServer(t *testing.T) (*httptest.Server, *atomic.Int32
 	var deleteCalls atomic.Int32
 	deleteRequested := make(chan struct{}, 1)
 	mux := http.NewServeMux()
+	report := api.Report{
+		ID: 7, Type: "weekly", PeriodStart: "2026-08-01", PeriodEnd: "2026-08-07",
+		Total: 4, Critical: 1, High: 2, Medium: 1, TopThreat: "Supply-chain intrusion",
+		Actors: []string{"Unknown"}, Sectors: []string{"Technology"}, Summary: "Weekly report summary",
+	}
 	mux.HandleFunc("GET /api/bootstrap", func(writer http.ResponseWriter, _ *http.Request) {
 		writeJSON(t, writer, api.Bootstrap{
-			Reports: []api.Report{{
-				ID: 7, Type: "weekly", PeriodStart: "2026-08-01", PeriodEnd: "2026-08-07",
-				Total: 4, Critical: 1, High: 2, Medium: 1, TopThreat: "Supply-chain intrusion",
-				Actors: []string{"Unknown"}, Sectors: []string{"Technology"}, Summary: "Weekly report summary",
+			Reports: []api.ReportSummary{{
+				ID: report.ID, Type: report.Type, PeriodStart: report.PeriodStart, PeriodEnd: report.PeriodEnd,
 			}},
 			Settings: api.SettingsResponse{Language: "ko", TimezoneOffsetMinutes: 540},
 		})
+	})
+	mux.HandleFunc("GET /api/reports/7", func(writer http.ResponseWriter, _ *http.Request) {
+		writeJSON(t, writer, report)
 	})
 	mux.HandleFunc("GET /api/dashboard", func(writer http.ResponseWriter, _ *http.Request) {
 		writeJSON(t, writer, api.Dashboard{Empty: true})

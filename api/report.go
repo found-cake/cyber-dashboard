@@ -1,6 +1,14 @@
 package api
 
-// Report is returned by GET /api/bootstrap, GET /api/reports, and POST /api/reports.
+// ReportSummary is the sidebar entry in Bootstrap; GET /api/reports/{id} returns the body.
+type ReportSummary struct {
+	ID          int64  `json:"id"`
+	Type        string `json:"type"`
+	PeriodStart string `json:"period_start"`
+	PeriodEnd   string `json:"period_end"`
+}
+
+// Report is returned by GET /api/reports, GET /api/reports/{id}, and POST /api/reports.
 type Report struct {
 	ID          int64          `json:"id"`
 	Type        string         `json:"type"`
