@@ -3,6 +3,7 @@
 package browsertest
 
 import (
+	"context"
 	"fmt"
 	"slices"
 	"testing"
@@ -92,6 +93,65 @@ func TestCVEExplorerRendersFirstServerPage_whileContinuationIsLoading(t *testing
 	if keptFirstPage != 1 {
 		t.Fatalf("first-page DOM probes after continuations = %d, want 1", keptFirstPage)
 	}
+}
+
+func TestCVEExplorerKeepsColumnGeometry_whenPendingCVSSArrivesOnLaterPage(t *testing.T) {
+	// Given a pending CVSS entry that only arrives on the second page.
+	cves := make([]api.CVEInsight, 101)
+	for index := range cves {
+		cves[index] = api.CVEInsight{
+			ID: fmt.Sprintf("CVE-2026-%04d", index), CVSS: 9.8,
+			AffectedProduct: "QA product", FirstSeen: "2026-08-01", Mentions: 1,
+		}
+	}
+	cves[len(cves)-1].CVSS = 0
+	server := newCVENavigationServer(t, cves)
+	continuationStarted := server.pauseNextContinuation()
+	browser := newBrowserContext(t, 20*time.Second)
+
+	if err := chromedp.Run(browser,
+		chromedp.EmulateViewport(1280, 900),
+		chromedp.Navigate(server.URL+"/#cves"),
+	); err != nil {
+		t.Fatalf("open CVE explorer: %v", err)
+	}
+	waitForDashboardRequest(t, continuationStarted, "CVE continuation request")
+	before := readCVEColumnGeometry(t, browser)
+
+	// When the pending entry is appended.
+	server.releasePausedContinuation()
+	if err := chromedp.Run(browser,
+		chromedp.Poll(`document.querySelectorAll(".cve-page-table tbody tr").length === 101`, nil),
+		chromedp.Poll(`document.querySelector(".cve-page-table .badge[title]") !== null`, nil),
+	); err != nil {
+		t.Fatalf("finish CVE continuation: %v", err)
+	}
+	after := readCVEColumnGeometry(t, browser)
+
+	// Then loading more rows does not move the CVSS or mentions columns.
+	if before != after {
+		t.Fatalf("CVE column geometry changed after pending CVSS append: before=%+v after=%+v", before, after)
+	}
+}
+
+type cveColumnGeometry struct {
+	CVSSWidth float64 `json:"cvssWidth"`
+	MentionsX float64 `json:"mentionsX"`
+}
+
+func readCVEColumnGeometry(t *testing.T, browser context.Context) cveColumnGeometry {
+	t.Helper()
+	var geometry cveColumnGeometry
+	if err := chromedp.Run(browser, chromedp.Evaluate(`(() => {
+		const headings = document.querySelectorAll(".cve-page-table th");
+		return {
+			cvssWidth: headings[2].getBoundingClientRect().width,
+			mentionsX: headings[3].getBoundingClientRect().x,
+		};
+	})()`, &geometry)); err != nil {
+		t.Fatalf("read CVE column geometry: %v", err)
+	}
+	return geometry
 }
 
 func TestCVEExplorerRestartsEveryPage_whenRankingRevisionChanges(t *testing.T) {
