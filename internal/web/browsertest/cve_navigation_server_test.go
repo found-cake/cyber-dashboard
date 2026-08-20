@@ -26,11 +26,19 @@ type cveNavigationServer struct {
 	failNextPage        bool
 	failed              bool
 	staleOnceOnNextPage bool
+	pauseNextPage       bool
+	pausedPageFails     bool
+	nextPageStarted     chan struct{}
+	releaseNextPage     chan struct{}
+	stopNextPage        chan struct{}
 }
 
 func newCVENavigationServer(t *testing.T, cves []api.CVEInsight) *cveNavigationServer {
 	t.Helper()
-	result := &cveNavigationServer{cves: slices.Clone(cves), revision: 1}
+	result := &cveNavigationServer{
+		cves: slices.Clone(cves), revision: 1,
+		nextPageStarted: make(chan struct{}), releaseNextPage: make(chan struct{}), stopNextPage: make(chan struct{}),
+	}
 	staticFiles := http.FileServerFS(os.DirFS("../../../static"))
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/bootstrap", func(writer http.ResponseWriter, _ *http.Request) {
@@ -50,6 +58,9 @@ func newCVENavigationServer(t *testing.T, cves []api.CVEInsight) *cveNavigationS
 		result.mu.Lock()
 		result.requests = append(result.requests, request.URL.RequestURI())
 		cursor := request.URL.Query().Get("cursor")
+		pause := cursor != "" && result.pauseNextPage
+		pausedPageFails := pause && result.pausedPageFails
+		result.pauseNextPage = result.pauseNextPage && !pause
 		if cursor != "" && result.failNextPage && !result.failed {
 			result.failed = true
 			result.mu.Unlock()
@@ -67,6 +78,18 @@ func newCVENavigationServer(t *testing.T, cves []api.CVEInsight) *cveNavigationS
 		values := slices.Clone(result.cves)
 		revision := result.revision
 		result.mu.Unlock()
+		if pause {
+			close(result.nextPageStarted)
+			select {
+			case <-result.releaseNextPage:
+			case <-result.stopNextPage:
+				return
+			}
+			if pausedPageFails {
+				writeJSONStatus(t, writer, http.StatusInternalServerError, api.ErrorResponse{Code: "internal", MessageEN: "CVE page failed"})
+				return
+			}
+		}
 		page := cveFixturePage(values, request)
 		writer.Header().Set("X-CVE-Revision", strconv.FormatUint(revision, 10))
 		if len(page) == dashboard.CVEPageSize {
@@ -77,6 +100,7 @@ func newCVENavigationServer(t *testing.T, cves []api.CVEInsight) *cveNavigationS
 	mux.Handle("/", staticFiles)
 	result.Server = httptest.NewServer(mux)
 	t.Cleanup(result.Close)
+	t.Cleanup(func() { close(result.stopNextPage) })
 	return result
 }
 
@@ -90,6 +114,26 @@ func (s *cveNavigationServer) staleNextContinuation() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.staleOnceOnNextPage = true
+}
+
+func (s *cveNavigationServer) pauseNextContinuation() <-chan struct{} {
+	return s.pauseNextContinuationWithResult(false)
+}
+
+func (s *cveNavigationServer) pauseNextContinuationFailure() <-chan struct{} {
+	return s.pauseNextContinuationWithResult(true)
+}
+
+func (s *cveNavigationServer) pauseNextContinuationWithResult(fails bool) <-chan struct{} {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.pauseNextPage = true
+	s.pausedPageFails = fails
+	return s.nextPageStarted
+}
+
+func (s *cveNavigationServer) releasePausedContinuation() {
+	s.releaseNextPage <- struct{}{}
 }
 
 func (s *cveNavigationServer) cveRequests() []string {

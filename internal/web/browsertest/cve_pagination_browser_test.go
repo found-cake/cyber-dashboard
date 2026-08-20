@@ -41,6 +41,57 @@ func TestCVEExplorerLoadsEveryServerPage_whenMoreThanOneHundredEntriesExist(t *t
 	if requests := server.cveRequests(); !slices.Equal(requests, wantRequests) {
 		t.Fatalf("CVE requests = %v, want %v", requests, wantRequests)
 	}
+	rendered := readCVEExplorerSnapshot(t, browser)
+	for index := range cves {
+		wantID := fmt.Sprintf("CVE-2026-%04d", index)
+		wantRank := fmt.Sprintf("%d", index+1)
+		if rendered.IDs[index] != wantID || rendered.Ranks[index] != wantRank {
+			t.Fatalf("rendered row %d = rank %q, ID %q; want rank %q, ID %q", index, rendered.Ranks[index], rendered.IDs[index], wantRank, wantID)
+		}
+	}
+}
+
+func TestCVEExplorerRendersFirstServerPage_whileContinuationIsLoading(t *testing.T) {
+	// Given 205 server-sorted CVEs whose second page remains in flight.
+	cves := make([]api.CVEInsight, 205)
+	for index := range cves {
+		cves[index] = api.CVEInsight{
+			ID: fmt.Sprintf("CVE-2026-%04d", index), CVSS: 9.8,
+			AffectedProduct: "QA product", FirstSeen: "2026-08-01", Mentions: 1,
+		}
+	}
+	server := newCVENavigationServer(t, cves)
+	continuationStarted := server.pauseNextContinuation()
+	browser := newBrowserContext(t, 20*time.Second)
+
+	// When the browser has received the first page and requested the continuation.
+	if err := chromedp.Run(browser, chromedp.Navigate(server.URL+"/#cves")); err != nil {
+		t.Fatalf("open paged CVE explorer: %v", err)
+	}
+	waitForDashboardRequest(t, continuationStarted, "CVE continuation request")
+
+	// Then the first 100 entries are already visible without waiting for every page.
+	var rows int
+	if err := chromedp.Run(browser, chromedp.Evaluate(`document.querySelectorAll(".cve-page-table tbody tr").length`, &rows)); err != nil {
+		t.Fatalf("inspect progressive CVE rows: %v", err)
+	}
+	if rows != 100 {
+		t.Fatalf("visible CVE rows while continuation loads = %d, want 100", rows)
+	}
+	if err := chromedp.Run(browser, chromedp.Evaluate(`document.querySelector(".cve-page-table tbody tr").dataset.firstPageProbe = "true"`, nil)); err != nil {
+		t.Fatalf("mark first CVE page: %v", err)
+	}
+	server.releasePausedContinuation()
+	if err := chromedp.Run(browser, chromedp.Poll(`document.querySelectorAll(".cve-page-table tbody tr").length === 205`, nil)); err != nil {
+		t.Fatalf("finish progressive CVE pages: %v", err)
+	}
+	var keptFirstPage int
+	if err := chromedp.Run(browser, chromedp.Evaluate(`document.querySelectorAll('[data-first-page-probe="true"]').length`, &keptFirstPage)); err != nil {
+		t.Fatalf("inspect first CVE page after append: %v", err)
+	}
+	if keptFirstPage != 1 {
+		t.Fatalf("first-page DOM probes after continuations = %d, want 1", keptFirstPage)
+	}
 }
 
 func TestCVEExplorerRestartsEveryPage_whenRankingRevisionChanges(t *testing.T) {

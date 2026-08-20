@@ -201,8 +201,8 @@
     return t({ cvss: "cveHintCVSS", mentions: "cveHintMentions", firstSeen: "cveHintFirstSeen" }[state.cveSort] || "cveExplorerHint");
   }
 
-  function cveExplorerRowsHTML(cves) {
-    const rows = cves.map((cve, index) => `<tr data-href="https://nvd.nist.gov/vuln/detail/${encodeURIComponent(cve.id)}" tabindex="0"><td class="mono" data-label="${esc(t("rank"))}">${index + 1}</td><td class="mono cve-link" data-label="CVE ID">${esc(cve.id)}</td><td data-label="CVSS">${cvssBadgeHTML(cve.cvss)}</td><td data-label="${esc(t("mentions"))}">${cve.mentions}</td><td class="mono" data-label="${esc(t("riskScore"))}">${cveRiskScore(cve).toFixed(1)}</td><td data-label="${esc(t("product"))}">${esc(cve.affected_product)}</td><td class="mono" data-label="${esc(t("firstSeen"))}">${esc(cve.first_seen)}</td></tr>`).join("");
+  function cveExplorerRowsHTML(cves, rankOffset = 0) {
+    const rows = cves.map((cve, index) => `<tr data-href="https://nvd.nist.gov/vuln/detail/${encodeURIComponent(cve.id)}" tabindex="0"><td class="mono" data-label="${esc(t("rank"))}">${rankOffset + index + 1}</td><td class="mono cve-link" data-label="CVE ID">${esc(cve.id)}</td><td data-label="CVSS">${cvssBadgeHTML(cve.cvss)}</td><td data-label="${esc(t("mentions"))}">${cve.mentions}</td><td class="mono" data-label="${esc(t("riskScore"))}">${cveRiskScore(cve).toFixed(1)}</td><td data-label="${esc(t("product"))}">${esc(cve.affected_product)}</td><td class="mono" data-label="${esc(t("firstSeen"))}">${esc(cve.first_seen)}</td></tr>`).join("");
     return rows || `<tr><td colspan="7">${esc(t("noData"))}</td></tr>`;
   }
 
@@ -912,14 +912,17 @@
     const sortOptions = [["score", t("riskScore")], ["cvss", "CVSS"], ["mentions", t("mentions")], ["firstSeen", t("firstSeen")]]
       .map(([value, label]) => `<option value="${value}"${value === state.cveSort ? " selected" : ""}>${esc(label)}</option>`).join("");
 
-    const renderRows = cves => {
-      $("#main-content").html(`<div class="content stack">
-        <section class="card cve-page-summary"><div><span class="badge badge-info">${cves.length} ${esc(t("entries"))}</span><p class="card-subtitle" id="cve-sort-hint">${esc(cveSortHint())}</p></div><div class="cluster"><div class="field cve-sort"><label for="cve-sort">${esc(t("cveSortLabel"))}</label><select id="cve-sort">${sortOptions}</select></div>${isAuthenticated() ? `<button class="secondary-button" id="refresh-cves" type="button">${esc(t("refreshCVEs"))}</button>` : ""}<a class="secondary-button cve-back-link" href="#">${esc(t("backToDashboard"))}</a></div></section>
-        <section class="card"><div class="table-region cve-page-table" role="region" aria-label="${esc(t("allCVEs"))}" tabindex="0"><p class="cve-scroll-hint">${esc(t("cveScrollHint"))}</p><table class="data-table"><thead><tr><th>${esc(t("rank"))}</th><th>CVE ID</th><th>CVSS</th><th>${esc(t("mentions"))}</th><th>${esc(t("riskScore"))}</th><th>${esc(t("product"))}</th><th>${esc(t("firstSeen"))}</th></tr></thead><tbody>${cveExplorerRowsHTML(cves)}</tbody></table></div></section>
-      </div>`);
-      applyViewScroll("cves");
-      $("#main-content").trigger("focus");
-      refreshCVEControls();
+    const renderRows = update => {
+      if (!$("#main-content .cve-page-table").length) {
+        $("#main-content").html(`<div class="content stack">
+          <section class="card cve-page-summary"><div><span class="badge badge-info" id="cve-entry-count"></span><p class="card-subtitle" id="cve-sort-hint">${esc(cveSortHint())}</p></div><div class="cluster"><div class="field cve-sort"><label for="cve-sort">${esc(t("cveSortLabel"))}</label><select id="cve-sort">${sortOptions}</select></div>${isAuthenticated() ? `<button class="secondary-button" id="refresh-cves" type="button">${esc(t("refreshCVEs"))}</button>` : ""}<a class="secondary-button cve-back-link" href="#">${esc(t("backToDashboard"))}</a></div></section>
+          <section class="card"><div class="table-region cve-page-table" role="region" aria-label="${esc(t("allCVEs"))}" tabindex="0"><p class="cve-scroll-hint">${esc(t("cveScrollHint"))}</p><table class="data-table"><thead><tr><th>${esc(t("rank"))}</th><th>CVE ID</th><th>CVSS</th><th>${esc(t("mentions"))}</th><th>${esc(t("riskScore"))}</th><th>${esc(t("product"))}</th><th>${esc(t("firstSeen"))}</th></tr></thead><tbody></tbody></table></div></section>
+        </div>`);
+        applyViewScroll("cves");
+        $("#main-content").trigger("focus");
+        refreshCVEControls();
+      }
+      updateCVEExplorerRows(update);
     };
 
     setLoading();
@@ -932,7 +935,15 @@
     });
   }
 
-  function loadCVEInsights(onComplete, onFailure = showRequestError) {
+  function updateCVEExplorerRows({ values, page, replace, complete }) {
+    const $body = $("#main-content .cve-page-table tbody");
+    if (replace) $body.html(cveExplorerRowsHTML(values));
+    else if (page.length) $body.append(cveExplorerRowsHTML(page, values.length - page.length));
+    $("#cve-entry-count").text(`${values.length} ${t("entries")}`);
+    $("#main-content .cve-page-table").attr("aria-busy", complete ? null : "true");
+  }
+
+  function loadCVEInsights(onPage, onFailure = showRequestError) {
     const requestID = ++cvesRequest;
     const sort = state.cveSort;
     let restarts = 0;
@@ -945,8 +956,8 @@
           const currentRevision = revision || response.getResponseHeader("X-CVE-Revision") || "";
           const nextCursor = response.getResponseHeader("X-CVE-Cursor") || "";
           values.push(...page);
+          onPage({ values, page, replace: !cursor, complete: !nextCursor });
           if (nextCursor) loadPage(nextCursor, currentRevision);
-          else onComplete(values);
         }).fail(error => {
           if (requestID !== cvesRequest || state.view !== "cves") return;
           if (error.status === 409 && error.responseJSON?.code === "cve_page_stale" && restarts < 3) {
@@ -1660,10 +1671,7 @@
       $("#cve-sort-hint").text(cveSortHint());
       $("#page-subtitle").text(cveSortHint());
       $("#main-content .cve-page-table").attr("aria-busy", "true");
-      loadCVEInsights(cves => {
-        $("#main-content .cve-page-table tbody").html(cveExplorerRowsHTML(cves));
-        $("#main-content .cve-page-table").attr("aria-busy", null);
-      }, error => {
+      loadCVEInsights(updateCVEExplorerRows, error => {
         $("#main-content .cve-page-table").attr("aria-busy", null);
         showRequestError(error);
       });
