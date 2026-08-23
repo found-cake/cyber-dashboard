@@ -25,6 +25,45 @@ func (*bodyStub) Load(context.Context, api.Source, collector.FeedArticle) (strin
 	return "", nil
 }
 
+type articleRepository struct {
+	source api.Source
+	saved  []collector.FeedArticle
+}
+
+func (repository *articleRepository) Sources(context.Context) ([]api.Source, error) {
+	return []api.Source{repository.source}, nil
+}
+
+func (repository *articleRepository) SaveArticle(_ context.Context, _ api.Source, article collector.FeedArticle, _ string) error {
+	repository.saved = append(repository.saved, article)
+	return nil
+}
+
+func TestCollectorCollect_SavesOnlyBoanNewsIncidentArticles(t *testing.T) {
+	// Given an enabled BoanNews feed with incident and non-incident categories.
+	repository := &articleRepository{source: api.Source{Name: "보안뉴스", Slug: "boannews", Enabled: true}}
+	service := collector.NewCollector(repository, &feedStub{document: collector.Document{
+		Status: collector.Status{OK: true},
+		Articles: []collector.FeedArticle{
+			{ID: "incident", URL: "https://example.com/incident", PublishedAt: "2026-08-03T01:00:00Z", Categories: []string{"국제", "사건·사고"}},
+			{ID: "opinion", URL: "https://example.com/opinion", PublishedAt: "2026-08-03T02:00:00Z", Categories: []string{"오피니언"}},
+		},
+	}}, &bodyStub{})
+
+	// When the feed is collected.
+	if _, err := service.Collect(context.Background(), "2026-08-03"); err != nil {
+		t.Fatalf("collect day: %v", err)
+	}
+
+	// Then only the article with the 사건·사고 category is saved.
+	if len(repository.saved) != 1 {
+		t.Fatalf("saved articles = %d, want 1", len(repository.saved))
+	}
+	if repository.saved[0].ID != "incident" {
+		t.Fatalf("saved article = %q, want incident", repository.saved[0].ID)
+	}
+}
+
 func TestCollectorCollect_RecollectionDoesNotIncreaseCVEMentions(t *testing.T) {
 	// Given a feed with two articles where only the first mentions a CVE.
 	db, err := database.Open(context.Background(), filepath.Join(t.TempDir(), "dashboard.db"))

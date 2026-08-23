@@ -16,7 +16,10 @@ import (
 	"github.com/found-cake/cyber-dashboard/api"
 )
 
-const baseURL = "https://raw.githubusercontent.com/found-cake/cyber-news-feed/master/data/rss/"
+const (
+	baseURL                  = "https://raw.githubusercontent.com/found-cake/cyber-news-feed/master/data/rss/"
+	boanNewsIncidentCategory = "사건·사고"
+)
 
 type Fetcher interface {
 	Fetch(ctx context.Context, source api.Source) (Document, error)
@@ -112,6 +115,18 @@ func (c *Collector) Collect(ctx context.Context, day string) (api.CollectionResu
 				return
 			}
 			for _, article := range document.Articles {
+				if source.Slug == "boannews" {
+					hasIncidentCategory := false
+					for _, category := range article.Categories {
+						if strings.TrimSpace(category) == boanNewsIncidentCategory {
+							hasIncidentCategory = true
+							break
+						}
+					}
+					if !hasIncidentCategory {
+						continue
+					}
+				}
 				articleDay, valid := publishedDay(article)
 				if !valid || articleDay != day {
 					continue
