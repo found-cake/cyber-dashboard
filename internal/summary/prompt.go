@@ -38,7 +38,7 @@ func generateSystemPrompt(language string) string {
 // generateSectionSystemPrompt covers one slice of a set that mergeSystemPrompt rewrites
 // afterwards, so it asks for dense material instead of a presentable paragraph.
 func generateSectionSystemPrompt(language string) string {
-	return summaryContract + ` These facts are one slice of a larger set, and another pass merges your output with the other slices. Write one line per distinct item, each line starting with "- " and holding one sentence that names what happened and who it affected. Separate the lines with "\n". Write no opening sentence, no closing sentence, no overall assessment, and no numbering such as "1)" or "2)"; another pass adds all of those. ` +
+	return summaryContract + ` These facts are one slice of a larger set, and another pass merges your output with the other slices. A fact may be one atomic item or an already-written summary containing prose, topic headings, and item lines. Treat formatting only as organization and inspect the separate incidents inside every fact. If the slice contains at least 40 input lines beginning with "- ", return at least 20 output item lines; this is a minimum coverage floor, not a target or a reason to invent or pad information. Write one line per selected distinct incident, each line starting with "- " and holding one sentence that names what happened and who it affected. Prioritize demonstrated impact and seriousness. Separate the lines with "\n". Write no opening sentence, no closing sentence, no overall assessment, and no numbering such as "1)" or "2)"; another pass adds all of those. ` +
 		plainTextRules + ` Write the summary in the requested output language ` + outputLanguageTag(language) + `.`
 }
 
