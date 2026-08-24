@@ -45,6 +45,12 @@ func TestSourceSettingsWaitForSaveAndSupportRevert(t *testing.T) {
 			}
 			openSettingsPage(t, browser, viewport.width)
 			if err := chromedp.Run(browser, chromedp.Poll(`(() => {
+					const rows = [...document.querySelectorAll('[data-source-row]')];
+					return rows[0]?.textContent.includes('보안뉴스') && rows[1]?.textContent.includes('데일리시큐');
+				})()`, nil)); err != nil {
+				t.Fatalf("inspect adjacent Korean sources: %v", err)
+			}
+			if err := chromedp.Run(browser, chromedp.Poll(`(() => {
 					const toggle = document.querySelector('[data-source-id="7"]');
 					const row = toggle?.closest('[data-source-row]');
 					return toggle?.getAttribute('aria-checked') === 'false' && row?.textContent.includes('데일리시큐');
@@ -117,13 +123,13 @@ func TestSourceSettingsWaitForSaveAndSupportRevert(t *testing.T) {
 func newSourceSettingsBrowserServer(t *testing.T, savedRequests chan<- api.SaveSettingsRequest, language string) *httptest.Server {
 	t.Helper()
 	sources := []api.Source{
-		{ID: 1, Name: "BoanNews", Host: "boannews.com", Slug: "boannews", Enabled: false},
+		{ID: 1, Name: "보안뉴스", Host: "boannews.com", Slug: "boannews", Enabled: false},
+		{ID: 7, Name: "데일리시큐", Host: "dailysecu.com", Slug: "dailysecu", Enabled: false},
 		{ID: 2, Name: "BleepingComputer", Host: "bleepingcomputer.com", Slug: "bleepingcomputer", Enabled: true},
 		{ID: 3, Name: "Cybersecurity News", Host: "cybersecuritynews.com", Slug: "cybersecuritynews", Enabled: true},
 		{ID: 4, Name: "Dark Reading TI", Host: "darkreading.com", Slug: "darkreading", Enabled: true},
 		{ID: 5, Name: "StepSecurity", Host: "stepsecurity.io", Slug: "stepsecurity", Enabled: true},
 		{ID: 6, Name: "The Hacker News", Host: "thehackernews.com", Slug: "thehackernews", Enabled: true},
-		{ID: 7, Name: "데일리시큐", Host: "dailysecu.com", Slug: "dailysecu", Enabled: false},
 	}
 	settings := api.SettingsResponse{Language: language, Accent: "#4f6ef7", LLMBaseURL: "http://localhost:11434/v1", LLMModel: "local-model", LLMTimeout: 60, TimezoneOffsetMinutes: 540}
 	var mutex sync.Mutex

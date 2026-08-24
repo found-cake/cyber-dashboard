@@ -10,6 +10,27 @@ import (
 	"github.com/found-cake/cyber-dashboard/internal/feed/collector"
 )
 
+func TestSourcesGroupsKoreanSources_whenDatabaseUsesSeedIDs(t *testing.T) {
+	// Given a database with the stable source IDs used by existing installations.
+	db, err := database.Open(context.Background(), filepath.Join(t.TempDir(), "dashboard.db"))
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	t.Cleanup(func() { _ = database.Close(db) })
+	repository := NewRepository(db)
+
+	// When sources are loaded for collection and settings.
+	sources, err := repository.Sources(context.Background())
+
+	// Then the two Korean sources are adjacent at the start of the list.
+	if err != nil {
+		t.Fatalf("load sources: %v", err)
+	}
+	if len(sources) < 2 || sources[0].Slug != "boannews" || sources[1].Slug != "dailysecu" {
+		t.Fatalf("source order = %+v, want boannews followed by dailysecu", sources)
+	}
+}
+
 func TestSaveDailySummaryReplacesValue_whenDayIsRegenerated(t *testing.T) {
 	// Given a saved daily summary.
 	db, err := database.Open(context.Background(), filepath.Join(t.TempDir(), "dashboard.db"))

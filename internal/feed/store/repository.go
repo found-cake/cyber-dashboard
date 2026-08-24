@@ -29,7 +29,7 @@ func NewRepository(db *gorm.DB) *Repository {
 
 func (r *Repository) Sources(ctx context.Context) ([]api.Source, error) {
 	var stored []database.Source
-	if err := r.db.WithContext(ctx).Order("id").Find(&stored).Error; err != nil {
+	if err := r.db.WithContext(ctx).Order("CASE slug WHEN 'boannews' THEN 0 WHEN 'dailysecu' THEN 1 ELSE 2 END, id").Find(&stored).Error; err != nil {
 		return nil, fmt.Errorf("query sources: %w", err)
 	}
 	sources := make([]api.Source, 0, len(stored))
