@@ -10,11 +10,13 @@ import (
 	"github.com/found-cake/cyber-dashboard/api"
 )
 
-func TestHTTPFetcherReturnsResponseBody_whenUpstreamFails(t *testing.T) {
-	// Given an RSS JSON endpoint that returns a detailed server error body.
+func TestHTTPFetcherReturnsBoundedSanitizedResponseBody_whenUpstreamFails(t *testing.T) {
+	// Given an RSS JSON endpoint that returns an oversized error body containing a control character.
+	const previewLimit = 4 << 10
+	responseBody := "feed generator failed\n" + strings.Repeat("x", previewLimit) + "sensitive-tail"
 	upstream := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		writer.WriteHeader(http.StatusBadGateway)
-		_, _ = writer.Write([]byte(`{"error":"feed generator failed","detail":"upstream timeout"}`))
+		_, _ = writer.Write([]byte(responseBody))
 	}))
 	defer upstream.Close()
 	fetcher := &HTTPFetcher{client: upstream.Client(), baseURL: upstream.URL}
@@ -22,9 +24,32 @@ func TestHTTPFetcherReturnsResponseBody_whenUpstreamFails(t *testing.T) {
 	// When the source is fetched.
 	_, err := fetcher.Fetch(context.Background(), api.Source{Slug: "broken"})
 
-	// Then the returned error retains the complete response body for terminal logging.
-	if err == nil || !strings.Contains(err.Error(), `{"error":"feed generator failed","detail":"upstream timeout"}`) {
-		t.Fatalf("fetch error = %v, want complete response body", err)
+	// Then the returned error contains only a bounded, escaped preview.
+	if err == nil {
+		t.Fatal("fetch error = nil, want bounded response preview")
+	}
+	errorText := err.Error()
+	if strings.Contains(errorText, "sensitive-tail") || strings.Contains(errorText, "\n") || !strings.Contains(errorText, `\n`) || !strings.Contains(errorText, "truncated") {
+		t.Fatalf("fetch error = %q, want bounded, escaped, and marked response preview", errorText)
+	}
+}
+
+func TestHTTPFetcherRejectsDocument_whenResponseExceedsLimit(t *testing.T) {
+	// Given a valid RSS JSON document larger than the accepted feed response limit.
+	oversizedSource := strings.Repeat("x", 8<<20)
+	upstream := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{"schema_version":1,"source":"` + oversizedSource + `","status":{"ok":true},"articles":[]}`))
+	}))
+	defer upstream.Close()
+	fetcher := &HTTPFetcher{client: upstream.Client(), baseURL: upstream.URL}
+
+	// When the source is fetched.
+	_, err := fetcher.Fetch(context.Background(), api.Source{Slug: "oversized"})
+
+	// Then the document is rejected before its full object graph is allocated.
+	if err == nil || !strings.Contains(err.Error(), "feed response exceeds 8388608 bytes") {
+		t.Fatalf("fetch error = %v, want response size rejection", err)
 	}
 }
 

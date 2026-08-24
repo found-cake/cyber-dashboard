@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -20,6 +21,8 @@ import (
 const (
 	baseURL                  = "https://raw.githubusercontent.com/found-cake/cyber-news-feed/master/data/rss/"
 	boanNewsIncidentCategory = "사건·사고"
+	maxFeedResponseBytes     = int64(8 << 20)
+	maxErrorResponseBytes    = int64(4 << 10)
 )
 
 type Fetcher interface {
@@ -62,14 +65,29 @@ func (f *HTTPFetcher) Fetch(ctx context.Context, source api.Source) (Document, e
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
-		body, readErr := io.ReadAll(response.Body)
+		body, truncated, readErr := readResponseBody(response.Body, maxErrorResponseBytes)
 		if readErr != nil {
 			return Document{}, fmt.Errorf("fetch %s: status %d; read response body: %w", source.Slug, response.StatusCode, readErr)
 		}
-		return Document{}, fmt.Errorf("fetch %s: status %d: %s", source.Slug, response.StatusCode, strings.TrimSpace(string(body)))
+		preview := strings.TrimSpace(string(body))
+		if preview == "" {
+			return Document{}, fmt.Errorf("fetch %s: status %d", source.Slug, response.StatusCode)
+		}
+		preview = strconv.Quote(preview)
+		if truncated {
+			preview += " [truncated]"
+		}
+		return Document{}, fmt.Errorf("fetch %s: status %d: %s", source.Slug, response.StatusCode, preview)
+	}
+	body, truncated, readErr := readResponseBody(response.Body, maxFeedResponseBytes)
+	if readErr != nil {
+		return Document{}, fmt.Errorf("decode %s feed: read response body: %w", source.Slug, readErr)
+	}
+	if truncated {
+		return Document{}, fmt.Errorf("decode %s feed: feed response exceeds %d bytes", source.Slug, maxFeedResponseBytes)
 	}
 	var wireDocument rssjson.Document
-	if err := json.NewDecoder(response.Body).Decode(&wireDocument); err != nil {
+	if err := json.Unmarshal(body, &wireDocument); err != nil {
 		return Document{}, fmt.Errorf("decode %s feed: %w", source.Slug, err)
 	}
 	document, err := documentFromRSSJSON(wireDocument)
@@ -77,6 +95,17 @@ func (f *HTTPFetcher) Fetch(ctx context.Context, source api.Source) (Document, e
 		return Document{}, fmt.Errorf("decode %s feed: %w", source.Slug, err)
 	}
 	return document, nil
+}
+
+func readResponseBody(reader io.Reader, limit int64) ([]byte, bool, error) {
+	body, err := io.ReadAll(io.LimitReader(reader, limit+1))
+	if err != nil {
+		return nil, false, err
+	}
+	if int64(len(body)) <= limit {
+		return body, false, nil
+	}
+	return body[:limit], true, nil
 }
 
 type Collector struct {
