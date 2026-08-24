@@ -202,7 +202,7 @@ CYBER_DASHBOARD_STATIC_DIR=/path/to/static ./cyber-dashboard-server-only
 
 ## 소스에서 빌드
 
-Go 1.26이 필요합니다. [이 저장소](https://github.com/found-cake/cyber-dashboard)를 복제하고 저장소 폴더로 이동한 뒤 실행합니다.
+Go 1.27이 필요합니다. [이 저장소](https://github.com/found-cake/cyber-dashboard)를 복제하고 저장소 폴더로 이동한 뒤 실행합니다.
 
 ```sh
 go generate ./generator/license

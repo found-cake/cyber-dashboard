@@ -1,6 +1,6 @@
 module github.com/found-cake/cyber-dashboard
 
-go 1.26
+go 1.27
 
 require (
 	github.com/chromedp/cdproto v0.0.0-20260804232424-e85f50dbfd32

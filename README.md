@@ -202,7 +202,7 @@ If you only need another port, keep the loopback address and change the port, fo
 
 ## Build from source
 
-Go 1.26 is required. Clone [this repository](https://github.com/found-cake/cyber-dashboard), enter its directory, then run:
+Go 1.27 is required. Clone [this repository](https://github.com/found-cake/cyber-dashboard), enter its directory, then run:
 
 ```sh
 go generate ./generator/license
