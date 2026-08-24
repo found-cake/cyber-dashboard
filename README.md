@@ -15,7 +15,7 @@ It runs locally, stores its data in SQLite, and is available as a single executa
 
 ## What you can do
 
-- Collect recent articles from six curated cybersecurity sources.
+- Collect recent articles from seven curated cybersecurity sources.
 - Read AI-generated article summaries and a combined daily briefing.
 - Filter a collected day by news source or recollect it when needed.
 - Track recently mentioned CVEs, CVSS scores, affected products, first-seen dates, and mention counts.
@@ -39,6 +39,7 @@ The default sources are:
 | Dark Reading TI | Enabled |
 | BleepingComputer | Enabled |
 | 보안뉴스 / BoanNews | Disabled |
+| 데일리시큐 / DailySecu | Disabled |
 
 ## Requirements
 

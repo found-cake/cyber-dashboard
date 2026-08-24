@@ -90,7 +90,7 @@ func TestArticleBodyLoaderUsesOneHTTPRequest_whenSourceAllowsRequests(t *testing
 			StatusCode: http.StatusOK,
 			Header:     http.Header{"Content-Type": []string{"text/html; charset=utf-8"}},
 			Body: io.NopCloser(strings.NewReader(
-				`<html><body><nav>Noise</nav><div id="news_content"><p>First paragraph.</p><p>Second paragraph.</p></div></body></html>`)),
+				`<html><body><nav>Noise</nav><div id="article-view-content-div"><p>First paragraph.</p><p>Second paragraph.</p></div><aside>Related story noise</aside></body></html>`)),
 			Request: request,
 		}, nil
 	})}

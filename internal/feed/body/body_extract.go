@@ -55,7 +55,8 @@ func stepSecurityCategory(document *html.Node) string {
 
 func contentRoot(document *html.Node, sourceSlug string) *html.Node {
 	selectors := map[string][]string{
-		"boannews":         {"#news_content"},
+		"boannews":         {"#article-view-content-div"},
+		"dailysecu":        {"#article-view-content-div"},
 		"thehackernews":    {"#articlebody", ".articlebody"},
 		"stepsecurity":     {".blog-post-content_description"},
 		"bleepingcomputer": {".articleBody", ".article-body"},

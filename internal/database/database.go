@@ -63,6 +63,7 @@ func seed(ctx context.Context, db *gorm.DB) error {
 		{Name: "StepSecurity Blog", Host: "stepsecurity.io/blog", Slug: "stepsecurity", Enabled: true},
 		{Name: "Dark Reading TI", Host: "darkreading.com/threat-intelligence", Slug: "darkreading", Enabled: true},
 		{Name: "BleepingComputer", Host: "bleepingcomputer.com/news/security", Slug: "bleepingcomputer", Enabled: true},
+		{Name: "데일리시큐", Host: "dailysecu.com", Slug: "dailysecu", Enabled: false},
 	}
 	if err := db.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).
 		Select("Name", "Host", "Slug", "Enabled").Create(&sources).Error; err != nil {
