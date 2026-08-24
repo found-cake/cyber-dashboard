@@ -143,7 +143,7 @@ Initial article listings and RSS metadata come from [cyber-news-feed](https://gi
 4. Store the results in the local SQLite database.
 5. Present the dashboard, daily briefings, and weekly/monthly reports.
 
-Article analysis uses the article body when it is available, not only the RSS title or description. The configured LLM classifies the attack method, threat actor, actor country, target sector, victim count, financial damage, patch availability, and zero-day signal. Severity combines relevant CVSS data with contextual signals such as zero-day status, victim impact, financial damage, and patch availability.
+Article analysis uses the article body when it is available, not only the RSS title or description. The configured LLM classifies the attack method, threat actor, actor country, target sector, victim count, financial damage, leaked-data volume, patch availability, and zero-day signal. Severity combines relevant CVSS data with contextual signals such as zero-day status, victim impact, financial damage, leaked-data volume, and patch availability.
 
 NIST-provided CVSS data is preferred when present. CNA assessment data is retained as a fallback, and NVD records marked as rejected are removed from the active CVE view.
 
