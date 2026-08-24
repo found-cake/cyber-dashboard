@@ -27,6 +27,9 @@ func TestOpenAppliesSchemaAndSeedsIdempotently(t *testing.T) {
 		t.Fatalf("reopen database: %v", err)
 	}
 	t.Cleanup(func() { _ = Close(db) })
+	if !db.Migrator().HasColumn(&Article{}, "DataVolumeBytes") {
+		t.Fatal("articles.data_volume_bytes column is missing after migration")
+	}
 
 	// Then global source, language, and built-in preset defaults exist exactly once.
 	var sources, presets int

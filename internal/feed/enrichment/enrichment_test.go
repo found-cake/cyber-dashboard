@@ -101,6 +101,45 @@ func TestSaveArticleAnalysisRaisesSeverityFromDamage_whenNoVictimCountIsStated(t
 	}
 }
 
+func TestSaveArticleAnalysisRaisesSeverityFromDataVolume_whenOtherImpactIsUnstated(t *testing.T) {
+	// Given a stored breach article with no CVE, victim count, or financial loss.
+	db, err := database.Open(context.Background(), filepath.Join(t.TempDir(), "dashboard.db"))
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	t.Cleanup(func() { _ = database.Close(db) })
+	repository := store.NewRepository(db)
+	if err := repository.SaveArticle(context.Background(), api.Source{ID: 1}, collector.FeedArticle{
+		ID: "sha256:data-volume", URL: "https://example.com/data-volume", Title: "Archive exfiltrated",
+		PublishedAt: "2026-08-03T01:00:00Z", Body: "Attackers exfiltrated a 1.7 TB archive",
+	}, "2026-08-03"); err != nil {
+		t.Fatalf("save article: %v", err)
+	}
+	var articleID int64
+	if err := db.Raw(`SELECT id FROM articles WHERE feed_uid = ?`, "sha256:data-volume").Row().Scan(&articleID); err != nil {
+		t.Fatalf("read article id: %v", err)
+	}
+
+	// When analysis reports only a terabyte-scale data leak.
+	err = repository.SaveArticleAnalysis(context.Background(), articleID, summary.ArticleAnalysis{
+		Summary: "Archive exfiltrated", AttackMethod: "Data Breach / Unauthorized Access",
+		ThreatActor: "Unknown", TargetSector: "Technology", DataVolumeBytes: 1_700_000_000_000,
+	})
+
+	// Then the volume is stored and makes the incident CRITICAL on its own.
+	if err != nil {
+		t.Fatalf("save article analysis: %v", err)
+	}
+	var severity string
+	var dataVolumeBytes int64
+	if err := db.Raw(`SELECT severity, data_volume_bytes FROM articles WHERE id = ?`, articleID).Row().Scan(&severity, &dataVolumeBytes); err != nil {
+		t.Fatalf("read analyzed article: %v", err)
+	}
+	if severity != "CRITICAL" || dataVolumeBytes != 1_700_000_000_000 {
+		t.Fatalf("severity = %q, data volume = %d, want CRITICAL and 1700000000000", severity, dataVolumeBytes)
+	}
+}
+
 func TestSaveArticleAnalysisWeighsWhatTheArticleReports(t *testing.T) {
 	tests := []struct {
 		name         string

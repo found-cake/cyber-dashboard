@@ -93,6 +93,21 @@ func FromDamage(damageUSD int64) Level {
 	}
 }
 
+func FromDataVolume(bytes int64) Level {
+	switch {
+	case bytes >= 1_000_000_000_000:
+		return Critical
+	case bytes >= 100_000_000_000:
+		return High
+	case bytes >= 1_000_000_000:
+		return Medium
+	case bytes > 0:
+		return Low
+	default:
+		return Unknown
+	}
+}
+
 // Cap limits hypothetical CVSS severity for articles that report no actual attack.
 func Cap(level, ceiling Level) Level {
 	if rank(level) > rank(ceiling) {
