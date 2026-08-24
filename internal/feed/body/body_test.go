@@ -2,7 +2,6 @@ package body
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -67,9 +66,7 @@ func (s *browserBodyStub) Load(_ context.Context, _, _ string) (string, error) {
 
 func TestArticleBodyLoaderUsesEmbeddedContent_whenFeedContainsFullArticle(t *testing.T) {
 	// Given a Cybersecurity News article with content_encoded in source metadata.
-	article := collector.FeedArticle{SourceMetadata: map[string]json.RawMessage{
-		"cybersecuritynews": json.RawMessage(`{"content_encoded":"<p>Full embedded story CVE-2026-9999</p>"}`),
-	}}
+	article := collector.FeedArticle{EmbeddedContent: "<p>Full embedded story CVE-2026-9999</p>"}
 	loader := NewArticleBodyLoader(nil, &browserBodyStub{})
 
 	// When the article body is loaded.

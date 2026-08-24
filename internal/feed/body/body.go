@@ -2,7 +2,6 @@ package body
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -57,15 +56,8 @@ func (l *ArticleBodyLoader) Load(ctx context.Context, source api.Source, article
 }
 
 func embeddedArticleBody(article collector.FeedArticle) (string, error) {
-	raw, ok := article.SourceMetadata["cybersecuritynews"]
-	if !ok {
+	if article.EmbeddedContent == "" {
 		return "", fmt.Errorf("Cybersecurity News content is missing")
 	}
-	var metadata struct {
-		Content string `json:"content_encoded"`
-	}
-	if err := json.Unmarshal(raw, &metadata); err != nil {
-		return "", fmt.Errorf("decode Cybersecurity News content: %w", err)
-	}
-	return extractArticleText(metadata.Content, "")
+	return extractArticleText(article.EmbeddedContent, "")
 }

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/found-cake/cyber-dashboard/api"
+	"github.com/found-cake/cyber-news-feed/pkg/rssjson"
 )
 
 const (
@@ -67,8 +68,12 @@ func (f *HTTPFetcher) Fetch(ctx context.Context, source api.Source) (Document, e
 		}
 		return Document{}, fmt.Errorf("fetch %s: status %d: %s", source.Slug, response.StatusCode, strings.TrimSpace(string(body)))
 	}
-	var document Document
-	if err := json.NewDecoder(response.Body).Decode(&document); err != nil {
+	var wireDocument rssjson.Document
+	if err := json.NewDecoder(response.Body).Decode(&wireDocument); err != nil {
+		return Document{}, fmt.Errorf("decode %s feed: %w", source.Slug, err)
+	}
+	document, err := documentFromRSSJSON(wireDocument)
+	if err != nil {
 		return Document{}, fmt.Errorf("decode %s feed: %w", source.Slug, err)
 	}
 	return document, nil

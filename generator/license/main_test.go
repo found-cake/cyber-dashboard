@@ -1,10 +1,12 @@
 package main
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestRenderThirdPartyNoticesSortsModulesAndBundledAssets(t *testing.T) {
@@ -84,22 +86,32 @@ func TestWriteDocumentsCreatesStaticLicenseFiles(t *testing.T) {
 	}
 }
 
-func TestReadLicenseDocumentsFromFindsPackageLicense_whenModuleRootUnlicensed(t *testing.T) {
-	// Given a module whose imported package carries the only license document.
-	root := t.TempDir()
-	packageDirectory := filepath.Join(root, "pkg", "rssjson")
-	if err := os.MkdirAll(packageDirectory, 0o755); err != nil {
-		t.Fatalf("create package directory: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(packageDirectory, "LICENSE.code"), []byte("MIT terms\n"), 0o644); err != nil {
-		t.Fatalf("write package license: %v", err)
+func TestDiscoverRuntimeModulesFindsPackageLicense_whenModuleRootUnlicensed(t *testing.T) {
+	// Given the dashboard module and its package-licensed cyber-news-feed dependency.
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	root, err := findModuleRoot(ctx)
+	if err != nil {
+		t.Fatalf("find module root: %v", err)
 	}
 
-	// When license discovery checks the module root followed by the imported package.
-	documents, err := readLicenseDocumentsFrom([]string{root, packageDirectory})
-
-	// Then the package-scoped license is returned.
-	if err != nil || len(documents) != 1 || documents[0].Name != "LICENSE.code" || documents[0].Text != "MIT terms\n" {
-		t.Fatalf("license documents = %+v, err = %v", documents, err)
+	// When runtime module notices are discovered through the real Go package graph.
+	modules, err := discoverRuntimeModules(ctx, root)
+	if err != nil {
+		t.Fatalf("discover runtime modules: %v", err)
 	}
+
+	// Then the dependency's package-scoped license is included.
+	for _, module := range modules {
+		if module.Path != "github.com/found-cake/cyber-news-feed" {
+			continue
+		}
+		for _, license := range module.Licenses {
+			if license.Name == "LICENSE.code" {
+				return
+			}
+		}
+		t.Fatalf("cyber-news-feed licenses = %+v, want LICENSE.code", module.Licenses)
+	}
+	t.Fatal("cyber-news-feed module notice not found")
 }
