@@ -83,3 +83,23 @@ func TestWriteDocumentsCreatesStaticLicenseFiles(t *testing.T) {
 		}
 	}
 }
+
+func TestReadLicenseDocumentsFromFindsPackageLicense_whenModuleRootUnlicensed(t *testing.T) {
+	// Given a module whose imported package carries the only license document.
+	root := t.TempDir()
+	packageDirectory := filepath.Join(root, "pkg", "rssjson")
+	if err := os.MkdirAll(packageDirectory, 0o755); err != nil {
+		t.Fatalf("create package directory: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(packageDirectory, "LICENSE.code"), []byte("MIT terms\n"), 0o644); err != nil {
+		t.Fatalf("write package license: %v", err)
+	}
+
+	// When license discovery checks the module root followed by the imported package.
+	documents, err := readLicenseDocumentsFrom([]string{root, packageDirectory})
+
+	// Then the package-scoped license is returned.
+	if err != nil || len(documents) != 1 || documents[0].Name != "LICENSE.code" || documents[0].Text != "MIT terms\n" {
+		t.Fatalf("license documents = %+v, err = %v", documents, err)
+	}
+}

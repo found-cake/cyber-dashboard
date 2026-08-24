@@ -16,15 +16,17 @@ import (
 )
 
 type listedModule struct {
-	Path    string
-	Version string
-	Dir     string
-	Main    bool
-	Replace *listedModule
+	Path        string
+	Version     string
+	Dir         string
+	Main        bool
+	Replace     *listedModule
+	PackageDirs []string `json:"-"`
 }
 
 type listedPackage struct {
 	Standard bool
+	Dir      string
 	Module   *listedModule
 }
 
@@ -79,13 +81,19 @@ func discoverRuntimeModules(ctx context.Context, root string) ([]moduleNotice, e
 			return nil, err
 		}
 		for _, module := range listed {
+			if current, ok := modules[module.Path]; ok {
+				current.PackageDirs = append(current.PackageDirs, module.PackageDirs...)
+				modules[module.Path] = current
+				continue
+			}
 			modules[module.Path] = module
 		}
 	}
 
 	result := make([]moduleNotice, 0, len(modules))
 	for _, module := range modules {
-		licenses, err := readLicenseDocuments(module.Dir)
+		directories := append([]string{module.Dir}, module.PackageDirs...)
+		licenses, err := readLicenseDocumentsFrom(directories)
 		if err != nil {
 			return nil, fmt.Errorf("read licenses for %s: %w", module.Path, err)
 		}
@@ -117,6 +125,7 @@ func listRuntimeModules(ctx context.Context, root string, target buildTarget) ([
 		if module.Replace != nil {
 			module.Dir = module.Replace.Dir
 		}
+		module.PackageDirs = []string{pkg.Dir}
 		result = append(result, module)
 	}
 	return result, nil
@@ -173,6 +182,18 @@ func readLicenseDocuments(directory string) ([]licenseDocument, error) {
 	}
 	sort.Slice(result, func(left, right int) bool { return result[left].Name < result[right].Name })
 	return result, nil
+}
+
+func readLicenseDocumentsFrom(directories []string) ([]licenseDocument, error) {
+	var lastErr error
+	for _, directory := range directories {
+		documents, err := readLicenseDocuments(directory)
+		if err == nil {
+			return documents, nil
+		}
+		lastErr = err
+	}
+	return nil, lastErr
 }
 
 func isLicenseFilename(name string) bool {
