@@ -8,6 +8,7 @@ import (
 	"github.com/found-cake/cyber-dashboard/api"
 	"github.com/found-cake/cyber-dashboard/internal/database"
 	"github.com/found-cake/cyber-dashboard/internal/feed/collector"
+	"github.com/found-cake/cyber-dashboard/internal/summary"
 )
 
 func TestSourcesGroupsKoreanSources_whenDatabaseUsesSeedIDs(t *testing.T) {
@@ -119,7 +120,7 @@ func TestSaveArticleUsesEnglishPlaceholders_whenClassificationIsUnavailable(t *t
 	}
 }
 
-func TestArticlesForAnalysisUsesRSSDescription_whenBodyUnavailable(t *testing.T) {
+func TestArticlesForAnalysisPreservesRSSDescription_afterAnalysisSummaryIsSaved(t *testing.T) {
 	// Given two articles from an ordinary source, one with a body and one with RSS metadata only.
 	db, err := database.Open(context.Background(), filepath.Join(t.TempDir(), "dashboard.db"))
 	if err != nil {
@@ -139,11 +140,20 @@ func TestArticlesForAnalysisUsesRSSDescription_whenBodyUnavailable(t *testing.T)
 			t.Fatalf("save article: %v", err)
 		}
 	}
+	var rssArticle database.Article
+	if err := db.Where("feed_uid = ?", "sha256:rss-fallback").First(&rssArticle).Error; err != nil {
+		t.Fatalf("load RSS article: %v", err)
+	}
+	if err := repository.SaveArticleAnalysis(context.Background(), rssArticle.ID, summary.ArticleAnalysis{
+		Summary: "AI-generated summary", AttackMethod: "Malware", ThreatActor: "Unknown", TargetSector: "Technology",
+	}); err != nil {
+		t.Fatalf("save article analysis: %v", err)
+	}
 
 	// When articles are selected for LLM classification.
 	candidates, err := repository.ArticlesForAnalysis(context.Background(), day)
 
-	// Then the RSS description is the fallback and an available article body remains preferred.
+	// Then the publisher's RSS description remains the fallback and an available article body stays preferred.
 	if err != nil {
 		t.Fatalf("load analysis candidates: %v", err)
 	}

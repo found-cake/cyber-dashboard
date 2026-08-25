@@ -52,11 +52,11 @@ func (r *Repository) SaveArticle(ctx context.Context, source api.Source, article
 	}
 	stored := database.Article{SourceID: source.ID, FeedUID: article.ID, Title: cleanText(article.Title), URL: article.URL,
 		PublishedAt: day, PublishedTime: publishedTimestamp(article, day), CollectedAt: time.Now().UTC().Format(time.RFC3339),
-		Body: body, Summary: description, AttackMethod: method, ThreatActor: "Unknown", Severity: string(initialSeverity)}
+		Body: body, FeedDescription: description, Summary: description, AttackMethod: method, ThreatActor: "Unknown", Severity: string(initialSeverity)}
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		updates := map[string]any{
 			"title": stored.Title, "url": stored.URL, "published_at": stored.PublishedAt,
-			"published_time": stored.PublishedTime, "body": stored.Body, "summary": stored.Summary,
+			"published_time": stored.PublishedTime, "body": stored.Body, "feed_description": stored.FeedDescription, "summary": stored.Summary,
 			"attack_method": stored.AttackMethod,
 			"severity":      gorm.Expr("CASE WHEN excluded.severity = 'HIGH' AND articles.severity IN ('UNKNOWN', 'LOW', 'MEDIUM') THEN excluded.severity ELSE articles.severity END"),
 		}

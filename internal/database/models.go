@@ -19,6 +19,7 @@ type Article struct {
 	PublishedTime   string `gorm:"not null;default:'';index:articles_published_at_time_id_idx,priority:2"`
 	CollectedAt     string `gorm:"not null"`
 	Body            string `gorm:"not null;default:''"`
+	FeedDescription string `gorm:"not null;default:''"`
 	Summary         string `gorm:"not null;default:''"`
 	AttackMethod    string `gorm:"not null;default:Unclassified"`
 	ThreatActor     string `gorm:"not null;default:Unknown"`
