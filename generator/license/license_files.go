@@ -17,6 +17,8 @@ type licenseDocument struct {
 
 var errNoLicenseDocuments = errors.New("no top-level license, copying, or notice file")
 
+const maximumLicenseDocumentBytes = int64(1 << 20)
+
 func readLicenseDocuments(directory string) ([]licenseDocument, error) {
 	entries, err := os.ReadDir(directory)
 	if err != nil {
@@ -48,6 +50,9 @@ func readLicenseDocument(path string, expected os.FileInfo) ([]byte, error) {
 	if !expected.Mode().IsRegular() {
 		return nil, fmt.Errorf("license document %s is not a regular file", path)
 	}
+	if expected.Size() > maximumLicenseDocumentBytes {
+		return nil, fmt.Errorf("license document %s exceeds %d bytes", path, maximumLicenseDocumentBytes)
+	}
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -60,7 +65,14 @@ func readLicenseDocument(path string, expected os.FileInfo) ([]byte, error) {
 	if !actual.Mode().IsRegular() || !os.SameFile(expected, actual) {
 		return nil, fmt.Errorf("license document %s changed after inspection", path)
 	}
-	return io.ReadAll(file)
+	contents, err := io.ReadAll(io.LimitReader(file, maximumLicenseDocumentBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(contents)) > maximumLicenseDocumentBytes {
+		return nil, fmt.Errorf("license document %s exceeds %d bytes", path, maximumLicenseDocumentBytes)
+	}
+	return contents, nil
 }
 
 func readLicenseDocumentsFrom(directories []string) ([]licenseDocument, error) {
