@@ -13,7 +13,8 @@ var articleContentSelectors = map[string][]string{
 	"boannews":         {}, // #article-view-content-div
 	"dailysecu":        {}, // #article-view-content-div
 	"thehackernews":    {"#articlebody", ".articlebody"},
-	"stepsecurity":     {".blog-post-content_description"},
+	"stepsecurity":     {}, // .blog-post-content_description
+	"darkreading":      {}, // article, main, body
 	"bleepingcomputer": {".articleBody", ".article-body"},
 }
 

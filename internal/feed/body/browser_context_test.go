@@ -22,7 +22,7 @@ func TestChromiumBodyLoaderUsesUnifiedExtendedTimeouts(t *testing.T) {
 	articleTimeout := chromiumArticleTimeout
 	bodyWaitTimeout := chromiumBodyWaitTimeout
 
-	// Then both Dark Reading and BleepingComputer receive the extended limits.
+	// Then Chromium-backed collection receives the extended limits.
 	if articleTimeout != wantArticleTimeout {
 		t.Fatalf("article timeout = %s, want %s", articleTimeout, wantArticleTimeout)
 	}

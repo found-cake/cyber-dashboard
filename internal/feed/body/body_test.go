@@ -89,22 +89,12 @@ func TestArticleBodyLoaderUsesOneHTTPRequest_whenSourceAllowsRequests(t *testing
 	}
 }
 
-func TestArticleBodyLoaderFiltersStepSecurityProduct_whenHeaderBadgeIsProduct(t *testing.T) {
+func TestExtractArticleTextFiltersStepSecurityProduct_whenHeaderBadgeIsProduct(t *testing.T) {
 	// Given a StepSecurity page whose header badge identifies a Product post.
 	markup := `<body><div class="page-wrapper main-padding with-nav-info-banner"><div class="main-wrapper"><div class="container-large padding-section-x-small"><article><div class="padding-section-large no-padding-top"><div class="blog-post-header grid-column-2"><div class="blog-post-header_left-column"><div class="margin-bottom"><div><a><div>Product</div></a></div></div></div></div><div class="blog-post-content_description"><p>Product announcement</p></div></div></article></div></div></div></body>`
-	client := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
-		return &http.Response{
-			StatusCode: http.StatusOK,
-			Header:     http.Header{"Content-Type": []string{"text/html; charset=utf-8"}},
-			Body:       io.NopCloser(strings.NewReader(markup)),
-			Request:    request,
-		}, nil
-	})}
-	loader := NewArticleBodyLoader(client, nil)
 
-	// When the StepSecurity article body is loaded.
-	_, err := loader.Load(context.Background(), api.Source{Host: "stepsecurity.io/blog", Slug: "stepsecurity"},
-		collector.FeedArticle{URL: "https://www.stepsecurity.io/blog/product"})
+	// When the StepSecurity markup is parsed.
+	_, err := extractArticleText(markup, "stepsecurity")
 
 	// Then the Product post is rejected with the collector-visible filter signal.
 	if !errors.Is(err, collector.ErrArticleFiltered) {
@@ -148,26 +138,6 @@ func TestCollectorSkipsFilteredStepSecurityProduct_withoutWarningOrPersistence(t
 	}
 }
 
-func TestArticleBodyLoaderUsesChromiumOnly_whenSourceIsDarkReading(t *testing.T) {
-	// Given a Dark Reading article and separate HTTP and Chromium loaders.
-	requests := 0
-	client := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
-		requests++
-		return &http.Response{StatusCode: http.StatusNoContent, Body: io.NopCloser(strings.NewReader("")), Request: request}, nil
-	})}
-	browser := &browserBodyStub{body: "Browser-rendered article"}
-	loader := NewArticleBodyLoader(client, browser)
-
-	// When the protected article body is loaded.
-	body, err := loader.Load(context.Background(), api.Source{Host: "darkreading.com", Slug: "darkreading"},
-		collector.FeedArticle{URL: "https://www.darkreading.com/article"})
-
-	// Then Chromium is used once and no ordinary HTTP request is attempted.
-	if err != nil || requests != 0 || browser.calls != 1 || body != "Browser-rendered article" {
-		t.Fatalf("HTTP requests = %d, browser calls = %d, body = %q, err = %v", requests, browser.calls, body, err)
-	}
-}
-
 func TestArticleBodyLoaderUsesChromiumOnly_whenSourceIsBleepingComputer(t *testing.T) {
 	// Given a BleepingComputer article and separate HTTP and Chromium loaders.
 	requests := 0
@@ -194,7 +164,7 @@ func TestArticleBodyLoaderRejectsNonHTTPURL_beforeStartingChromium(t *testing.T)
 	loader := NewArticleBodyLoader(nil, browser)
 
 	// When the article is sent to the browser boundary.
-	_, err := loader.Load(context.Background(), api.Source{Host: "darkreading.com", Slug: "darkreading"},
+	_, err := loader.Load(context.Background(), api.Source{Host: "bleepingcomputer.com", Slug: "bleepingcomputer"},
 		collector.FeedArticle{URL: "file:///etc/passwd"})
 
 	// Then the URL is rejected without invoking Chromium.
@@ -209,7 +179,7 @@ func TestArticleBodyLoaderRejectsURLOutsideConfiguredSourceHost_beforeStartingCh
 	loader := NewArticleBodyLoader(nil, browser)
 
 	// When the mismatched article URL reaches the body-loading boundary.
-	_, err := loader.Load(context.Background(), api.Source{Host: "darkreading.com", Slug: "darkreading"},
+	_, err := loader.Load(context.Background(), api.Source{Host: "bleepingcomputer.com", Slug: "bleepingcomputer"},
 		collector.FeedArticle{URL: "https://example.com/article"})
 
 	// Then the URL is rejected without invoking Chromium.
@@ -224,7 +194,7 @@ func TestArticleBodyLoaderRejectsPrivateNetworkURL_beforeStartingChromium(t *tes
 	loader := NewArticleBodyLoader(nil, browser)
 
 	// When the private-network article URL reaches the body-loading boundary.
-	_, err := loader.Load(context.Background(), api.Source{Host: "127.0.0.1", Slug: "darkreading"},
+	_, err := loader.Load(context.Background(), api.Source{Host: "127.0.0.1", Slug: "bleepingcomputer"},
 		collector.FeedArticle{URL: "http://127.0.0.1/admin"})
 
 	// Then the URL is rejected without invoking Chromium.

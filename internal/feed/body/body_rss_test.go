@@ -29,10 +29,12 @@ func TestArticleBodyLoaderUsesRSSMetadataOnly_whenSourceDisallowsArticleRequests
 	}{
 		{name: "BoanNews", slug: "boannews"},
 		{name: "DailySecu", slug: "dailysecu"},
+		{name: "StepSecurity", slug: "stepsecurity"},
+		{name: "Dark Reading", slug: "darkreading"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			// Given a Korean RSS-only source whose article URL cannot be loaded.
+			// Given an RSS-only source whose article URL cannot be loaded.
 			loader := NewArticleBodyLoader(nil, nil)
 
 			// When the collector asks for an article body.
