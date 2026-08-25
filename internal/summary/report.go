@@ -113,11 +113,11 @@ func (c *Client) mergeReport(ctx context.Context, request reportMergeRequest) (R
 func decodeReport(content string, candidates []ReportThreatCandidate, limit int) (ReportResult, error) {
 	var result ReportResult
 	if err := json.Unmarshal([]byte(normalizeJSONContent(content)), &result); err != nil {
-		return ReportResult{}, invalidResponse(content)
+		return ReportResult{}, invalidResponse()
 	}
 	result.Summary = strings.TrimSpace(result.Summary)
 	if result.Summary == "" {
-		return ReportResult{}, invalidResponse(content)
+		return ReportResult{}, invalidResponse()
 	}
 	for index := range result.ThreatGroups {
 		result.ThreatGroups[index].TranslatedTitle = strings.TrimSpace(result.ThreatGroups[index].TranslatedTitle)

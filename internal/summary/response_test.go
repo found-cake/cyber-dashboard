@@ -36,6 +36,23 @@ func TestClientGenerateRejectsInlineJSONCodeFenceWhenPayloadIsInvalidJSON(t *tes
 	}
 }
 
+func TestClientAnalyzeArticleDoesNotExposeInvalidCompletion(t *testing.T) {
+	// Given an invalid completion containing a large confidential value.
+	const confidential = "private-article-content"
+	client := newArticleAnalysisClient(t, confidential+strings.Repeat("x", 8<<10))
+
+	// When the completion is rejected.
+	_, err := client.AnalyzeArticle(context.Background(), ArticleRequest{Language: "en", Title: "Incident", Body: "Body"})
+
+	// Then the error retains its type without exposing or amplifying the completion.
+	if !errors.Is(err, ErrInvalidResponse) {
+		t.Fatalf("error = %v, want ErrInvalidResponse", err)
+	}
+	if strings.Contains(err.Error(), confidential) || len(err.Error()) > 256 {
+		t.Fatalf("error exposes invalid completion: length=%d error=%q", len(err.Error()), err)
+	}
+}
+
 func TestClientAnalyzeArticleAcceptsJSONCodeFenceWithLineComments(t *testing.T) {
 	// Given a fenced JSON response containing model-generated line comments and a URL string.
 	content := strings.Join([]string{
@@ -47,6 +64,7 @@ func TestClientAnalyzeArticleAcceptsJSONCodeFenceWithLineComments(t *testing.T) 
 		`  "actor_country":"Unknown",`,
 		`  "target_sector":"IT",`,
 		`  "victim_count":3, // affected companies`,
+		`  "data_volume":"",`,
 		`  "zero_day":true // exploited zero-day`,
 		"}",
 		"```",

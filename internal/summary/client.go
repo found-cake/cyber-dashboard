@@ -96,13 +96,13 @@ func decodeSummary(content string) (string, error) {
 		ConciseSummary string `json:"concise_summary"`
 	}
 	if err := json.Unmarshal([]byte(normalizeJSONContent(content)), &result); err != nil {
-		return "", invalidResponse(content)
+		return "", invalidResponse()
 	}
 	if strings.TrimSpace(result.Summary) == "" {
 		result.Summary = result.ConciseSummary
 	}
 	if strings.TrimSpace(result.Summary) == "" {
-		return "", invalidResponse(content)
+		return "", invalidResponse()
 	}
 	return strings.TrimSpace(result.Summary), nil
 }
@@ -118,7 +118,7 @@ func (c *Client) TestConnection(ctx context.Context) error {
 		OK bool `json:"ok"`
 	}
 	if err := json.Unmarshal([]byte(normalizeJSONContent(content)), &result); err != nil || !result.OK {
-		return invalidResponse(content)
+		return invalidResponse()
 	}
 	return nil
 }
@@ -145,6 +145,6 @@ func normalizeJSONContent(content string) string {
 	return stripJSONLineComments(stripJSONCodeFence(content))
 }
 
-func invalidResponse(content string) error {
-	return fmt.Errorf("%w: response content %q", ErrInvalidResponse, content)
+func invalidResponse() error {
+	return ErrInvalidResponse
 }

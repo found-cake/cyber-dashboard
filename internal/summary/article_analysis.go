@@ -61,13 +61,16 @@ func (c *Client) AnalyzeArticle(ctx context.Context, request ArticleRequest) (Ar
 	}
 	var response articleAnalysisResponse
 	if err := json.Unmarshal([]byte(normalizeJSONContent(content)), &response); err != nil {
-		return ArticleAnalysis{}, invalidResponse(content)
+		return ArticleAnalysis{}, invalidResponse()
+	}
+	if !response.DataVolume.present {
+		return ArticleAnalysis{}, invalidResponse()
 	}
 	analysis := ArticleAnalysis{
 		Summary: response.Summary, AttackMethod: response.AttackMethods.String(), ThreatActor: response.ThreatActor,
 		ActorCountry: string(response.ActorCountry), TargetSector: response.TargetSector,
 		VictimCount: response.VictimCount, DamageUSD: int64(response.DamageUSD),
-		DataVolumeBytes: int64(response.DataVolume), PatchAvailable: string(response.PatchAvailable), ZeroDay: response.ZeroDay,
+		DataVolumeBytes: response.DataVolume.bytes, PatchAvailable: string(response.PatchAvailable), ZeroDay: response.ZeroDay,
 	}
 	analysis.Summary = strings.TrimSpace(analysis.Summary)
 	analysis.AttackMethod = strings.TrimSpace(analysis.AttackMethod)
@@ -79,7 +82,7 @@ func (c *Client) AnalyzeArticle(ctx context.Context, request ArticleRequest) (Ar
 	}
 	if analysis.Summary == "" || analysis.AttackMethod == "" || analysis.TargetSector == "" ||
 		analysis.VictimCount < 0 || analysis.DamageUSD < 0 || analysis.DataVolumeBytes < 0 {
-		return ArticleAnalysis{}, invalidResponse(content)
+		return ArticleAnalysis{}, invalidResponse()
 	}
 	return analysis, nil
 }
