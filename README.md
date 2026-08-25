@@ -2,7 +2,7 @@
 
 [English](README.md) · [한국어](README_KR.md)
 
-Cyber Dashboard turns daily cybersecurity news into an organized, locally managed security overview. It collects enabled news feeds, reads article content, enriches mentioned CVEs with NVD data, analyzes and classifies stories through your own OpenAI-compatible LLM endpoint, and produces daily, weekly, and monthly summaries.
+Cyber Dashboard turns daily cybersecurity news into an organized, locally managed security overview. It collects enabled news feeds, reads available article content, enriches mentioned CVEs with NVD data, analyzes and classifies stories through your own OpenAI-compatible LLM endpoint, and produces daily, weekly, and monthly summaries.
 
 It runs locally, stores its data in SQLite, and is available as a single executable with the frontend embedded.
 
@@ -47,7 +47,7 @@ For full functionality, you need:
 
 - An [NVD API key](https://nvd.nist.gov/developers/request-an-api-key). Collection does not start until one is registered.
 - An OpenAI-compatible LLM endpoint for article analysis, daily summaries, and reports. Collection can still retain feed data without it, but AI features are skipped and the dashboard shows a warning.
-- Google Chrome or Chromium when Dark Reading or BleepingComputer is enabled, because their article pages require browser-based loading.
+- Google Chrome or Chromium when BleepingComputer is enabled, because its article pages require browser-based loading.
 
 Release binaries are provided for 64-bit Linux, macOS, and Windows (`amd64` and `arm64`). Users of another platform or architecture can build Cyber Dashboard from source when Go and its dependencies support that target.
 
@@ -135,10 +135,10 @@ Select **New** beside Reports, choose a weekly or monthly period, and generate t
 
 ## How analysis works
 
-Initial article listings and RSS metadata come from [cyber-news-feed](https://github.com/found-cake/cyber-news-feed). It normalizes only the content each source publishes through RSS or Atom into per-source static JSON; it does not crawl article pages. Cyber Dashboard separately loads an article page when it needs the full text. BoanNews and DailySecu article bodies are not collected.
+Initial article listings and RSS metadata come from [cyber-news-feed](https://github.com/found-cake/cyber-news-feed). It normalizes only the content each source publishes through RSS or Atom into per-source static JSON; it does not crawl article pages. Cyber Dashboard loads The Hacker News and BleepingComputer article pages separately, while Cybersecurity News provides full content through its feed. StepSecurity, Dark Reading, BoanNews, and DailySecu article bodies are not collected.
 
-1. Fetch enabled RSS metadata and load available article pages.
-2. Extract full article text and publication metadata.
+1. Fetch enabled RSS metadata and load article text for supported sources.
+2. Extract available full text and publication metadata.
 3. Classify and summarize with the LLM, then enrich CVEs with NVD/CNA data.
 4. Store the results in the local SQLite database.
 5. Present the dashboard, daily briefings, and weekly/monthly reports.
@@ -260,7 +260,7 @@ Confirm the base URL and model name, add the server-specific API key when requir
 
 ### Article loading is slow or occasionally fails
 
-Dark Reading and BleepingComputer can require browser verification. Keep Chrome or Chromium installed, allow extra time for collection, and retry the affected day if a site temporarily rejects automation. Other successfully collected articles remain available.
+BleepingComputer can require browser verification. Keep Chrome or Chromium installed, allow extra time for collection, and retry the affected day if the site temporarily rejects automation. Other successfully collected articles remain available.
 
 ### A CVE shows `NVD assessment pending`
 

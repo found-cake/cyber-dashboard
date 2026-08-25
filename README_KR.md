@@ -47,7 +47,7 @@ Cyber Dashboard는 매일 수집되는 보안 뉴스를 체계적으로 정리�
 
 - [NVD API 키](https://nvd.nist.gov/developers/request-an-api-key): 키를 등록하기 전에는 기사 수집을 시작할 수 없습니다.
 - 기사 분석, 일간 요약, 보고서 생성을 위한 OpenAI 호환 LLM 엔드포인트: LLM이 없어도 피드 수집은 계속됩니다. 이 경우 AI 기능을 건너뛰고 경고를 표시합니다.
-- Google Chrome 또는 Chromium: Dark Reading이나 BleepingComputer를 활성화한 경우에만 필요하며, 해당 출처의 기사 본문을 가져올 때 사용합니다.
+- Google Chrome 또는 Chromium: BleepingComputer를 활성화한 경우에만 필요하며, 기사 본문을 가져올 때 사용합니다.
 
 제공되는 릴리즈 실행 파일은 64비트 Linux, macOS, Windows용(`amd64`, `arm64`)입니다. 다른 환경도 Go와 프로젝트 의존성이 지원하면 소스에서 직접 빌드할 수 있습니다.
 
@@ -135,10 +135,10 @@ http://127.0.0.1:8888/v1
 
 ## 분석 과정
 
-초기 기사 목록과 RSS 정보는 [cyber-news-feed](https://github.com/found-cake/cyber-news-feed)에서 가져옵니다. 이 저장소는 각 출처가 RSS와 Atom에 공개한 내용만 출처별 정적 JSON으로 정규화하며, 기사 페이지는 크롤링하지 않습니다. Cyber Dashboard는 전문이 필요할 때 기사 페이지를 별도로 불러옵니다. 보안뉴스와 데일리시큐는 기사 본문을 수집하지 않습니다.
+초기 기사 목록과 RSS 정보는 [cyber-news-feed](https://github.com/found-cake/cyber-news-feed)에서 가져옵니다. 이 저장소는 각 출처가 RSS와 Atom에 공개한 내용만 출처별 정적 JSON으로 정규화하며, 기사 페이지는 크롤링하지 않습니다. Cyber Dashboard는 The Hacker News와 BleepingComputer의 기사 페이지를 별도로 불러오고, Cybersecurity News는 피드가 제공하는 기사 전문을 사용합니다. StepSecurity, Dark Reading, 보안뉴스, 데일리시큐의 기사 본문은 수집하지 않습니다.
 
-1. 활성화한 RSS 정보를 가져오고 기사 페이지를 불러옵니다.
-2. 기사 전문과 발행 정보를 추출합니다.
+1. 활성화한 RSS 정보를 가져오고 지원하는 출처의 기사 전문을 불러옵니다.
+2. 사용할 수 있는 기사 전문과 발행 정보를 추출합니다.
 3. LLM으로 분류·요약하고 NVD/CNA 정보로 CVE를 보강합니다.
 4. 결과를 로컬 SQLite 데이터베이스에 저장합니다.
 5. 결과를 대시보드와 일간 요약, 주간·월간 보고서로 표시합니다.
@@ -260,7 +260,7 @@ Base URL과 모델 이름을 확인하고, 서버가 요구하는 경우 해당 
 
 ### 기사 로딩이 느리거나 가끔 실패하는 경우
 
-Dark Reading과 BleepingComputer는 브라우저 검증을 요구할 수 있습니다. Chrome 또는 Chromium이 설치되어 있는지 확인하고 수집이 끝날 때까지 여유 있게 기다려 주세요. 사이트가 일시적으로 자동 접근을 거부했다면 해당 날짜를 다시 수집할 수 있습니다. 다른 기사 중 정상적으로 수집된 데이터는 그대로 유지됩니다.
+BleepingComputer는 브라우저 검증을 요구할 수 있습니다. Chrome 또는 Chromium이 설치되어 있는지 확인하고 수집이 끝날 때까지 여유 있게 기다려 주세요. 사이트가 일시적으로 자동 접근을 거부했다면 해당 날짜를 다시 수집할 수 있습니다. 다른 기사 중 정상적으로 수집된 데이터는 그대로 유지됩니다.
 
 ### CVE에 `NVD 평가 대기`가 표시되는 경우
 
