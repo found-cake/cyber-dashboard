@@ -88,3 +88,32 @@ func TestHTTPFetcherRejectsDocument_whenSchemaVersionUnsupported(t *testing.T) {
 		t.Fatalf("fetch error = %v, want unsupported schema version", err)
 	}
 }
+
+func TestHTTPFetcherRejectsDocument_whenDeclaredSourceDiffers(t *testing.T) {
+	tests := []struct {
+		name     string
+		declared string
+	}{
+		{name: "different source", declared: `"dailysecu"`},
+		{name: "missing source", declared: `""`},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			// Given a valid RSS document that does not declare the requested source.
+			upstream := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+				writer.Header().Set("Content-Type", "application/json")
+				_, _ = writer.Write([]byte(`{"schema_version":1,"source":` + test.declared + `,"status":{"ok":true},"articles":[]}`))
+			}))
+			defer upstream.Close()
+			fetcher := &HTTPFetcher{client: upstream.Client(), baseURL: upstream.URL}
+
+			// When the configured source is fetched.
+			_, err := fetcher.Fetch(context.Background(), api.Source{Slug: "boannews"})
+
+			// Then the feed is rejected before its articles can be attributed incorrectly.
+			if err == nil || !strings.Contains(err.Error(), "source mismatch") {
+				t.Fatalf("fetch error = %v, want source mismatch", err)
+			}
+		})
+	}
+}

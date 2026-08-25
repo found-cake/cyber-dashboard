@@ -90,6 +90,9 @@ func (f *HTTPFetcher) Fetch(ctx context.Context, source api.Source) (Document, e
 	if err := json.Unmarshal(body, &wireDocument); err != nil {
 		return Document{}, fmt.Errorf("decode %s feed: %w", source.Slug, err)
 	}
+	if wireDocument.Source != source.Slug {
+		return Document{}, fmt.Errorf("decode %s feed: source mismatch: got %q", source.Slug, wireDocument.Source)
+	}
 	document, err := documentFromRSSJSON(wireDocument)
 	if err != nil {
 		return Document{}, fmt.Errorf("decode %s feed: %w", source.Slug, err)
