@@ -63,7 +63,7 @@ func TestClientAnalyzeArticleSendsFullBody_andReturnsImpactSignals(t *testing.T)
 func TestClientAnalyzeArticleAcceptsJSONCodeFence(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		writer.Header().Set("Content-Type", "application/json")
-		content := "```json\n{\"summary\":\"Incident summary\",\"attack_method\":\"Malware\",\"threat_actor\":\"Unknown\",\"actor_country\":\"\",\"target_sector\":\"Finance\",\"victim_count\":0,\"data_volume\":\"\",\"zero_day\":false}\n```"
+		content := "```json\n{\"summary\":\"Incident summary\",\"attack_method\":\"Malware\",\"threat_actor\":\"Unknown\",\"actor_country\":\"\",\"target_sector\":\"Finance\",\"victim_count\":0,\"damage_usd\":0,\"data_volume\":\"\",\"patch_available\":\"unknown\",\"zero_day\":false}\n```"
 		encodedContent, _ := json.Marshal(content)
 		_, _ = fmt.Fprintf(writer, `{"id":"chatcmpl-test","object":"chat.completion","created":1,"model":"test-model","choices":[{"index":0,"message":{"role":"assistant","content":%s},"finish_reason":"stop"}]}`, encodedContent)
 	}))
@@ -87,7 +87,7 @@ func TestClientAnalyzeArticleTreatsNumericZeroCountryAsUnknown(t *testing.T) {
 	// Given a compatible endpoint that uses numeric zero for an unknown actor country.
 	upstream := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		writer.Header().Set("Content-Type", "application/json")
-		_, _ = writer.Write([]byte(`{"id":"chatcmpl-test","object":"chat.completion","created":1,"model":"test-model","choices":[{"index":0,"message":{"role":"assistant","content":"{\"summary\":\"Security strategy\",\"attack_method\":\"AI-driven attacks\",\"threat_actor\":\"attackers\",\"actor_country\":0,\"target_sector\":\"enterprise security\",\"victim_count\":500,\"data_volume\":\"\",\"zero_day\":false}"},"finish_reason":"stop"}]}`))
+		_, _ = writer.Write([]byte(`{"id":"chatcmpl-test","object":"chat.completion","created":1,"model":"test-model","choices":[{"index":0,"message":{"role":"assistant","content":"{\"summary\":\"Security strategy\",\"attack_method\":\"AI-driven attacks\",\"threat_actor\":\"attackers\",\"actor_country\":0,\"target_sector\":\"enterprise security\",\"victim_count\":500,\"damage_usd\":0,\"data_volume\":\"\",\"patch_available\":\"unknown\",\"zero_day\":false}"},"finish_reason":"stop"}]}`))
 	}))
 	defer upstream.Close()
 	client, err := NewClient(Config{BaseURL: upstream.URL + "/v1", Model: "test-model", APIKey: "key", Timeout: 2 * time.Second})
@@ -116,7 +116,9 @@ func TestClientAnalyzeArticleUsesUnknownActor_whenResponseLeavesThreatActorEmpty
 		"actor_country":"",
 		"target_sector":"Enterprise software",
 		"victim_count":0,
+		"damage_usd":0,
 		"data_volume":"",
+		"patch_available":"unknown",
 		"zero_day":false
 	}`)
 
@@ -141,7 +143,9 @@ func TestClientAnalyzeArticleJoinsAttackMethods_whenResponseUsesArray(t *testing
 		"actor_country":"",
 		"target_sector":"기업",
 		"victim_count":0,
+		"damage_usd":0,
 		"data_volume":"",
+		"patch_available":"unknown",
 		"zero_day":false
 	}`)
 
@@ -182,6 +186,7 @@ func TestClientAnalyzeArticleReadsDamageAmount_whateverShapeTheModelWritesItIn(t
 				"victim_count":0,
 				"damage_usd":`+test.value+`,
 				"data_volume":"",
+				"patch_available":"unknown",
 				"zero_day":false
 			}`)
 
@@ -257,6 +262,7 @@ func TestClientAnalyzeArticleRejectsNegativeDamage(t *testing.T) {
 		"victim_count":0,
 		"damage_usd":-5000,
 		"data_volume":"",
+		"patch_available":"unknown",
 		"zero_day":false
 	}`)
 

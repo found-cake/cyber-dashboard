@@ -45,10 +45,34 @@ type articleAnalysisResponse struct {
 	ZeroDay        bool          `json:"zero_day"`
 }
 
+var requiredArticleAnalysisFields = [...]string{
+	"summary", "attack_method", "threat_actor", "actor_country", "target_sector",
+	"victim_count", "damage_usd", "data_volume", "patch_available", "zero_day",
+}
+
 type actorCountry string
 type attackMethods []string
 type damageAmount int64
 type patchState string
+
+func (r *articleAnalysisResponse) UnmarshalJSON(data []byte) error {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	for _, field := range requiredArticleAnalysisFields {
+		if _, exists := fields[field]; !exists {
+			return fmt.Errorf("missing required article analysis field %q", field)
+		}
+	}
+	type response articleAnalysisResponse
+	var decoded response
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	*r = articleAnalysisResponse(decoded)
+	return nil
+}
 
 func (c *Client) AnalyzeArticle(ctx context.Context, request ArticleRequest) (ArticleAnalysis, error) {
 	input, err := json.Marshal(request)
@@ -61,9 +85,6 @@ func (c *Client) AnalyzeArticle(ctx context.Context, request ArticleRequest) (Ar
 	}
 	var response articleAnalysisResponse
 	if err := json.Unmarshal([]byte(normalizeJSONContent(content)), &response); err != nil {
-		return ArticleAnalysis{}, invalidResponse()
-	}
-	if !response.DataVolume.present {
 		return ArticleAnalysis{}, invalidResponse()
 	}
 	analysis := ArticleAnalysis{

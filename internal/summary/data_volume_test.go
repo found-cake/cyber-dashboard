@@ -2,6 +2,8 @@ package summary
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"testing"
 )
 
@@ -86,25 +88,33 @@ func TestClientAnalyzeArticleNormalizesDataVolumeForSeverity(t *testing.T) {
 	}
 }
 
-func TestClientAnalyzeArticleRejectsMissingDataVolume(t *testing.T) {
-	// Given a model response that omits the required data_volume field.
-	client := newArticleAnalysisClient(t, `{
-		"summary":"Customer data was exfiltrated.",
-		"attack_method":"Data Breach / Unauthorized Access",
-		"threat_actor":"Unknown",
-		"actor_country":"",
-		"target_sector":"Technology",
-		"victim_count":0,
-		"damage_usd":0,
-		"patch_available":"unknown",
-		"zero_day":false
-	}`)
+func TestClientAnalyzeArticleRejectsMissingRequiredField(t *testing.T) {
+	fields := []string{
+		"summary", "attack_method", "threat_actor", "actor_country", "target_sector",
+		"victim_count", "damage_usd", "data_volume", "patch_available", "zero_day",
+	}
+	for _, missing := range fields {
+		t.Run(missing, func(t *testing.T) {
+			// Given an otherwise complete model response with one required impact field omitted.
+			response := map[string]any{
+				"summary": "Customer data was exfiltrated.", "attack_method": "Data Breach / Unauthorized Access",
+				"threat_actor": "Unknown", "actor_country": "", "target_sector": "Technology",
+				"victim_count": 0, "damage_usd": 0, "data_volume": "", "patch_available": "unknown", "zero_day": false,
+			}
+			delete(response, missing)
+			encoded, err := json.Marshal(response)
+			if err != nil {
+				t.Fatalf("encode model response: %v", err)
+			}
+			client := newArticleAnalysisClient(t, string(encoded))
 
-	// When the response is parsed for severity evaluation.
-	_, err := client.AnalyzeArticle(context.Background(), ArticleRequest{Language: "en", Title: "Data breach", Body: "Body"})
+			// When the response is parsed for severity evaluation.
+			_, err = client.AnalyzeArticle(context.Background(), ArticleRequest{Language: "en", Title: "Data breach", Body: "Body"})
 
-	// Then a missing required field is rejected instead of silently becoming zero.
-	if err == nil {
-		t.Fatal("expected invalid response error")
+			// Then omission is rejected instead of silently becoming a zero-value signal.
+			if !errors.Is(err, ErrInvalidResponse) {
+				t.Fatalf("missing %s error = %v, want ErrInvalidResponse", missing, err)
+			}
+		})
 	}
 }

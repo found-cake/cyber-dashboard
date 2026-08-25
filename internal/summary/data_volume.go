@@ -35,12 +35,10 @@ var dataVolumeTextReplacer = strings.NewReplacer(
 )
 
 type dataVolume struct {
-	bytes   int64
-	present bool
+	bytes int64
 }
 
 func (v *dataVolume) UnmarshalJSON(data []byte) error {
-	v.present = true
 	if strings.TrimSpace(string(data)) == "null" {
 		return fmt.Errorf("data_volume must be a string")
 	}
