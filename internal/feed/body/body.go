@@ -30,6 +30,9 @@ func NewArticleBodyLoader(client *http.Client, browser BrowserBodyLoader) *Artic
 }
 
 func (l *ArticleBodyLoader) Load(ctx context.Context, source api.Source, article collector.FeedArticle) (string, error) {
+	if usesRSSMetadataOnly(source.Slug) {
+		return "", nil
+	}
 	if source.Slug == "cybersecuritynews" {
 		return embeddedArticleBody(article)
 	}

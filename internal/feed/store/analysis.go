@@ -20,8 +20,9 @@ type ArticleForAnalysis struct {
 
 func (r *Repository) ArticlesForAnalysis(ctx context.Context, day string) ([]ArticleForAnalysis, error) {
 	articles := []ArticleForAnalysis{}
-	if err := r.db.WithContext(ctx).Model(&database.Article{}).Select("id", "title", "url", "body").
-		Where("published_at = ? AND body != ''", day).Order("published_time, id").Find(&articles).Error; err != nil {
+	if err := r.db.WithContext(ctx).Model(&database.Article{}).
+		Select("id, title, url, COALESCE(NULLIF(body, ''), summary) AS body").
+		Where("published_at = ?", day).Order("published_time, id").Find(&articles).Error; err != nil {
 		return nil, fmt.Errorf("query articles for analysis: %w", err)
 	}
 	return articles, nil

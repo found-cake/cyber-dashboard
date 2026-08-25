@@ -9,6 +9,14 @@ import (
 	"golang.org/x/net/html"
 )
 
+var articleContentSelectors = map[string][]string{
+	"boannews":         {}, // #article-view-content-div
+	"dailysecu":        {}, // #article-view-content-div
+	"thehackernews":    {"#articlebody", ".articlebody"},
+	"stepsecurity":     {".blog-post-content_description"},
+	"bleepingcomputer": {".articleBody", ".article-body"},
+}
+
 func extractArticleText(markup, sourceSlug string) (string, error) {
 	document, err := html.Parse(strings.NewReader(markup))
 	if err != nil {
@@ -54,14 +62,7 @@ func stepSecurityCategory(document *html.Node) string {
 }
 
 func contentRoot(document *html.Node, sourceSlug string) *html.Node {
-	selectors := map[string][]string{
-		"boannews":         {"#article-view-content-div"},
-		"dailysecu":        {"#article-view-content-div"},
-		"thehackernews":    {"#articlebody", ".articlebody"},
-		"stepsecurity":     {".blog-post-content_description"},
-		"bleepingcomputer": {".articleBody", ".article-body"},
-	}
-	for _, selector := range selectors[sourceSlug] {
+	for _, selector := range articleContentSelectors[sourceSlug] {
 		if node := findElement(document, selector); node != nil {
 			return node
 		}
@@ -72,6 +73,11 @@ func contentRoot(document *html.Node, sourceSlug string) *html.Node {
 		}
 	}
 	return document
+}
+
+func usesRSSMetadataOnly(sourceSlug string) bool {
+	selectors, configured := articleContentSelectors[sourceSlug]
+	return configured && len(selectors) == 0
 }
 
 func findElement(node *html.Node, selector string) *html.Node {

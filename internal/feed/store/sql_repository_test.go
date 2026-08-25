@@ -118,3 +118,36 @@ func TestSaveArticleUsesEnglishPlaceholders_whenClassificationIsUnavailable(t *t
 		t.Fatalf("classifications = %q, %q, want Unclassified, Unknown", attackMethod, threatActor)
 	}
 }
+
+func TestArticlesForAnalysisUsesRSSDescription_whenBodyUnavailable(t *testing.T) {
+	// Given two articles from an ordinary source, one with a body and one with RSS metadata only.
+	db, err := database.Open(context.Background(), filepath.Join(t.TempDir(), "dashboard.db"))
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	t.Cleanup(func() { _ = database.Close(db) })
+	repository := NewRepository(db)
+	day := "2026-08-03"
+	articles := []collector.FeedArticle{
+		{ID: "sha256:rss-fallback", URL: "https://example.com/rss", Title: "RSS article",
+			PublishedAt: day + "T01:00:00Z", Description: "RSS description"},
+		{ID: "sha256:full-body", URL: "https://example.com/body", Title: "Body article",
+			PublishedAt: day + "T02:00:00Z", Description: "RSS description", Body: "Full article body"},
+	}
+	for _, article := range articles {
+		if err := repository.SaveArticle(context.Background(), api.Source{ID: 1}, article, day); err != nil {
+			t.Fatalf("save article: %v", err)
+		}
+	}
+
+	// When articles are selected for LLM classification.
+	candidates, err := repository.ArticlesForAnalysis(context.Background(), day)
+
+	// Then the RSS description is the fallback and an available article body remains preferred.
+	if err != nil {
+		t.Fatalf("load analysis candidates: %v", err)
+	}
+	if len(candidates) != 2 || candidates[0].Body != "RSS description" || candidates[1].Body != "Full article body" {
+		t.Fatalf("analysis candidates = %+v", candidates)
+	}
+}

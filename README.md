@@ -135,7 +135,7 @@ Select **New** beside Reports, choose a weekly or monthly period, and generate t
 
 ## How analysis works
 
-Initial article listings and RSS metadata come from [cyber-news-feed](https://github.com/found-cake/cyber-news-feed). It normalizes only the content each source publishes through RSS or Atom into per-source static JSON; it does not crawl article pages. Cyber Dashboard separately loads an article page when it needs the full text.
+Initial article listings and RSS metadata come from [cyber-news-feed](https://github.com/found-cake/cyber-news-feed). It normalizes only the content each source publishes through RSS or Atom into per-source static JSON; it does not crawl article pages. Cyber Dashboard separately loads an article page when it needs the full text. BoanNews and DailySecu article bodies are not collected.
 
 1. Fetch enabled RSS metadata and load available article pages.
 2. Extract full article text and publication metadata.

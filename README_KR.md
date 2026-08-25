@@ -135,7 +135,7 @@ http://127.0.0.1:8888/v1
 
 ## 분석 과정
 
-초기 기사 목록과 RSS 정보는 [cyber-news-feed](https://github.com/found-cake/cyber-news-feed)에서 가져옵니다. 이 저장소는 각 출처가 RSS와 Atom에 공개한 내용만 출처별 정적 JSON으로 정규화하며, 기사 페이지는 크롤링하지 않습니다. Cyber Dashboard는 전문이 필요할 때 기사 페이지를 별도로 불러옵니다.
+초기 기사 목록과 RSS 정보는 [cyber-news-feed](https://github.com/found-cake/cyber-news-feed)에서 가져옵니다. 이 저장소는 각 출처가 RSS와 Atom에 공개한 내용만 출처별 정적 JSON으로 정규화하며, 기사 페이지는 크롤링하지 않습니다. Cyber Dashboard는 전문이 필요할 때 기사 페이지를 별도로 불러옵니다. 보안뉴스와 데일리시큐는 기사 본문을 수집하지 않습니다.
 
 1. 활성화한 RSS 정보를 가져오고 기사 페이지를 불러옵니다.
 2. 기사 전문과 발행 정보를 추출합니다.

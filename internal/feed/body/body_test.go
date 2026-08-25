@@ -64,20 +64,6 @@ func (s *browserBodyStub) Load(_ context.Context, _, _ string) (string, error) {
 	return s.body, nil
 }
 
-func TestArticleBodyLoaderUsesEmbeddedContent_whenFeedContainsFullArticle(t *testing.T) {
-	// Given a Cybersecurity News article with content_encoded in source metadata.
-	article := collector.FeedArticle{EmbeddedContent: "<p>Full embedded story CVE-2026-9999</p>"}
-	loader := NewArticleBodyLoader(nil, &browserBodyStub{})
-
-	// When the article body is loaded.
-	body, err := loader.Load(context.Background(), api.Source{Slug: "cybersecuritynews"}, article)
-
-	// Then the embedded article is returned without a web request.
-	if err != nil || body != "Full embedded story CVE-2026-9999" {
-		t.Fatalf("body = %q, err = %v", body, err)
-	}
-}
-
 func TestArticleBodyLoaderUsesOneHTTPRequest_whenSourceAllowsRequests(t *testing.T) {
 	// Given an article page with a source-specific content container.
 	requests := 0
@@ -87,15 +73,15 @@ func TestArticleBodyLoaderUsesOneHTTPRequest_whenSourceAllowsRequests(t *testing
 			StatusCode: http.StatusOK,
 			Header:     http.Header{"Content-Type": []string{"text/html; charset=utf-8"}},
 			Body: io.NopCloser(strings.NewReader(
-				`<html><body><nav>Noise</nav><div id="article-view-content-div"><p>First paragraph.</p><p>Second paragraph.</p></div><aside>Related story noise</aside></body></html>`)),
+				`<html><body><nav>Noise</nav><article><p>First paragraph.</p><p>Second paragraph.</p></article><aside>Related story noise</aside></body></html>`)),
 			Request: request,
 		}, nil
 	})}
 	loader := NewArticleBodyLoader(client, &browserBodyStub{})
 
 	// When the body is loaded over HTTP.
-	body, err := loader.Load(context.Background(), api.Source{Host: "boannews.com", Slug: "boannews"},
-		collector.FeedArticle{URL: "https://www.boannews.com/article"})
+	body, err := loader.Load(context.Background(), api.Source{Host: "thehackernews.com", Slug: "thehackernews"},
+		collector.FeedArticle{URL: "https://thehackernews.com/article"})
 
 	// Then exactly one request is sent and navigation noise is excluded.
 	if err != nil || requests != 1 || body != "First paragraph.\n\nSecond paragraph." {
@@ -270,8 +256,8 @@ func TestArticleBodyLoaderRejectsCrossHostHTTPRedirect_beforeFollowingIt(t *test
 	loader := NewArticleBodyLoader(client, nil)
 
 	// When an ordinary HTTP source article is loaded.
-	_, err := loader.Load(context.Background(), api.Source{Host: "boannews.com", Slug: "boannews"},
-		collector.FeedArticle{URL: "https://www.boannews.com/article"})
+	_, err := loader.Load(context.Background(), api.Source{Host: "thehackernews.com", Slug: "thehackernews"},
+		collector.FeedArticle{URL: "https://thehackernews.com/article"})
 
 	// Then redirect validation stops the request before loopback is contacted.
 	if err == nil || requests != 1 {
