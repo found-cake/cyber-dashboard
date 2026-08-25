@@ -2,6 +2,7 @@ package body
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"runtime"
@@ -20,13 +21,17 @@ const (
 	chromiumBodyWaitTimeout = 75 * time.Second
 )
 
-func (l *ChromiumBodyLoader) Load(ctx context.Context, articleURL, sourceHost string) (string, error) {
+func (l *ChromiumBodyLoader) Load(ctx context.Context, request BrowserLoadRequest) (string, error) {
 	l.mutex.Lock()
 	defer l.mutex.Unlock()
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
-	documentGuard, err := newChromiumDocumentGuard(sourceHost)
+	selectorJSON, err := json.Marshal(selectorsForSource(request.SourceSlug))
+	if err != nil {
+		return "", fmt.Errorf("encode Chromium article selectors: %w", err)
+	}
+	documentGuard, err := newChromiumDocumentGuard(request.SourceHost)
 	if err != nil {
 		return "", err
 	}
@@ -49,12 +54,12 @@ func (l *ChromiumBodyLoader) Load(ctx context.Context, articleURL, sourceHost st
 		}
 	}()
 	var body string
-	bodyExpression := `(() => {
-  const selectors = [".articleBody", ".article-content", ".article__content", ".article-body", "article", "main"];
-  const root = selectors.map(selector => document.querySelector(selector)).find(Boolean) || document.body;
+	bodyExpression := fmt.Sprintf(`(() => {
+  const selectors = %s;
+  const root = selectors.map(selector => document.querySelector(selector)).find(Boolean);
   const text = root?.innerText?.trim() || "";
   return text.length > 300 && !text.includes("Just a moment") ? text : "";
-})()`
+})()`, selectorJSON)
 	loadErr := chromedp.Run(tabContext,
 		chromedp.ActionFunc(func(ctx context.Context) error {
 			architecture := "x86"
@@ -91,7 +96,7 @@ func (l *ChromiumBodyLoader) Load(ctx context.Context, articleURL, sourceHost st
 			if err := documentGuard.enable(ctx); err != nil {
 				return err
 			}
-			_, _, errorText, isDownload, err := page.Navigate(articleURL).Do(ctx)
+			_, _, errorText, isDownload, err := page.Navigate(request.ArticleURL).Do(ctx)
 			if err != nil {
 				return err
 			}

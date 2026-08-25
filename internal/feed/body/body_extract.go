@@ -14,9 +14,11 @@ var articleContentSelectors = map[string][]string{
 	"dailysecu":        {}, // #article-view-content-div
 	"thehackernews":    {"#articlebody", ".articlebody"},
 	"stepsecurity":     {}, // .blog-post-content_description
-	"darkreading":      {}, // article, main, body
-	"bleepingcomputer": {".articleBody", ".article-body"},
+	"darkreading":      {}, // .ContentModule-Wrapper
+	"bleepingcomputer": {"article .articleBody"},
 }
+
+var defaultArticleContentSelectors = []string{"article", "main", "body"}
 
 func extractArticleText(markup, sourceSlug string) (string, error) {
 	document, err := html.Parse(strings.NewReader(markup))
@@ -63,17 +65,18 @@ func stepSecurityCategory(document *html.Node) string {
 }
 
 func contentRoot(document *html.Node, sourceSlug string) *html.Node {
-	for _, selector := range articleContentSelectors[sourceSlug] {
-		if node := findElement(document, selector); node != nil {
-			return node
-		}
-	}
-	for _, selector := range []string{"article", "main", "body"} {
+	for _, selector := range selectorsForSource(sourceSlug) {
 		if node := findElement(document, selector); node != nil {
 			return node
 		}
 	}
 	return document
+}
+
+func selectorsForSource(sourceSlug string) []string {
+	selectors := make([]string, 0, len(articleContentSelectors[sourceSlug])+len(defaultArticleContentSelectors))
+	selectors = append(selectors, articleContentSelectors[sourceSlug]...)
+	return append(selectors, defaultArticleContentSelectors...)
 }
 
 func usesRSSMetadataOnly(sourceSlug string) bool {
@@ -82,11 +85,25 @@ func usesRSSMetadataOnly(sourceSlug string) bool {
 }
 
 func findElement(node *html.Node, selector string) *html.Node {
-	if matchesElement(node, selector) {
-		return node
+	return findElementPath(node, strings.Fields(selector))
+}
+
+func findElementPath(node *html.Node, selectors []string) *html.Node {
+	if len(selectors) == 0 {
+		return nil
+	}
+	if matchesElement(node, selectors[0]) {
+		if len(selectors) == 1 {
+			return node
+		}
+		for child := node.FirstChild; child != nil; child = child.NextSibling {
+			if match := findElementPath(child, selectors[1:]); match != nil {
+				return match
+			}
+		}
 	}
 	for child := node.FirstChild; child != nil; child = child.NextSibling {
-		if match := findElement(child, selector); match != nil {
+		if match := findElementPath(child, selectors); match != nil {
 			return match
 		}
 	}

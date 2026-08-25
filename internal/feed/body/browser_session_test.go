@@ -36,10 +36,10 @@ func TestChromiumBodyLoaderReusesBrowserSession_whenLoadingMultipleArticles(t *t
 	t.Cleanup(loader.Close)
 
 	// When the same loader retrieves both articles in sequence.
-	if _, err := loader.Load(ctx, server.URL+"/first", server.URL); err != nil {
+	if _, err := loader.Load(ctx, BrowserLoadRequest{ArticleURL: server.URL + "/first", SourceHost: server.URL}); err != nil {
 		t.Fatalf("load first article: %v", err)
 	}
-	body, err := loader.Load(ctx, server.URL+"/second", server.URL)
+	body, err := loader.Load(ctx, BrowserLoadRequest{ArticleURL: server.URL + "/second", SourceHost: server.URL})
 
 	// Then the second tab shares the first tab's browser session and cookie jar.
 	if err != nil {
@@ -72,10 +72,10 @@ document.body.innerHTML = sessionStorage.getItem("clearance") === "qa"
 	t.Cleanup(loader.Close)
 
 	// When the same loader navigates from the first article to the second.
-	if _, err := loader.Load(ctx, server.URL+"/first", server.URL); err != nil {
+	if _, err := loader.Load(ctx, BrowserLoadRequest{ArticleURL: server.URL + "/first", SourceHost: server.URL}); err != nil {
 		t.Fatalf("load first article: %v", err)
 	}
-	body, err := loader.Load(ctx, server.URL+"/second", server.URL)
+	body, err := loader.Load(ctx, BrowserLoadRequest{ArticleURL: server.URL + "/second", SourceHost: server.URL})
 
 	// Then the second navigation retains the first page's tab-scoped state.
 	if err != nil {

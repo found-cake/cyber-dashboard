@@ -40,7 +40,7 @@ func TestChromiumBodyLoaderHonorsCanceledCaller_beforeStartingChromium(t *testin
 	cancel()
 
 	// When article loading is requested.
-	_, err := loader.Load(ctx, "https://example.com/article", "example.com")
+	_, err := loader.Load(ctx, BrowserLoadRequest{ArticleURL: "https://example.com/article", SourceHost: "example.com"})
 
 	// Then caller cancellation wins before Chromium startup is attempted.
 	if !errors.Is(err, context.Canceled) {
@@ -64,7 +64,7 @@ func TestChromiumBodyLoaderHonorsCallerDeadline_duringFirstStartup(t *testing.T)
 
 	// When loading triggers the first Chromium startup.
 	startedAt := time.Now()
-	_, err := loader.Load(ctx, "https://example.com/article", "example.com")
+	_, err := loader.Load(ctx, BrowserLoadRequest{ArticleURL: "https://example.com/article", SourceHost: "example.com"})
 	elapsed := time.Since(startedAt)
 
 	// Then startup stops at the caller deadline instead of the allocator timeout.
@@ -91,7 +91,7 @@ func TestChromiumBodyLoaderDoesNotRecreateSession_afterClose(t *testing.T) {
 	loader.Close()
 
 	// When another article load is attempted.
-	_, err := loader.Load(context.Background(), "https://example.com/article", "example.com")
+	_, err := loader.Load(context.Background(), BrowserLoadRequest{ArticleURL: "https://example.com/article", SourceHost: "example.com"})
 
 	// Then the loader reports its closed state without starting a new session.
 	if err == nil || !strings.Contains(err.Error(), "closed") {

@@ -16,8 +16,9 @@ import (
 )
 
 type browserBodyStub struct {
-	body  string
-	calls int
+	body    string
+	calls   int
+	request BrowserLoadRequest
 }
 
 type articleBodyStub struct {
@@ -59,8 +60,9 @@ func (*filteredArticleBodyStub) Load(context.Context, api.Source, collector.Feed
 	return "", collector.ErrArticleFiltered
 }
 
-func (s *browserBodyStub) Load(_ context.Context, _, _ string) (string, error) {
+func (s *browserBodyStub) Load(_ context.Context, request BrowserLoadRequest) (string, error) {
 	s.calls++
+	s.request = request
 	return s.body, nil
 }
 
@@ -73,7 +75,7 @@ func TestArticleBodyLoaderUsesOneHTTPRequest_whenSourceAllowsRequests(t *testing
 			StatusCode: http.StatusOK,
 			Header:     http.Header{"Content-Type": []string{"text/html; charset=utf-8"}},
 			Body: io.NopCloser(strings.NewReader(
-				`<html><body><nav>Noise</nav><article><p>First paragraph.</p><p>Second paragraph.</p></article><aside>Related story noise</aside></body></html>`)),
+				`<html><body><main>Page noise</main><div id="articlebody"><p>First paragraph.</p><p>Second paragraph.</p></div></body></html>`)),
 			Request: request,
 		}, nil
 	})}
@@ -153,8 +155,9 @@ func TestArticleBodyLoaderUsesChromiumOnly_whenSourceIsBleepingComputer(t *testi
 		collector.FeedArticle{URL: "https://www.bleepingcomputer.com/news/security/article"})
 
 	// Then Chromium is used once and no ordinary HTTP request is attempted.
-	if err != nil || requests != 0 || browser.calls != 1 || body != "Browser-rendered article" {
-		t.Fatalf("HTTP requests = %d, browser calls = %d, body = %q, err = %v", requests, browser.calls, body, err)
+	if err != nil || requests != 0 || browser.calls != 1 || browser.request.SourceSlug != "bleepingcomputer" || body != "Browser-rendered article" {
+		t.Fatalf("HTTP requests = %d, browser calls = %d, source slug = %q, body = %q, err = %v",
+			requests, browser.calls, browser.request.SourceSlug, body, err)
 	}
 }
 

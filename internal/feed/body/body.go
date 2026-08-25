@@ -14,7 +14,13 @@ import (
 const maximumArticlePageBytes = 8 << 20
 
 type BrowserBodyLoader interface {
-	Load(ctx context.Context, articleURL, sourceHost string) (string, error)
+	Load(ctx context.Context, request BrowserLoadRequest) (string, error)
+}
+
+type BrowserLoadRequest struct {
+	ArticleURL string
+	SourceHost string
+	SourceSlug string
 }
 
 type ArticleBodyLoader struct {
@@ -53,7 +59,11 @@ func (l *ArticleBodyLoader) Load(ctx context.Context, source api.Source, article
 		if l.browser == nil {
 			return "", fmt.Errorf("Chromium is unavailable for %s", source.Slug)
 		}
-		return l.browser.Load(ctx, target.url.String(), target.policy.authority())
+		return l.browser.Load(ctx, BrowserLoadRequest{
+			ArticleURL: target.url.String(),
+			SourceHost: target.policy.authority(),
+			SourceSlug: source.Slug,
+		})
 	}
 	return l.loadHTTP(ctx, source.Slug, target)
 }

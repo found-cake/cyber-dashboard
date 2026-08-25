@@ -37,7 +37,7 @@ Object.defineProperty(article, "innerText", {get: () => {
 	t.Cleanup(loader.Close)
 
 	// When Chromium waits for and extracts the article.
-	body, err := loader.Load(ctx, server.URL, server.URL)
+	body, err := loader.Load(ctx, BrowserLoadRequest{ArticleURL: server.URL, SourceHost: server.URL})
 
 	// Then extraction returns the complete article from that single observation.
 	if err != nil {
@@ -53,7 +53,7 @@ func TestChromiumBodyLoaderReturnsBleepingComputerArticle_whenAdvertisementUsesG
 	advertisementText := strings.Repeat("advertisement copy ", 30)
 	articleText := strings.Repeat("security article details ", 30)
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
-		_, _ = fmt.Fprintf(writer, `<div class="article-body">%s</div><article><div class="articleBody">%s</div></article>`, advertisementText, articleText)
+		_, _ = fmt.Fprintf(writer, `<div class="articleBody">%s</div><article><div class="articleBody">%s</div></article>`, advertisementText, articleText)
 	}))
 	t.Cleanup(server.Close)
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
@@ -62,7 +62,11 @@ func TestChromiumBodyLoaderReturnsBleepingComputerArticle_whenAdvertisementUsesG
 	t.Cleanup(loader.Close)
 
 	// When Chromium extracts the page body.
-	body, err := loader.Load(ctx, server.URL, server.URL)
+	body, err := loader.Load(ctx, BrowserLoadRequest{
+		ArticleURL: server.URL,
+		SourceHost: server.URL,
+		SourceSlug: "bleepingcomputer",
+	})
 
 	// Then the BleepingComputer article is returned instead of the advertisement.
 	if err != nil {
@@ -70,6 +74,36 @@ func TestChromiumBodyLoaderReturnsBleepingComputerArticle_whenAdvertisementUsesG
 	}
 	if strings.TrimSpace(body) != strings.TrimSpace(articleText) {
 		t.Fatalf("body = %q, want BleepingComputer article", body)
+	}
+}
+
+func TestChromiumBodyLoaderReturnsTheHackerNewsArticle_whenPageContainsGenericMainNoise(t *testing.T) {
+	// Given a The Hacker News page with generic page content before its article container.
+	pageNoise := strings.Repeat("navigation and promotion copy ", 20)
+	articleText := strings.Repeat("security article details ", 30)
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = fmt.Fprintf(writer, `<main>%s</main><div id="articlebody">%s</div>`, pageNoise, articleText)
+	}))
+	t.Cleanup(server.Close)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	t.Cleanup(cancel)
+	loader := NewChromiumBodyLoader(ctx)
+	t.Cleanup(loader.Close)
+
+	// When Chromium extracts the source-specific article container.
+	body, err := loader.Load(ctx, BrowserLoadRequest{
+		ArticleURL: server.URL,
+		SourceHost: server.URL,
+		SourceSlug: "thehackernews",
+	})
+
+	// Then generic page noise is excluded from the returned article.
+	if err != nil {
+		t.Fatalf("load article: %v", err)
+	}
+	if strings.TrimSpace(body) != strings.TrimSpace(articleText) {
+		t.Fatalf("body = %q, want The Hacker News article", body)
 	}
 }
 
@@ -91,7 +125,7 @@ func TestChromiumBodyLoaderReturnsArticle_whenChallengeNavigatesToArticle(t *tes
 	t.Cleanup(loader.Close)
 
 	// When Chromium waits through the challenge navigation.
-	body, err := loader.Load(ctx, server.URL, server.URL)
+	body, err := loader.Load(ctx, BrowserLoadRequest{ArticleURL: server.URL, SourceHost: server.URL})
 
 	// Then extraction continues on the new document and returns the article.
 	if err != nil {
@@ -120,7 +154,7 @@ func TestChromiumBodyLoaderRejectsCrossHostDocumentRedirect_beforeLoadingDestina
 	t.Cleanup(loader.Close)
 
 	// When Chromium follows the initial navigation.
-	_, err := loader.Load(ctx, origin.URL, origin.URL)
+	_, err := loader.Load(ctx, BrowserLoadRequest{ArticleURL: origin.URL, SourceHost: origin.URL})
 
 	// Then the cross-host main-document request is blocked before reaching its server.
 	if err == nil {
