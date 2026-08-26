@@ -9,13 +9,18 @@ import (
 	"golang.org/x/net/html"
 )
 
-var articleContentSelectors = map[string][]string{
-	"boannews":         {}, // #article-view-content-div
-	"dailysecu":        {}, // #article-view-content-div
-	"thehackernews":    {"#articlebody", ".articlebody"},
-	"stepsecurity":     {}, // .blog-post-content_description
-	"darkreading":      {}, // .ContentModule-Wrapper
-	"bleepingcomputer": {"article .articleBody"},
+type selectorInfo struct {
+	querySelectors []string
+	needBrowser    bool
+}
+
+var articleContentSelectors = map[string]selectorInfo{
+	"boannews":         {}, // "#article-view-content-div"
+	"dailysecu":        {}, // "#article-view-content-div"
+	"thehackernews":    {querySelectors: []string{"#articlebody", ".articlebody"}},
+	"stepsecurity":     {}, // ".blog-post-content_description"
+	"darkreading":      {}, // ".ContentModule-Wrapper"
+	"bleepingcomputer": {querySelectors: []string{"article .articleBody"}, needBrowser: true},
 }
 
 var defaultArticleContentSelectors = []string{"article", "main", "body"}
@@ -74,14 +79,15 @@ func contentRoot(document *html.Node, sourceSlug string) *html.Node {
 }
 
 func selectorsForSource(sourceSlug string) []string {
-	selectors := make([]string, 0, len(articleContentSelectors[sourceSlug])+len(defaultArticleContentSelectors))
-	selectors = append(selectors, articleContentSelectors[sourceSlug]...)
+	info := articleContentSelectors[sourceSlug]
+	selectors := make([]string, 0, len(info.querySelectors)+len(defaultArticleContentSelectors))
+	selectors = append(selectors, info.querySelectors...)
 	return append(selectors, defaultArticleContentSelectors...)
 }
 
 func usesRSSMetadataOnly(sourceSlug string) bool {
-	selectors, configured := articleContentSelectors[sourceSlug]
-	return configured && len(selectors) == 0
+	info, configured := articleContentSelectors[sourceSlug]
+	return configured && len(info.querySelectors) == 0
 }
 
 func findElement(node *html.Node, selector string) *html.Node {

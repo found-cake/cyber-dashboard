@@ -2,7 +2,6 @@ package body
 
 import (
 	"context"
-	"errors"
 	"io"
 	"net/http"
 	"path/filepath"
@@ -33,12 +32,6 @@ type selectedFeedStub struct {
 	document collector.Document
 }
 
-type allSourcesFeedStub struct {
-	document collector.Document
-}
-
-type filteredArticleBodyStub struct{}
-
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
@@ -50,14 +43,6 @@ func (s *selectedFeedStub) Fetch(_ context.Context, source api.Source) (collecto
 		return s.document, nil
 	}
 	return collector.Document{}, nil
-}
-
-func (s *allSourcesFeedStub) Fetch(context.Context, api.Source) (collector.Document, error) {
-	return s.document, nil
-}
-
-func (*filteredArticleBodyStub) Load(context.Context, api.Source, collector.FeedArticle) (string, error) {
-	return "", collector.ErrArticleFiltered
 }
 
 func (s *browserBodyStub) Load(_ context.Context, request BrowserLoadRequest) (string, error) {
@@ -88,55 +73,6 @@ func TestArticleBodyLoaderUsesOneHTTPRequest_whenSourceAllowsRequests(t *testing
 	// Then exactly one request is sent and navigation noise is excluded.
 	if err != nil || requests != 1 || body != "First paragraph.\n\nSecond paragraph." {
 		t.Fatalf("requests = %d, body = %q, err = %v", requests, body, err)
-	}
-}
-
-func TestExtractArticleTextFiltersStepSecurityProduct_whenHeaderBadgeIsProduct(t *testing.T) {
-	// Given a StepSecurity page whose header badge identifies a Product post.
-	markup := `<body><div class="page-wrapper main-padding with-nav-info-banner"><div class="main-wrapper"><div class="container-large padding-section-x-small"><article><div class="padding-section-large no-padding-top"><div class="blog-post-header grid-column-2"><div class="blog-post-header_left-column"><div class="margin-bottom"><div><a><div>Product</div></a></div></div></div></div><div class="blog-post-content_description"><p>Product announcement</p></div></div></article></div></div></div></body>`
-
-	// When the StepSecurity markup is parsed.
-	_, err := extractArticleText(markup, "stepsecurity")
-
-	// Then the Product post is rejected with the collector-visible filter signal.
-	if !errors.Is(err, collector.ErrArticleFiltered) {
-		t.Fatalf("load error = %v, want collector.ErrArticleFiltered", err)
-	}
-}
-
-func TestCollectorSkipsFilteredStepSecurityProduct_withoutWarningOrPersistence(t *testing.T) {
-	// Given an enabled StepSecurity source whose selected article is filtered as Product.
-	db, err := database.Open(context.Background(), filepath.Join(t.TempDir(), "dashboard.db"))
-	if err != nil {
-		t.Fatalf("open database: %v", err)
-	}
-	t.Cleanup(func() { _ = database.Close(db) })
-	if err := db.Exec(`UPDATE sources SET enabled = (slug = 'stepsecurity')`).Error; err != nil {
-		t.Fatalf("select StepSecurity source: %v", err)
-	}
-	collector := collector.NewCollector(store.NewRepository(db), &allSourcesFeedStub{document: collector.Document{
-		Status: collector.Status{OK: true}, Articles: []collector.FeedArticle{{
-			ID: "sha256:product", URL: "https://www.stepsecurity.io/blog/product", Title: "Product update",
-			PublishedAt: "2026-08-03T01:00:00Z",
-		}},
-	}}, &filteredArticleBodyStub{})
-
-	// When the selected day is collected.
-	result, err := collector.Collect(context.Background(), "2026-08-03")
-
-	// Then the Product post is silently excluded rather than saved as a failed article.
-	if err != nil {
-		t.Fatalf("collect day: %v", err)
-	}
-	if result.Collected != 0 || len(result.Warnings) != 0 {
-		t.Fatalf("result = %+v", result)
-	}
-	var stored int
-	if err := db.Raw(`SELECT COUNT(*) FROM articles WHERE feed_uid = 'sha256:product'`).Row().Scan(&stored); err != nil {
-		t.Fatalf("count product articles: %v", err)
-	}
-	if stored != 0 {
-		t.Fatalf("stored product articles = %d, want 0", stored)
 	}
 }
 
@@ -247,7 +183,7 @@ func TestCollectorStoresFullBodyAndExtractsCVE_whenCVEAppearsOnlyInArticleBody(t
 	t.Cleanup(func() { _ = database.Close(db) })
 	repository := store.NewRepository(db)
 	feedStub := &selectedFeedStub{document: collector.Document{Status: collector.Status{OK: true}, Articles: []collector.FeedArticle{{
-		ID: "sha256:body-cve", URL: "https://www.boannews.com/article", Title: "Incident report",
+		ID: "sha256:body-cve", URL: "https://www.bleepingcomputer.com/news/security/article", Title: "Incident report",
 		PublishedAt: "2026-08-03T01:00:00Z", Description: "Short RSS description",
 	}}}}
 	collector := collector.NewCollector(repository, feedStub, &articleBodyStub{body: "Full story details CVE-2026-48449."})

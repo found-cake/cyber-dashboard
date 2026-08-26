@@ -54,8 +54,8 @@ func (l *ArticleBodyLoader) Load(ctx context.Context, source api.Source, article
 		return "", fmt.Errorf("invalid article URL: %w", err)
 	}
 	target := validatedArticleURL{url: parsed, policy: policy}
-	switch source.Slug {
-	case "darkreading", "bleepingcomputer":
+	info := articleContentSelectors[source.Slug]
+	if info.needBrowser {
 		if l.browser == nil {
 			return "", fmt.Errorf("Chromium is unavailable for %s", source.Slug)
 		}
