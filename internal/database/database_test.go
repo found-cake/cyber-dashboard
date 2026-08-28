@@ -27,12 +27,16 @@ func TestOpenAppliesSchemaAndSeedsIdempotently(t *testing.T) {
 		t.Fatalf("reopen database: %v", err)
 	}
 	t.Cleanup(func() { _ = Close(db) })
+	if !db.Migrator().HasColumn(&Article{}, "DataVolumeBytes") {
+		t.Fatal("articles.data_volume_bytes column is missing after migration")
+	}
 
 	// Then global source, language, and built-in preset defaults exist exactly once.
 	var sources, presets int
 	var language string
 	var llmTimeout int
 	var boannewsEnabled, bleepingEnabled bool
+	var dailysecu Source
 	if err := db.Raw(`SELECT COUNT(*) FROM sources`).Row().Scan(&sources); err != nil {
 		t.Fatalf("count sources: %v", err)
 	}
@@ -51,8 +55,11 @@ func TestOpenAppliesSchemaAndSeedsIdempotently(t *testing.T) {
 	if err := db.Raw(`SELECT enabled FROM sources WHERE slug = 'bleepingcomputer'`).Row().Scan(&bleepingEnabled); err != nil {
 		t.Fatalf("read BleepingComputer source: %v", err)
 	}
-	if sources != 6 || presets != 1 {
-		t.Fatalf("seed counts = sources:%d presets:%d, want 6 and 1", sources, presets)
+	if err := db.Where("slug = ?", "dailysecu").First(&dailysecu).Error; err != nil {
+		t.Fatalf("read DailySecu source: %v", err)
+	}
+	if sources != 7 || presets != 1 {
+		t.Fatalf("seed counts = sources:%d presets:%d, want 7 and 1", sources, presets)
 	}
 	if language != "en" {
 		t.Fatalf("default language = %q, want en", language)
@@ -65,6 +72,9 @@ func TestOpenAppliesSchemaAndSeedsIdempotently(t *testing.T) {
 	}
 	if !bleepingEnabled {
 		t.Fatal("BleepingComputer seed is disabled, want enabled")
+	}
+	if dailysecu.Name != "데일리시큐" || dailysecu.Host != "dailysecu.com" || dailysecu.Enabled {
+		t.Fatalf("DailySecu seed = %+v, want Korean name and disabled default", dailysecu)
 	}
 }
 

@@ -99,6 +99,31 @@ func TestFromDamageUsesLossThresholds_whenTheArticleStatesAnAmount(t *testing.T)
 	}
 }
 
+func TestFromDataVolumeUsesVolumeThresholds_whenTheArticleStatesLeakSize(t *testing.T) {
+	tests := []struct {
+		name  string
+		bytes int64
+		want  Level
+	}{
+		{name: "terabyte-scale leak", bytes: 1_000_000_000_000, want: Critical},
+		{name: "hundred-gigabyte leak", bytes: 100_000_000_000, want: High},
+		{name: "gigabyte-scale leak", bytes: 1_000_000_000, want: Medium},
+		{name: "smaller stated leak", bytes: 1, want: Low},
+		{name: "not stated", bytes: 0, want: Unknown},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			// When severity is calculated from the stated leaked-data volume.
+			got := FromDataVolume(test.bytes)
+
+			// Then byte volume contributes its own impact grade.
+			if got != test.want {
+				t.Fatalf("severity = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
 func TestMaxUsesDamage_whenItIsTheOnlyImpactSignal(t *testing.T) {
 	// Given a crypto theft article: no CVE, no victim count, only a stolen amount.
 	cvss := FromCVSS(0)

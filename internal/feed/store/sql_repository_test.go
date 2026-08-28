@@ -8,7 +8,29 @@ import (
 	"github.com/found-cake/cyber-dashboard/api"
 	"github.com/found-cake/cyber-dashboard/internal/database"
 	"github.com/found-cake/cyber-dashboard/internal/feed/collector"
+	"github.com/found-cake/cyber-dashboard/internal/summary"
 )
+
+func TestSourcesGroupsKoreanSources_whenDatabaseUsesSeedIDs(t *testing.T) {
+	// Given a database with the stable source IDs used by existing installations.
+	db, err := database.Open(context.Background(), filepath.Join(t.TempDir(), "dashboard.db"))
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	t.Cleanup(func() { _ = database.Close(db) })
+	repository := NewRepository(db)
+
+	// When sources are loaded for collection and settings.
+	sources, err := repository.Sources(context.Background())
+
+	// Then the two Korean sources are adjacent at the start of the list.
+	if err != nil {
+		t.Fatalf("load sources: %v", err)
+	}
+	if len(sources) < 2 || sources[0].Slug != "boannews" || sources[1].Slug != "dailysecu" {
+		t.Fatalf("source order = %+v, want boannews followed by dailysecu", sources)
+	}
+}
 
 func TestSaveDailySummaryReplacesValue_whenDayIsRegenerated(t *testing.T) {
 	// Given a saved daily summary.
@@ -95,5 +117,47 @@ func TestSaveArticleUsesEnglishPlaceholders_whenClassificationIsUnavailable(t *t
 	}
 	if attackMethod != "Unclassified" || threatActor != "Unknown" {
 		t.Fatalf("classifications = %q, %q, want Unclassified, Unknown", attackMethod, threatActor)
+	}
+}
+
+func TestArticlesForAnalysisPreservesRSSDescription_afterAnalysisSummaryIsSaved(t *testing.T) {
+	// Given two articles from an ordinary source, one with a body and one with RSS metadata only.
+	db, err := database.Open(context.Background(), filepath.Join(t.TempDir(), "dashboard.db"))
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	t.Cleanup(func() { _ = database.Close(db) })
+	repository := NewRepository(db)
+	day := "2026-08-03"
+	articles := []collector.FeedArticle{
+		{ID: "sha256:rss-fallback", URL: "https://example.com/rss", Title: "RSS article",
+			PublishedAt: day + "T01:00:00Z", Description: "RSS description"},
+		{ID: "sha256:full-body", URL: "https://example.com/body", Title: "Body article",
+			PublishedAt: day + "T02:00:00Z", Description: "RSS description", Body: "Full article body"},
+	}
+	for _, article := range articles {
+		if err := repository.SaveArticle(context.Background(), api.Source{ID: 1}, article, day); err != nil {
+			t.Fatalf("save article: %v", err)
+		}
+	}
+	var rssArticle database.Article
+	if err := db.Where("feed_uid = ?", "sha256:rss-fallback").First(&rssArticle).Error; err != nil {
+		t.Fatalf("load RSS article: %v", err)
+	}
+	if err := repository.SaveArticleAnalysis(context.Background(), rssArticle.ID, summary.ArticleAnalysis{
+		Summary: "AI-generated summary", AttackMethod: "Malware", ThreatActor: "Unknown", TargetSector: "Technology",
+	}); err != nil {
+		t.Fatalf("save article analysis: %v", err)
+	}
+
+	// When articles are selected for LLM classification.
+	candidates, err := repository.ArticlesForAnalysis(context.Background(), day)
+
+	// Then the publisher's RSS description remains the fallback and an available article body stays preferred.
+	if err != nil {
+		t.Fatalf("load analysis candidates: %v", err)
+	}
+	if len(candidates) != 2 || candidates[0].Body != "RSS description" || candidates[1].Body != "Full article body" {
+		t.Fatalf("analysis candidates = %+v", candidates)
 	}
 }

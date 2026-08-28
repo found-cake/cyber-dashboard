@@ -9,6 +9,22 @@ import (
 	"golang.org/x/net/html"
 )
 
+type selectorInfo struct {
+	querySelectors []string
+	needBrowser    bool
+}
+
+var articleContentSelectors = map[string]selectorInfo{
+	"boannews":         {}, // "#article-view-content-div"
+	"dailysecu":        {}, // "#article-view-content-div"
+	"thehackernews":    {querySelectors: []string{"#articlebody", ".articlebody"}},
+	"stepsecurity":     {}, // ".blog-post-content_description"
+	"darkreading":      {}, // ".ContentModule-Wrapper"
+	"bleepingcomputer": {querySelectors: []string{"article .articleBody"}, needBrowser: true},
+}
+
+var defaultArticleContentSelectors = []string{"article", "main", "body"}
+
 func extractArticleText(markup, sourceSlug string) (string, error) {
 	document, err := html.Parse(strings.NewReader(markup))
 	if err != nil {
@@ -54,18 +70,7 @@ func stepSecurityCategory(document *html.Node) string {
 }
 
 func contentRoot(document *html.Node, sourceSlug string) *html.Node {
-	selectors := map[string][]string{
-		"boannews":         {"#news_content"},
-		"thehackernews":    {"#articlebody", ".articlebody"},
-		"stepsecurity":     {".blog-post-content_description"},
-		"bleepingcomputer": {".articleBody", ".article-body"},
-	}
-	for _, selector := range selectors[sourceSlug] {
-		if node := findElement(document, selector); node != nil {
-			return node
-		}
-	}
-	for _, selector := range []string{"article", "main", "body"} {
+	for _, selector := range selectorsForSource(sourceSlug) {
 		if node := findElement(document, selector); node != nil {
 			return node
 		}
@@ -73,12 +78,38 @@ func contentRoot(document *html.Node, sourceSlug string) *html.Node {
 	return document
 }
 
+func selectorsForSource(sourceSlug string) []string {
+	info := articleContentSelectors[sourceSlug]
+	selectors := make([]string, 0, len(info.querySelectors)+len(defaultArticleContentSelectors))
+	selectors = append(selectors, info.querySelectors...)
+	return append(selectors, defaultArticleContentSelectors...)
+}
+
+func usesRSSMetadataOnly(sourceSlug string) bool {
+	info, configured := articleContentSelectors[sourceSlug]
+	return configured && len(info.querySelectors) == 0
+}
+
 func findElement(node *html.Node, selector string) *html.Node {
-	if matchesElement(node, selector) {
-		return node
+	return findElementPath(node, strings.Fields(selector))
+}
+
+func findElementPath(node *html.Node, selectors []string) *html.Node {
+	if len(selectors) == 0 {
+		return nil
+	}
+	if matchesElement(node, selectors[0]) {
+		if len(selectors) == 1 {
+			return node
+		}
+		for child := node.FirstChild; child != nil; child = child.NextSibling {
+			if match := findElementPath(child, selectors[1:]); match != nil {
+				return match
+			}
+		}
 	}
 	for child := node.FirstChild; child != nil; child = child.NextSibling {
-		if match := findElement(child, selector); match != nil {
+		if match := findElementPath(child, selectors); match != nil {
 			return match
 		}
 	}

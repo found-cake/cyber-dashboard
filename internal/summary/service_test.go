@@ -153,7 +153,7 @@ func TestServiceAnalyzeArticleRetriesOneInvalidResponse(t *testing.T) {
 		writer.Header().Set("Content-Type", "application/json")
 		content := `not JSON`
 		if requestCount == 2 {
-			content = `{"summary":"Recovered","attack_method":"Malware","threat_actor":"Unknown","actor_country":"","target_sector":"Finance","victim_count":0,"zero_day":false}`
+			content = `{"summary":"Recovered","attack_method":"Malware","threat_actor":"Unknown","actor_country":"","target_sector":"Finance","victim_count":0,"damage_usd":0,"data_volume":"","patch_available":"unknown","zero_day":false}`
 		}
 		encodedContent, _ := json.Marshal(content)
 		_, _ = fmt.Fprintf(writer, `{"id":"chatcmpl-test","object":"chat.completion","created":1,"model":"test-model","choices":[{"index":0,"message":{"role":"assistant","content":%s},"finish_reason":"stop"}]}`, encodedContent)

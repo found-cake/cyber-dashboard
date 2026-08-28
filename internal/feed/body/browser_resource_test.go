@@ -28,10 +28,10 @@ func TestChromiumBodyLoaderBoundsNavigationHistory_whenLoadingMultipleArticles(t
 	t.Cleanup(loader.Close)
 
 	// When the shared page loads multiple articles.
-	if _, err := loader.Load(ctx, server.URL+"/first", server.URL); err != nil {
+	if _, err := loader.Load(ctx, BrowserLoadRequest{ArticleURL: server.URL + "/first", SourceHost: server.URL}); err != nil {
 		t.Fatalf("load first article: %v", err)
 	}
-	if _, err := loader.Load(ctx, server.URL+"/second", server.URL); err != nil {
+	if _, err := loader.Load(ctx, BrowserLoadRequest{ArticleURL: server.URL + "/second", SourceHost: server.URL}); err != nil {
 		t.Fatalf("load second article: %v", err)
 	}
 	var historyLength int
@@ -59,7 +59,7 @@ func TestChromiumBodyLoaderInjectsDocumentScriptOnce_whenLoadingMultipleArticles
 
 	// When the shared page loads several articles in sequence.
 	for index := 0; index < 3; index++ {
-		if _, err := loader.Load(ctx, fmt.Sprintf("%s/article%d", server.URL, index), server.URL); err != nil {
+		if _, err := loader.Load(ctx, BrowserLoadRequest{ArticleURL: fmt.Sprintf("%s/article%d", server.URL, index), SourceHost: server.URL}); err != nil {
 			t.Fatalf("load article %d: %v", index, err)
 		}
 	}
@@ -109,7 +109,7 @@ func TestChromiumBodyLoaderDropsImageBytes_whileStillExtractingTheArticle(t *tes
 	t.Cleanup(loader.Close)
 
 	// When the article is loaded.
-	body, err := loader.Load(ctx, server.URL+"/article", server.URL)
+	body, err := loader.Load(ctx, BrowserLoadRequest{ArticleURL: server.URL + "/article", SourceHost: server.URL})
 
 	// Then the article text is complete and the image and font bytes were never fetched,
 	// while the stylesheet still loads so hidden content stays out of innerText.
@@ -144,7 +144,7 @@ func TestChromiumBodyLoaderIncludesPageState_whenCallerDeadlineExpires(t *testin
 	defer loadCancel()
 
 	// When the caller deadline expires during body polling.
-	_, err := loader.Load(loadContext, server.URL, server.URL)
+	_, err := loader.Load(loadContext, BrowserLoadRequest{ArticleURL: server.URL, SourceHost: server.URL})
 
 	// Then the error contains diagnostic page state instead of empty parentheses.
 	if err == nil || strings.HasSuffix(strings.TrimSpace(err.Error()), "()") {
@@ -175,7 +175,7 @@ func TestChromiumBodyLoaderReturnsArticle_beforeSlowSubresourceFinishes(t *testi
 	t.Cleanup(loader.Close)
 
 	// When Chromium extracts the article without waiting for the unrelated resource.
-	body, err := loader.Load(ctx, server.URL, server.URL)
+	body, err := loader.Load(ctx, BrowserLoadRequest{ArticleURL: server.URL, SourceHost: server.URL})
 
 	// Then the visible article is returned before the caller deadline expires.
 	if err != nil {
@@ -220,7 +220,7 @@ func TestChromiumBodyLoaderAllowsCrossHostSubresource_whenMainDocumentHostMatche
 	t.Cleanup(loader.Close)
 
 	// When Chromium loads the source-owned main document.
-	body, err := loader.Load(ctx, article.URL, article.URL)
+	body, err := loader.Load(ctx, BrowserLoadRequest{ArticleURL: article.URL, SourceHost: article.URL})
 
 	// Then the article and its cross-host subresource both load successfully.
 	if err != nil {
@@ -248,7 +248,7 @@ func TestChromiumBodyLoaderRecreatesBrowserSession_afterConnectionLoss(t *testin
 	t.Cleanup(cancel)
 	loader := NewChromiumBodyLoader(ctx)
 	t.Cleanup(loader.Close)
-	if _, err := loader.Load(ctx, server.URL+"/first", server.URL); err != nil {
+	if _, err := loader.Load(ctx, BrowserLoadRequest{ArticleURL: server.URL + "/first", SourceHost: server.URL}); err != nil {
 		t.Fatalf("load first article: %v", err)
 	}
 	firstBrowser := chromedp.FromContext(loader.context).Browser
@@ -266,7 +266,7 @@ func TestChromiumBodyLoaderRecreatesBrowserSession_afterConnectionLoss(t *testin
 	case <-ctx.Done():
 		t.Fatal("first Chromium connection did not close")
 	}
-	body, err := loader.Load(ctx, server.URL+"/second", server.URL)
+	body, err := loader.Load(ctx, BrowserLoadRequest{ArticleURL: server.URL + "/second", SourceHost: server.URL})
 
 	// Then the loader creates a new session and completes the next load.
 	if err != nil {

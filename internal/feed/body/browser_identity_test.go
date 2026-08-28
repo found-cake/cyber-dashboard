@@ -34,7 +34,7 @@ func TestChromiumBodyLoaderSendsNormalChromeUserAgent_whenNavigatingArticle(t *t
 	t.Cleanup(loader.Close)
 
 	// When Chromium navigates to the article.
-	if _, err := loader.Load(ctx, server.URL, server.URL); err != nil {
+	if _, err := loader.Load(ctx, BrowserLoadRequest{ArticleURL: server.URL, SourceHost: server.URL}); err != nil {
 		t.Fatalf("load article: %v", err)
 	}
 
@@ -72,7 +72,7 @@ func TestChromiumBodyLoaderSendsProcessArchitecture_whenServerRequestsClientHint
 	t.Cleanup(loader.Close)
 
 	// When Chromium follows the navigation after accepting the client hint.
-	if _, err := loader.Load(ctx, server.URL, server.URL); err != nil {
+	if _, err := loader.Load(ctx, BrowserLoadRequest{ArticleURL: server.URL, SourceHost: server.URL}); err != nil {
 		t.Fatalf("load article: %v", err)
 	}
 

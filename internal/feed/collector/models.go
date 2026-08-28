@@ -1,7 +1,6 @@
 package collector
 
 import (
-	"encoding/json"
 	"net/mail"
 	"strings"
 	"time"
@@ -17,15 +16,15 @@ type Status struct {
 }
 
 type FeedArticle struct {
-	ID             string                     `json:"id"`
-	URL            string                     `json:"url"`
-	Title          string                     `json:"title"`
-	PublishedAt    string                     `json:"published_at"`
-	PublishedRaw   string                     `json:"published_raw"`
-	Description    string                     `json:"description"`
-	Body           string                     `json:"-"`
-	Categories     []string                   `json:"categories"`
-	SourceMetadata map[string]json.RawMessage `json:"source_metadata"`
+	ID              string   `json:"id"`
+	URL             string   `json:"url"`
+	Title           string   `json:"title"`
+	PublishedAt     string   `json:"published_at"`
+	PublishedRaw    string   `json:"published_raw"`
+	Description     string   `json:"description"`
+	Body            string   `json:"-"`
+	Categories      []string `json:"categories"`
+	EmbeddedContent string   `json:"-"`
 }
 
 func (article FeedArticle) PublishedTime() (time.Time, bool) {

@@ -11,26 +11,22 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
 	"strings"
 )
 
 type listedModule struct {
-	Path    string
-	Version string
-	Dir     string
-	Main    bool
-	Replace *listedModule
+	Path        string
+	Version     string
+	Dir         string
+	Main        bool
+	Replace     *listedModule
+	PackageDirs []string `json:"-"`
 }
 
 type listedPackage struct {
 	Standard bool
+	Dir      string
 	Module   *listedModule
-}
-
-type licenseDocument struct {
-	Name string
-	Text string
 }
 
 type moduleNotice struct {
@@ -79,13 +75,19 @@ func discoverRuntimeModules(ctx context.Context, root string) ([]moduleNotice, e
 			return nil, err
 		}
 		for _, module := range listed {
+			if current, ok := modules[module.Path]; ok {
+				current.PackageDirs = append(current.PackageDirs, module.PackageDirs...)
+				modules[module.Path] = current
+				continue
+			}
 			modules[module.Path] = module
 		}
 	}
 
 	result := make([]moduleNotice, 0, len(modules))
 	for _, module := range modules {
-		licenses, err := readLicenseDocuments(module.Dir)
+		directories := append([]string{module.Dir}, module.PackageDirs...)
+		licenses, err := readLicenseDocumentsFrom(directories)
 		if err != nil {
 			return nil, fmt.Errorf("read licenses for %s: %w", module.Path, err)
 		}
@@ -117,6 +119,7 @@ func listRuntimeModules(ctx context.Context, root string, target buildTarget) ([
 		if module.Replace != nil {
 			module.Dir = module.Replace.Dir
 		}
+		module.PackageDirs = []string{pkg.Dir}
 		result = append(result, module)
 	}
 	return result, nil
@@ -150,34 +153,6 @@ func readStandardLibraryLicense(goRoot string) (string, error) {
 		return goStandardLibraryLicense, nil
 	}
 	return "", err
-}
-
-func readLicenseDocuments(directory string) ([]licenseDocument, error) {
-	entries, err := os.ReadDir(directory)
-	if err != nil {
-		return nil, err
-	}
-	result := make([]licenseDocument, 0, 2)
-	for _, entry := range entries {
-		if entry.IsDir() || !isLicenseFilename(entry.Name()) {
-			continue
-		}
-		contents, err := os.ReadFile(filepath.Join(directory, entry.Name()))
-		if err != nil {
-			return nil, err
-		}
-		result = append(result, licenseDocument{Name: entry.Name(), Text: string(contents)})
-	}
-	if len(result) == 0 {
-		return nil, fmt.Errorf("no top-level license, copying, or notice file in %s", directory)
-	}
-	sort.Slice(result, func(left, right int) bool { return result[left].Name < result[right].Name })
-	return result, nil
-}
-
-func isLicenseFilename(name string) bool {
-	upper := strings.ToUpper(name)
-	return strings.HasPrefix(upper, "LICENSE") || strings.HasPrefix(upper, "COPYING") || strings.HasPrefix(upper, "NOTICE")
 }
 
 func discoverBundledAssets(root string) ([]assetNotice, error) {

@@ -2,7 +2,6 @@ package body
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -15,7 +14,13 @@ import (
 const maximumArticlePageBytes = 8 << 20
 
 type BrowserBodyLoader interface {
-	Load(ctx context.Context, articleURL, sourceHost string) (string, error)
+	Load(ctx context.Context, request BrowserLoadRequest) (string, error)
+}
+
+type BrowserLoadRequest struct {
+	ArticleURL string
+	SourceHost string
+	SourceSlug string
 }
 
 type ArticleBodyLoader struct {
@@ -31,6 +36,9 @@ func NewArticleBodyLoader(client *http.Client, browser BrowserBodyLoader) *Artic
 }
 
 func (l *ArticleBodyLoader) Load(ctx context.Context, source api.Source, article collector.FeedArticle) (string, error) {
+	if usesRSSMetadataOnly(source.Slug) {
+		return "", nil
+	}
 	if source.Slug == "cybersecuritynews" {
 		return embeddedArticleBody(article)
 	}
@@ -46,26 +54,23 @@ func (l *ArticleBodyLoader) Load(ctx context.Context, source api.Source, article
 		return "", fmt.Errorf("invalid article URL: %w", err)
 	}
 	target := validatedArticleURL{url: parsed, policy: policy}
-	switch source.Slug {
-	case "darkreading", "bleepingcomputer":
+	info := articleContentSelectors[source.Slug]
+	if info.needBrowser {
 		if l.browser == nil {
 			return "", fmt.Errorf("Chromium is unavailable for %s", source.Slug)
 		}
-		return l.browser.Load(ctx, target.url.String(), target.policy.authority())
+		return l.browser.Load(ctx, BrowserLoadRequest{
+			ArticleURL: target.url.String(),
+			SourceHost: target.policy.authority(),
+			SourceSlug: source.Slug,
+		})
 	}
 	return l.loadHTTP(ctx, source.Slug, target)
 }
 
 func embeddedArticleBody(article collector.FeedArticle) (string, error) {
-	raw, ok := article.SourceMetadata["cybersecuritynews"]
-	if !ok {
+	if article.EmbeddedContent == "" {
 		return "", fmt.Errorf("Cybersecurity News content is missing")
 	}
-	var metadata struct {
-		Content string `json:"content_encoded"`
-	}
-	if err := json.Unmarshal(raw, &metadata); err != nil {
-		return "", fmt.Errorf("decode Cybersecurity News content: %w", err)
-	}
-	return extractArticleText(metadata.Content, "")
+	return extractArticleText(article.EmbeddedContent, "")
 }

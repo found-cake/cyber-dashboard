@@ -44,6 +44,19 @@ func TestSourceSettingsWaitForSaveAndSupportRevert(t *testing.T) {
 				t.Fatalf("initialize dashboard: %v", err)
 			}
 			openSettingsPage(t, browser, viewport.width)
+			if err := chromedp.Run(browser, chromedp.Poll(`(() => {
+					const rows = [...document.querySelectorAll('[data-source-row]')];
+					return rows[0]?.textContent.includes('보안뉴스') && rows[1]?.textContent.includes('데일리시큐');
+				})()`, nil)); err != nil {
+				t.Fatalf("inspect adjacent Korean sources: %v", err)
+			}
+			if err := chromedp.Run(browser, chromedp.Poll(`(() => {
+					const toggle = document.querySelector('[data-source-id="7"]');
+					const row = toggle?.closest('[data-source-row]');
+					return toggle?.getAttribute('aria-checked') === 'false' && row?.textContent.includes('데일리시큐');
+				})()`, nil)); err != nil {
+				t.Fatalf("inspect disabled DailySecu source: %v", err)
+			}
 			if err := chromedp.Run(browser, chromedp.Evaluate(fmt.Sprintf(`localStorage.setItem("cyber-theme", %q); document.documentElement.dataset.theme = %q`, theme, theme), nil)); err != nil {
 				t.Fatalf("apply %s theme: %v", theme, err)
 			}
@@ -110,7 +123,8 @@ func TestSourceSettingsWaitForSaveAndSupportRevert(t *testing.T) {
 func newSourceSettingsBrowserServer(t *testing.T, savedRequests chan<- api.SaveSettingsRequest, language string) *httptest.Server {
 	t.Helper()
 	sources := []api.Source{
-		{ID: 1, Name: "BoanNews", Host: "boannews.com", Slug: "boannews", Enabled: false},
+		{ID: 1, Name: "보안뉴스", Host: "boannews.com", Slug: "boannews", Enabled: false},
+		{ID: 7, Name: "데일리시큐", Host: "dailysecu.com", Slug: "dailysecu", Enabled: false},
 		{ID: 2, Name: "BleepingComputer", Host: "bleepingcomputer.com", Slug: "bleepingcomputer", Enabled: true},
 		{ID: 3, Name: "Cybersecurity News", Host: "cybersecuritynews.com", Slug: "cybersecuritynews", Enabled: true},
 		{ID: 4, Name: "Dark Reading TI", Host: "darkreading.com", Slug: "darkreading", Enabled: true},
@@ -171,11 +185,22 @@ func captureSourceSettingsScreenshot(t *testing.T, browser context.Context, capt
 		t.Fatalf("create visual QA directory: %v", err)
 	}
 	var screenshot []byte
+	var sourceScreenshot []byte
 	if err := chromedp.Run(browser,
+		chromedp.ScrollIntoView(`[data-source-id="7"]`, chromedp.ByQuery),
 		chromedp.Poll(`document.querySelector('#settings-save-bar').getAnimations().every(animation => animation.playState === 'finished')`, nil),
+		chromedp.Evaluate(`(() => {
+			const scroller = document.querySelector('#main-content');
+			const row = document.querySelector('[data-source-id="7"]').closest('.source-row');
+			const saveBar = document.querySelector('#settings-save-bar');
+			scroller.scrollTop += row.getBoundingClientRect().bottom - saveBar.getBoundingClientRect().top + 16;
+		})()`, nil),
+		chromedp.Poll(`document.querySelector('[data-source-id="7"]').closest('.source-row').getBoundingClientRect().bottom <= document.querySelector('#settings-save-bar').getBoundingClientRect().top - 12`, nil),
 		chromedp.Screenshot(`.app-shell`, &screenshot, chromedp.ByQuery),
+		chromedp.Screenshot(`.source-row:has([data-source-id="7"])`, &sourceScreenshot, chromedp.ByQuery),
 	); err != nil {
 		t.Fatalf("capture source settings at %dpx: %v", capture.width, err)
 	}
 	writeSettingsScreenshot(t, directory, fmt.Sprintf("source-draft-%s-%s", capture.language, capture.theme), capture.width, screenshot)
+	writeSettingsScreenshot(t, directory, fmt.Sprintf("dailysecu-row-%s-%s", capture.language, capture.theme), capture.width, sourceScreenshot)
 }

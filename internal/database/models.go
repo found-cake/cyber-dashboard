@@ -9,26 +9,28 @@ type Source struct {
 }
 
 type Article struct {
-	ID             int64  `gorm:"primaryKey;autoIncrement;index:articles_published_at_time_id_idx,priority:3"`
-	SourceID       int64  `gorm:"not null"`
-	Source         Source `gorm:"constraint:OnUpdate:NO ACTION,OnDelete:NO ACTION"`
-	FeedUID        string `gorm:"not null;uniqueIndex"`
-	Title          string `gorm:"not null"`
-	URL            string `gorm:"not null"`
-	PublishedAt    string `gorm:"index:articles_published_at_time_id_idx,priority:1"`
-	PublishedTime  string `gorm:"not null;default:'';index:articles_published_at_time_id_idx,priority:2"`
-	CollectedAt    string `gorm:"not null"`
-	Body           string `gorm:"not null;default:''"`
-	Summary        string `gorm:"not null;default:''"`
-	AttackMethod   string `gorm:"not null;default:Unclassified"`
-	ThreatActor    string `gorm:"not null;default:Unknown"`
-	ActorCountry   string `gorm:"not null;default:''"`
-	Sector         string `gorm:"not null;default:일반"`
-	VictimCount    int    `gorm:"not null;default:0"`
-	DamageUSD      int64  `gorm:"not null;default:0"`
-	ZeroDay        bool   `gorm:"not null;default:false"`
-	PatchAvailable string `gorm:"not null;default:''"`
-	Severity       string `gorm:"not null;default:UNKNOWN"`
+	ID              int64  `gorm:"primaryKey;autoIncrement;index:articles_published_at_time_id_idx,priority:3"`
+	SourceID        int64  `gorm:"not null"`
+	Source          Source `gorm:"constraint:OnUpdate:NO ACTION,OnDelete:NO ACTION"`
+	FeedUID         string `gorm:"not null;uniqueIndex"`
+	Title           string `gorm:"not null"`
+	URL             string `gorm:"not null"`
+	PublishedAt     string `gorm:"index:articles_published_at_time_id_idx,priority:1"`
+	PublishedTime   string `gorm:"not null;default:'';index:articles_published_at_time_id_idx,priority:2"`
+	CollectedAt     string `gorm:"not null"`
+	Body            string `gorm:"not null;default:''"`
+	FeedDescription string `gorm:"not null;default:''"`
+	Summary         string `gorm:"not null;default:''"`
+	AttackMethod    string `gorm:"not null;default:Unclassified"`
+	ThreatActor     string `gorm:"not null;default:Unknown"`
+	ActorCountry    string `gorm:"not null;default:''"`
+	Sector          string `gorm:"not null;default:일반"`
+	VictimCount     int    `gorm:"not null;default:0"`
+	DamageUSD       int64  `gorm:"not null;default:0"`
+	DataVolumeBytes int64  `gorm:"not null;default:0"`
+	ZeroDay         bool   `gorm:"not null;default:false"`
+	PatchAvailable  string `gorm:"not null;default:''"`
+	Severity        string `gorm:"not null;default:UNKNOWN"`
 }
 
 type DailySummary struct {
