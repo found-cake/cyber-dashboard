@@ -14,7 +14,7 @@ require (
 	golang.org/x/net v0.58.0
 	golang.org/x/text v0.41.0
 	gorm.io/gorm v1.31.2
-	modernc.org/sqlite v1.57.0
+	modernc.org/sqlite v1.58.0
 )
 
 require (
