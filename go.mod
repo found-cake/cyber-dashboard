@@ -12,7 +12,7 @@ require (
 	github.com/openai/openai-go/v3 v3.61.0
 	golang.org/x/crypto v0.56.0
 	golang.org/x/net v0.58.0
-	golang.org/x/text v0.41.0
+	golang.org/x/text v0.42.0
 	gorm.io/gorm v1.31.2
 	modernc.org/sqlite v1.58.0
 )
