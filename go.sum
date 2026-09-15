@@ -42,8 +42,8 @@ github.com/mattn/go-sqlite3 v1.14.22 h1:2gZY6PC6kBnID23Tichd1K+Z0oS6nE/XwU+Vz/5o
 github.com/mattn/go-sqlite3 v1.14.22/go.mod h1:Uh1q+B4BYcTPb+yiD3kU8Ct7aC0hY9fxUwlHK0RXw+Y=
 github.com/ncruces/go-strftime v1.0.0 h1:HMFp8mLCTPp341M/ZnA4qaf7ZlsbTc+miZjCLOFAw7w=
 github.com/ncruces/go-strftime v1.0.0/go.mod h1:Fwc5htZGVVkseilnfgOVb9mKy6w1naJmn9CehxcKcls=
-github.com/openai/openai-go/v3 v3.56.0 h1:Xb+gsS7Gsb5dx+Uat9BHTWhifAOvQjU+pQNWT/HXeWQ=
-github.com/openai/openai-go/v3 v3.56.0/go.mod h1:ufI1+K+t0ijRB3gk8eztiw1crcDpsBuxRQL4sbLIrts=
+github.com/openai/openai-go/v3 v3.61.0 h1:nMLuGFdKBF0sB3qFVNwE8kpBpenVN1ucYRoKcx7E1u0=
+github.com/openai/openai-go/v3 v3.61.0/go.mod h1:ufI1+K+t0ijRB3gk8eztiw1crcDpsBuxRQL4sbLIrts=
 github.com/orisano/pixelmatch v0.0.0-20220722002657-fb0b55479cde h1:x0TT0RDC7UhAVbbWWBzr41ElhJx5tXPWkIHA2HWPRuw=
 github.com/orisano/pixelmatch v0.0.0-20220722002657-fb0b55479cde/go.mod h1:nZgzbfBr3hhjoZnS66nKrHmduYNpc34ny7RK4z5/HM0=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
