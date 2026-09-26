@@ -119,6 +119,10 @@ Collection may take several minutes because the application can load full articl
 
 Select **New** beside Reports, choose a weekly or monthly period, and generate the report. The report synthesizes the stored daily summary for every active day in the period; it is not created if any required daily summary is missing. Reports use the language and timezone saved in Settings at generation time. Deleting a report requires confirmation.
 
+Weekly and monthly reports include threat-category and threat-actor charts. For fast reads, generation saves only the category and actor counts, not chart images or comparison results. Each read selects the latest earlier, non-overlapping report of the same type and calculates category-share changes in percentage points and actor article-count changes, showing the comparison dates. Older reports without saved counts fall back to retained articles from their periods; missing data is shown as unavailable, not as a zero change. Charts and changes are included in PDF exports. Daily summaries do not include these charts.
+
+Threat categories show the union of the current top seven and previous top seven (up to fourteen entries); actors retain the current and previous top five (up to ten). Duplicates are removed, and fewer real labels are shown when less data exists. Percentages retain the full-period denominator. Rows cycle through the dashboard palette; each current bar overlays a lighter tint of the same color for the previous period, from the same origin in one track. A reference line marks the previous value; an arrow points from previous to current (right for increase, left for decrease). Bold increase/decrease/no-change text accompanies the signed difference. Each panel uses one labeled, zero-based scale covering both periods. The same charts appear on screen and in PDFs without requiring hover. PDFs preserve the original cover content, with charts starting on the following page.
+
 <details>
 <summary>Weekly report example</summary>
 

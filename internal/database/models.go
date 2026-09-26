@@ -85,6 +85,7 @@ type Report struct {
 	Medium      int    `gorm:"not null"`
 	TopThreat   string `gorm:"not null"`
 	TopThreats  string `gorm:"not null;default:'[]'"`
+	Charts      string `gorm:"not null;default:''"`
 	Actors      string `gorm:"not null"`
 	Sectors     string `gorm:"not null"`
 	Summary     string `gorm:"not null"`

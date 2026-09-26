@@ -143,7 +143,7 @@ func NewServer(dependencies Dependencies) *Server {
 		return func(c *echo.Context) error {
 			requestPath := c.Request().URL.Path
 			cacheControl := staticAssetCacheControl
-			if requestPath == "/app.js" || strings.HasSuffix(requestPath, "/") || strings.HasSuffix(requestPath, ".html") {
+			if strings.HasSuffix(requestPath, ".js") || strings.HasSuffix(requestPath, "/") || strings.HasSuffix(requestPath, ".html") {
 				cacheControl = staticDocumentCacheControl
 			}
 			c.Response().Header().Set(echo.HeaderCacheControl, cacheControl)

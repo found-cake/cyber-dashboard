@@ -43,9 +43,16 @@
     .threat-rank { text-align: end; font-variant-numeric: tabular-nums; }
     .chips { display: flex; flex-wrap: wrap; gap: 2mm; }
     .chip { display: inline-block; padding: 1.5mm 2.5mm; background: var(--surface); color: var(--muted); font-size: 8pt; }
+    .report-charts { --t1: var(--ink); --t2: var(--muted); --cb: var(--rule); --divider: var(--surface); --on-accent: #fff; --chart-1: var(--accent); --chart-2: var(--critical); --chart-3: var(--high); --chart-4: #1a7f37; --chart-5: var(--muted); --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-6: 24px; --radius-card: 12px; }
     @media screen { body { padding-block: 14mm; } }
     @media screen and (max-width: 700px) { body { padding: 16px; } .paper { width: 100%; min-height: auto; } .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-    @media print { html, body { background: #fff; } .paper { width: auto; min-height: auto; margin: 0; } }
+    @media print {
+      html, body { background: #fff; }
+      .paper { width: auto; min-height: auto; margin: 0; }
+      .paper > .report-charts { break-before: page; page-break-before: always; margin-block: 0 4mm; }
+      .paper:has(> .report-charts) .report-details { break-before: auto; page-break-before: auto; }
+      .paper:has(> .report-charts) .report-summary > h3 { break-after: avoid; page-break-after: avoid; }
+    }
   `;
 
   const text = value => String(value == null ? "" : value)
@@ -55,7 +62,7 @@
   const array = value => Array.isArray(value) ? value : [];
 
   function documentHTML(title, subtitle, copy, body) {
-    return `<!doctype html><html lang="${text(copy.language)}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${text(title)} · Cyber Dashboard</title><style>${EXPORT_STYLES}</style></head><body><main class="paper"><header class="document-header"><div class="eyebrow">Cyber Dashboard</div><h1>${text(title)}</h1><p class="subtitle">${text(subtitle)}</p><p class="generated">${text(copy.generatedBy)}</p></header>${body}</main></body></html>`;
+    return `<!doctype html><html lang="${text(copy.language)}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${text(title)} · Cyber Dashboard</title><style>${EXPORT_STYLES}${reportCharts.styles}</style></head><body><main class="paper"><header class="document-header"><div class="eyebrow">Cyber Dashboard</div><h1>${text(title)}</h1><p class="subtitle">${text(subtitle)}</p><p class="generated">${text(copy.generatedBy)}</p></header>${body}</main></body></html>`;
   }
 
   function metric(value, label, tone = "") {
@@ -112,7 +119,7 @@
     const threatList = threats.length ? `<ol class="threat-list">${threats.map((threat, index) => `<li><span class="threat-rank" aria-hidden="true">${index + 1}.</span><span>${text(threat.title)}</span></li>`).join("")}</ol>` : `<p class="section-body">${text(copy.none)}</p>`;
     const sectors = array(report.sectors).map(sector => `<span class="chip">${text(sector)}</span>`).join("") || `<span class="section-body">${text(copy.none)}</span>`;
     const summary = reportSummarySections(report.summary, copy);
-    const body = `<section class="report-cover"><section class="metric-grid">${metric(report.total, copy.labels.total, "total")}${metric(report.critical, copy.labels.critical, "critical")}${metric(report.high, copy.labels.high, "high")}${metric(report.medium, copy.labels.medium, "medium")}</section><section class="section"><h3>${text(copy.labels.topThreat)}</h3>${threatList}</section>${actorSection}${summary.cover}</section><section class="report-details">${summary.details}<section class="section"><h3>${text(copy.labels.sectors)}</h3><div class="chips">${sectors}</div></section></section>`;
+    const body = `<section class="report-cover"><section class="metric-grid">${metric(report.total, copy.labels.total, "total")}${metric(report.critical, copy.labels.critical, "critical")}${metric(report.high, copy.labels.high, "high")}${metric(report.medium, copy.labels.medium, "medium")}</section><section class="section"><h3>${text(copy.labels.topThreat)}</h3>${threatList}</section>${actorSection}${summary.cover}</section>${reportCharts.render(report, copy.language)}<section class="report-details">${summary.details}<section class="section"><h3>${text(copy.labels.sectors)}</h3><div class="chips">${sectors}</div></section></section>`;
     return documentHTML(`${type} ${copy.reportWord}`, `${report.period_start} – ${report.period_end}`, copy, body);
   }
 

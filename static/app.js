@@ -1459,13 +1459,19 @@
     const actors = report.actors.map(actor => esc(actor)).join(" · ") || esc(t("unknownActor"));
     const threats = reportThreats(report);
     const threatList = threats.length ? `<ol class="report-threat-list">${threats.map(threat => `<li>${esc(threat.title)}</li>`).join("")}</ol>` : `<p>${esc(t("none"))}</p>`;
+    const summary = String(report.summary || "");
+    const detailsAt = summary.search(/^[ \t]*■/m);
+    const overview = detailsAt < 0 ? summary : summary.slice(0, detailsAt).trim();
+    const details = detailsAt < 0 ? "" : summary.slice(detailsAt).trim();
     const deleteAction = isAuthenticated() ? `<button class="danger-button" id="delete-report" type="button">${esc(t("deleteReport"))}</button>` : "";
     $("#main-content").html(`<div class="content"><article class="report-sheet">
       <header class="report-sheet-header"><div><h2>${esc(report.type === "weekly" ? t("weekly") : t("monthly"))}</h2><p>${esc(report.period_start)} – ${esc(report.period_end)}</p></div><div class="cluster report-sheet-actions">${pdfDownloadHTML("report")}${deleteAction}</div></header>
       <div class="report-metrics"><div><strong class="tone-info">${report.total}</strong><span>${esc(t("total"))}</span></div><div><strong class="tone-danger">${report.critical}</strong><span>${esc(t("critical"))}</span></div><div><strong class="tone-warning">${report.high}</strong><span>${esc(t("high"))}</span></div><div><strong>${report.medium}</strong><span>${esc(t("medium"))}</span></div></div>
       <section class="report-section"><h3>${esc(t("topThreat"))}</h3>${threatList}</section>
       <section class="report-section"><h3>${esc(t("keyActors"))}</h3><p>${actors}</p></section>
-      <section class="report-section"><h3>${esc(t("summary"))}</h3><p class="prose">${esc(report.summary)}</p></section>
+      <section class="report-section"><h3>${esc(t("summary"))}</h3><p class="prose">${esc(overview)}</p></section>
+      <style>${reportCharts.styles}</style>${reportCharts.render(report, state.lang)}
+      ${details ? `<section class="report-section report-summary-details"><p class="prose">${esc(details)}</p></section>` : ""}
       <section class="report-section"><h3>${esc(t("targetSectors"))}</h3><div class="report-sectors">${report.sectors.map(sector => `<span>${esc(sector)}</span>`).join("")}</div></section>
     </article></div>`);
     applyViewScroll(`report:${report.id}`);

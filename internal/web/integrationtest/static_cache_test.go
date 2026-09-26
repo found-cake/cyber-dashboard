@@ -13,10 +13,12 @@ import (
 func TestStaticCacheControl(t *testing.T) {
 	// Given a real router serving both cacheable assets and revalidated documents.
 	assets := fs.FS(fstest.MapFS{
-		"app.js":        {Data: []byte("console.log('ok')")},
-		"index.html":    {Data: []byte("index")},
-		"showcase.html": {Data: []byte("showcase")},
-		"styles.css":    {Data: []byte("body {}")},
+		"app.js":           {Data: []byte("console.log('ok')")},
+		"report-charts.js": {Data: []byte("window.reportCharts = {}")},
+		"export.js":        {Data: []byte("window.cyberDashboardExport = {}")},
+		"index.html":       {Data: []byte("index")},
+		"showcase.html":    {Data: []byte("showcase")},
+		"styles.css":       {Data: []byte("body {}")},
 	})
 	server := web.NewServer(web.Dependencies{Assets: assets, AllowUntrustedHosts: true})
 	tests := []struct {
@@ -28,6 +30,9 @@ func TestStaticCacheControl(t *testing.T) {
 		{name: "root document", path: "/", wantStatus: http.StatusOK, wantCacheCtl: "no-cache"},
 		{name: "named document", path: "/showcase.html", wantStatus: http.StatusOK, wantCacheCtl: "no-cache"},
 		{name: "application script", path: "/app.js", wantStatus: http.StatusOK, wantCacheCtl: "no-cache"},
+		{name: "report chart script", path: "/report-charts.js", wantStatus: http.StatusOK, wantCacheCtl: "no-cache"},
+		{name: "report chart cache bust", path: "/report-charts.js?v=2", wantStatus: http.StatusOK, wantCacheCtl: "no-cache"},
+		{name: "PDF export script", path: "/export.js", wantStatus: http.StatusOK, wantCacheCtl: "no-cache"},
 		{name: "stylesheet asset", path: "/styles.css", wantStatus: http.StatusOK, wantCacheCtl: "public, max-age=3600"},
 		{name: "health endpoint", path: "/healthz", wantStatus: http.StatusOK},
 		{name: "missing asset", path: "/missing.js", wantStatus: http.StatusNotFound},

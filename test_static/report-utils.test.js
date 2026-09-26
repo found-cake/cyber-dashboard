@@ -43,7 +43,7 @@ test("report threats preserve reports created before structured lists", () => {
 test("index loads report utilities before report renderers", () => {
   const source = fs.readFileSync(path.join(__dirname, "../static/index.html"), "utf8");
   const utilities = source.indexOf('<script defer src="/report-utils.js"></script>');
-  const exporter = source.indexOf('<script defer src="/export.js"></script>');
+  const exporter = source.indexOf('<script defer src="/export.js');
   const app = source.indexOf('<script defer src="/app.js"></script>');
 
   assert.ok(utilities >= 0 && utilities < exporter && exporter < app);

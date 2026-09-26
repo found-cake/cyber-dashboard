@@ -24,6 +24,21 @@ type Report struct {
 	Sectors     []string       `json:"sectors"`
 	Summary     string         `json:"summary"`
 	GeneratedAt string         `json:"generated_at"`
+	Charts      *ReportCharts  `json:"charts,omitempty"`
+}
+
+type ReportCharts struct {
+	AttackMethods []BreakdownRow       `json:"attack_methods"`
+	ThreatActors  []BreakdownRow       `json:"threat_actors"`
+	Previous      *ReportChartBaseline `json:"previous,omitempty"`
+}
+
+type ReportChartBaseline struct {
+	ReportID      int64          `json:"report_id"`
+	PeriodStart   string         `json:"period_start"`
+	PeriodEnd     string         `json:"period_end"`
+	AttackMethods []BreakdownRow `json:"attack_methods"`
+	ThreatActors  []BreakdownRow `json:"threat_actors"`
 }
 
 type ReportThreat struct {

@@ -37,7 +37,11 @@ func (r *Repository) List(ctx context.Context) ([]api.Report, error) {
 	}
 	reports := make([]api.Report, 0, len(stored))
 	for _, item := range stored {
-		reports = append(reports, decodeReport(item))
+		value, err := r.withCharts(ctx, decodeReport(item))
+		if err != nil {
+			return nil, err
+		}
+		reports = append(reports, value)
 	}
 	return reports, nil
 }
@@ -62,7 +66,7 @@ func (r *Repository) Get(ctx context.Context, id int64) (api.Report, error) {
 	if err != nil {
 		return api.Report{}, fmt.Errorf("query report %d: %w", id, err)
 	}
-	return decodeReport(stored), nil
+	return r.withCharts(ctx, decodeReport(stored))
 }
 
 // decodeReport restores a stored row, falling back to the legacy single top threat.
@@ -74,7 +78,8 @@ func decodeReport(item database.Report) api.Report {
 	return api.Report{ID: item.ID, Type: item.Type, PeriodStart: item.PeriodStart,
 		PeriodEnd: item.PeriodEnd, Total: item.Total, Critical: item.Critical, High: item.High,
 		Medium: item.Medium, TopThreat: item.TopThreat, TopThreats: threats, Actors: decodeValues[string](item.Actors),
-		Sectors: decodeValues[string](item.Sectors), Summary: item.Summary, GeneratedAt: item.GeneratedAt}
+		Sectors: decodeValues[string](item.Sectors), Summary: item.Summary, GeneratedAt: item.GeneratedAt,
+		Charts: decodeChartSnapshot(item.Charts)}
 }
 
 func (r *Repository) Build(ctx context.Context, request api.CreateReportRequest) (draft, error) {
@@ -140,14 +145,26 @@ func (r *Repository) Save(ctx context.Context, value api.Report, timezoneOffsetM
 	if err != nil {
 		return api.Report{}, err
 	}
+	value.Charts = nil
+	switch value.Type {
+	case "weekly", "monthly":
+		value.Charts, err = r.periodCharts(ctx, valuePeriod{start: value.PeriodStart, end: value.PeriodEnd})
+		if err != nil {
+			return api.Report{}, err
+		}
+	}
+	charts, err := encodeChartSnapshot(value.Charts)
+	if err != nil {
+		return api.Report{}, err
+	}
 	stored := database.Report{Type: value.Type, PeriodStart: value.PeriodStart, PeriodEnd: value.PeriodEnd,
 		Total: value.Total, Critical: value.Critical, High: value.High, Medium: value.Medium,
-		TopThreat: value.TopThreat, TopThreats: threats, Actors: actors, Sectors: sectors, Summary: value.Summary, GeneratedAt: value.GeneratedAt}
+		TopThreat: value.TopThreat, TopThreats: threats, Charts: charts, Actors: actors, Sectors: sectors, Summary: value.Summary, GeneratedAt: value.GeneratedAt}
 	if err := r.db.WithContext(ctx).Create(&stored).Error; err != nil {
 		return api.Report{}, fmt.Errorf("insert report: %w", err)
 	}
 	value.ID = stored.ID
-	return value, nil
+	return r.withCharts(ctx, value)
 }
 
 func (r *Repository) Delete(ctx context.Context, id int64) error {
