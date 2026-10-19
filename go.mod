@@ -3,8 +3,8 @@ module github.com/found-cake/cyber-dashboard
 go 1.27
 
 require (
-	github.com/chromedp/cdproto v0.0.0-20260922220944-a19bff23514f
-	github.com/chromedp/chromedp v0.16.0
+	github.com/chromedp/cdproto v0.157.8
+	github.com/chromedp/chromedp v0.21.0
 	github.com/found-cake/cyber-news-feed v1.2.1
 	github.com/found-cake/gorm-sqlite v0.1.4
 	github.com/golang-jwt/jwt/v5 v5.3.1
@@ -18,13 +18,9 @@ require (
 )
 
 require (
-	github.com/chromedp/sysutil v1.1.0 // indirect
 	github.com/coder/websocket v1.8.15 // indirect
 	github.com/dustin/go-humanize v1.1.0 // indirect
 	github.com/go-json-experiment/json v0.0.0-20260820222146-c27c302e5fc3 // indirect
-	github.com/gobwas/httphead v0.1.0 // indirect
-	github.com/gobwas/pool v0.2.1 // indirect
-	github.com/gobwas/ws v1.4.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
