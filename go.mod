@@ -8,7 +8,7 @@ require (
 	github.com/found-cake/cyber-news-feed v1.2.1
 	github.com/found-cake/gorm-sqlite v0.1.4
 	github.com/golang-jwt/jwt/v5 v5.3.1
-	github.com/labstack/echo/v5 v5.4.0
+	github.com/labstack/echo/v5 v5.4.1
 	github.com/openai/openai-go/v3 v3.78.0
 	golang.org/x/crypto v0.57.0
 	golang.org/x/net v0.60.0
